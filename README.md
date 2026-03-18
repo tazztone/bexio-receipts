@@ -1,0 +1,1 @@
+# bexio-receipts
