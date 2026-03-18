@@ -21,8 +21,9 @@ An automated pipeline to ingest, OCR, and extract data from receipts directly in
 
 ```
 Folder Watcher  ┐
-Email (IMAP)    ┼─▶ OCR (PaddleOCR/GLM-OCR) ─▶ LLM Extraction ─▶ Validation ─▶ bexio API
-Telegram Bot    ┘                                                    │ fail
+Email (IMAP)    │
+Telegram Bot    ┼─▶ OCR (PaddleOCR/GLM-OCR) ─▶ LLM Extraction ─▶ Validation ─▶ bexio API
+Google Drive    ┘                                                    │ fail
                                                                      ▼
                                                                Review Dashboard (FastAPI/HTMX)
 ```
@@ -134,6 +135,11 @@ uv run bexio-receipts watch-telegram
 **Watch a Google Drive folder for new receipts:**
 ```bash
 uv run bexio-receipts watch-gdrive
+```
+
+**Authenticate Google Drive (Interactive):**
+```bash
+uv run bexio-receipts gdrive-auth
 ```
 
 ## bexio Integration (v4)

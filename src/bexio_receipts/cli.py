@@ -97,6 +97,9 @@ def main():
     # Watch-gdrive command
     subparsers.add_parser("watch-gdrive", help="Monitor Google Drive for new receipts")
 
+    # Gdrive-auth command
+    subparsers.add_parser("gdrive-auth", help="Run interactive Google Drive OAuth2 authentication")
+
     args = parser.parse_args()
 
     if args.command == "process":
@@ -130,6 +133,9 @@ def main():
             asyncio.run(watch_gdrive(settings))
         except KeyboardInterrupt:
             pass
+    elif args.command == "gdrive-auth":
+        from .gdrive_ingest import run_gdrive_auth
+        run_gdrive_auth(settings)
     else:
         parser.print_help()
 

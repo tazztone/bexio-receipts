@@ -37,6 +37,7 @@ class Settings(BaseSettings):
 
     # Google Drive Settings
     gdrive_credentials_file: str | None = None
+    gdrive_token_path: str = "token.json"
     gdrive_folder_id: str | None = None
     gdrive_poll_interval: int = 60
     gdrive_processed_folder_id: str | None = None
