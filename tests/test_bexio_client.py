@@ -21,15 +21,20 @@ async def test_bexio_cache_lookups():
         mock_resp_accounts.json.return_value = [{"id": 100, "account_no": "6000"}]
         mock_resp_accounts.raise_for_status = MagicMock()
 
+        mock_resp_comp = MagicMock()
+        mock_resp_comp.json.return_value = {"owner_id": 2}
+        mock_resp_comp.raise_for_status = MagicMock()
+
         with patch.object(httpx.AsyncClient, "get") as mock_get:
-            mock_get.side_effect = [mock_resp_profile, mock_resp_taxes, mock_resp_accounts]
+            mock_get.side_effect = [mock_resp_profile, mock_resp_comp, mock_resp_taxes, mock_resp_accounts]
 
             await client.cache_lookups()
             
             assert client._user_id == 1
+            assert client._owner_id == 2
             assert client._tax_cache[8.1] == 1
             assert client._account_cache["6000"] == 100
-            assert mock_get.call_count == 3
+            assert mock_get.call_count == 4
 
 @pytest.mark.asyncio
 async def test_create_expense():

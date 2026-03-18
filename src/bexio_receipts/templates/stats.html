@@ -29,10 +29,29 @@
                     <small>Receipts booked or duplicated</small>
                 </div>
                 <div>
-                    <h5>Pipeline Status</h5>
-                    <p>Live & Operational</p>
+                    <h5>Total Booked Amount</h5>
+                    <p style="font-size: 2rem; font-weight: bold;">{{ "%.2f"|format(stats.total_booked) }} CHF</p>
+                    <small>Total amount of expenses created</small>
+                </div>
+                <div>
+                    <h5>Total VAT Reclaimed</h5>
+                    <p style="font-size: 2rem; font-weight: bold;">{{ "%.2f"|format(stats.total_vat) }} CHF</p>
+                    <small>Sum of extracted VAT</small>
                 </div>
             </div>
+        </article>
+
+        <article>
+            <h5>Top Merchants</h5>
+            {% if stats.top_merchants %}
+                <ul>
+                {% for merchant in stats.top_merchants %}
+                    <li><strong>{{ merchant.name }}</strong>: {{ "%.2f"|format(merchant.amount) }} CHF</li>
+                {% endfor %}
+                </ul>
+            {% else %}
+                <p>No merchant data available yet.</p>
+            {% endif %}
         </article>
     </main>
 </body>

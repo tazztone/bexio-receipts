@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import date
+import re
 
 class LineItem(BaseModel):
     description: str
@@ -24,3 +25,18 @@ class Receipt(BaseModel):
     line_items: list[LineItem] | None = None
     invoice_number: str | None = None
     payment_method: str | None = None  # card/cash/twint etc.
+
+    @field_validator("merchant_name", mode="after")
+    @classmethod
+    def normalize_merchant_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+
+        # Strip and Title Case
+        v = v.strip().title()
+
+        # Remove common suffixes (case-insensitive because it's already title cased)
+        suffixes = r'\s+(Ag|Gmbh|Ltd\.?|Inc\.?)$'
+        v = re.sub(suffixes, '', v, flags=re.IGNORECASE)
+
+        return v.strip()
