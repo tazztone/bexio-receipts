@@ -3,9 +3,9 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.ollama import OllamaProvider
 from .models import Receipt
 from .config import Settings
-import logging
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 async def extract_receipt(raw_text: str, settings: Settings) -> Receipt:
     """
@@ -28,7 +28,11 @@ async def extract_receipt(raw_text: str, settings: Settings) -> Receipt:
         system_prompt=(
             "Extract receipt data from OCR text. Swiss VAT rates are: "
             "8.1% (standard), 2.6% (reduced — food, books), 3.8% (accommodation). "
-            "Return null for fields not found. If multiple VAT rates appear, use the dominant one. "
+            "Return null for fields not found. "
+            "IMPORTANT: If the receipt shows multiple VAT rates, extract the detailed "
+            "breakdown into the 'vat_breakdown' field (rate, base_amount, vat_amount). "
+            "The 'vat_rate_pct' and 'vat_amount' should represent the dominant rate "
+            "found on the receipt. "
             "Ensure the total_incl_vat is accurately extracted. "
             "Swiss receipts often use 'CHF' as currency."
         ),

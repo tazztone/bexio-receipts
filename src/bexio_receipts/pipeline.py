@@ -4,16 +4,20 @@ import mimetypes
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import structlog
+
 from .ocr import async_run_ocr
 from .extraction import extract_receipt
 from .validation import validate_receipt
 from .bexio_client import BexioClient
 from .config import Settings
 from .models import Receipt
+from .database import DuplicateDetector
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 REVIEW_DIR = Path("./review_queue")
+db = DuplicateDetector()
 
 async def send_to_review(file_path: str, raw_text: str, errors: List[str], receipt: Optional[Receipt] = None) -> Dict:
     """Save problematic receipts to a review directory."""
@@ -38,6 +42,13 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
     file_path_obj = Path(file_path)
     if not file_path_obj.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
+
+    # 0. Duplicate Detection
+    file_hash = db.get_hash(file_path)
+    existing_id = db.is_duplicate(file_hash)
+    if existing_id:
+        logger.warning(f"Duplicate receipt detected! Already processed with ID: {existing_id}")
+        return {"status": "duplicate", "expense_id": existing_id}
 
     # 1. OCR
     logger.info(f"Running OCR ({settings.ocr_engine}) on {file_path}...")
@@ -78,6 +89,9 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
             bank_account_id=settings.default_bank_account_id,
         )
         
+        # 5. Mark as processed
+        db.mark_processed(file_hash, file_path, str(expense.get("id")))
+
         logger.info(f"Successfully booked expense {expense.get('id')} in bexio.")
         return {"status": "booked", "expense_id": expense.get("id"), "receipt": receipt.model_dump(mode="json")}
     except Exception as e:

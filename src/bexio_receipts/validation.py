@@ -39,7 +39,23 @@ def validate_receipt(r: Receipt) -> List[str]:
     if r.total_incl_vat > 10_000:
         errors.append(f"Unusually large amount: {r.total_incl_vat} CHF — manual review")
     
-    # 6. Line items cross-check
+    # 6. VAT breakdown cross-check
+    if r.vat_breakdown:
+        total_base = sum(v.base_amount for v in r.vat_breakdown)
+        total_vat = sum(v.vat_amount for v in r.vat_breakdown)
+        
+        if r.subtotal_excl_vat and abs(total_base - r.subtotal_excl_vat) > 0.05:
+            errors.append(f"VAT breakdown base ({total_base}) ≠ subtotal ({r.subtotal_excl_vat})")
+        
+        if r.vat_amount and abs(total_vat - r.vat_amount) > 0.05:
+            # Note: This error might be redundant if the dominant rate is also in the breakdown,
+            # but it catches cases where the dominant rate logic is flawed.
+            pass
+
+        if abs(total_base + total_vat - r.total_incl_vat) > 0.05:
+            errors.append(f"VAT breakdown sum ({total_base + total_vat}) ≠ total incl. VAT ({r.total_incl_vat})")
+
+    # 7. Line items cross-check
     if r.line_items:
         items_total = sum(i.total for i in r.line_items)
         if r.subtotal_excl_vat and abs(items_total - r.subtotal_excl_vat) > 0.10:

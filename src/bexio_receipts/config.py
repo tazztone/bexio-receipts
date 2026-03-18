@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     default_booking_account_id: Optional[int] = None
     default_bank_account_id: Optional[int] = None
     
+    # bexio-receipts specific
+    inbox_path: str = "./inbox"
+    
+    # IMAP Settings
+    imap_server: Optional[str] = None
+    imap_user: Optional[str] = None
+    imap_password: Optional[str] = None
+    imap_folder: str = "INBOX"
+    imap_poll_interval: int = 300  # seconds
+    
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()

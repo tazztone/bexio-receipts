@@ -1,6 +1,9 @@
 import httpx
+import structlog
 from typing import Optional, List, Dict
 from .models import Receipt
+
+logger = structlog.get_logger(__name__)
 
 class BexioClient:
     def __init__(self, token: str, base_url: str = "https://api.bexio.com"):
@@ -44,6 +47,13 @@ class BexioClient:
     async def create_expense(self, receipt: Receipt, file_uuid: str, 
                               booking_account_id: int, bank_account_id: int) -> Dict:
         """Create expense with CORRECT field names."""
+        if receipt.vat_breakdown and len(receipt.vat_breakdown) > 1:
+            logger.warning(
+                "Multiple VAT rates detected, but bexio Expenses only support one tax_id. "
+                "Using dominant rate.",
+                breakdown=receipt.vat_breakdown
+            )
+
         payload = {
             "title": receipt.merchant_name,
             "paid_on": receipt.date.isoformat(),

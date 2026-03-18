@@ -6,20 +6,31 @@ import json
 from pathlib import Path
 import uvicorn
 
+import structlog
+
 from .config import settings
 from .bexio_client import BexioClient
 from .pipeline import process_receipt
 from .server import app
 
 def setup_logging():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.StackInfoRenderer(),
+            structlog.dev.set_exc_info,
+            structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False),
+            structlog.dev.ConsoleRenderer()
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=True,
     )
 
 async def process_file(file_path: str, dry_run: bool):
-    logger = logging.getLogger("bexio_receipts.cli")
+    logger = structlog.get_logger("bexio_receipts.cli")
     
     if not Path(file_path).exists():
         logger.error(f"File not found: {file_path}")
@@ -73,6 +84,13 @@ def main():
     serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
     serve_parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
 
+    # Watch-folder command
+    watch_parser = subparsers.add_parser("watch-folder", help="Monitor a folder for new receipts")
+    watch_parser.add_argument("--path", default="./inbox", help="Path to monitor")
+
+    # Watch-email command
+    email_parser = subparsers.add_parser("watch-email", help="Monitor an email inbox for new receipts")
+
     args = parser.parse_args()
 
     if args.command == "process":
@@ -82,6 +100,18 @@ def main():
             pass
     elif args.command == "serve":
         uvicorn.run(app, host=args.host, port=args.port)
+    elif args.command == "watch-folder":
+        from .watcher import watch_folder
+        try:
+            asyncio.run(watch_folder(args.path, settings))
+        except KeyboardInterrupt:
+            pass
+    elif args.command == "watch-email":
+        from .email_ingest import watch_email
+        try:
+            asyncio.run(watch_email(settings))
+        except KeyboardInterrupt:
+            pass
     else:
         parser.print_help()
 

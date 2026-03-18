@@ -88,6 +88,19 @@ uv run bexio-receipts serve
 ```
 Then visit `http://127.0.0.1:8000` in your browser.
 
+### Automation
+
+**Watch a local folder for new receipts:**
+```bash
+uv run bexio-receipts watch-folder --path ./inbox
+```
+
+**Watch an email inbox (IMAP) for new receipts:**
+```bash
+uv run bexio-receipts watch-email
+```
+(Requires `IMAP_SERVER`, `IMAP_USER`, and `IMAP_PASSWORD` in your `.env` file).
+
 ## Development & Testing
 
 ### Running Tests
@@ -108,10 +121,15 @@ uv run pytest tests/ -v
 - `src/bexio_receipts/pipeline.py`: Orchestrator for the full ingestion flow.
 - `src/bexio_receipts/cli.py`: Command-line interface with `process` and `serve` commands.
 
-## Next Steps (Phase 2)
+## Next Steps (Phase 3)
 
 - [x] FastAPI-based web UI for the review queue.
-- [ ] IMAP integration to watch an email inbox for incoming receipts.
-- [ ] Folder watcher to automate processing for specific directories.
-- [ ] Multi-VAT receipt splitting.
-- [ ] Duplicate detection (hash-based).
+- [x] IMAP integration to watch an email inbox for incoming receipts.
+- [x] Folder watcher to automate processing for specific directories.
+- [x] Multi-VAT receipt splitting (Model extraction & validation).
+- [x] Duplicate detection (hash-based).
+- [x] Structured logging (`structlog`).
+- [ ] Telegram bot ingestion.
+- [ ] Merchant name → bexio contact auto-matching.
+- [ ] Dashboard / stats page.
+- [ ] Auto-categorization (expense type → account mapping).

@@ -8,11 +8,13 @@ from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
+import structlog
+
 from .config import Settings
 from .bexio_client import BexioClient
 from .models import Receipt
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 app = FastAPI(title="bexio-receipts Review Dashboard")
 settings = Settings()

@@ -5,8 +5,13 @@ from paddleocr import PaddleOCR
 from typing import Tuple, List, Dict, Optional
 from .config import Settings
 
+import structlog
+
 # Disable paddleocr logging to keep CLI clean
+import logging
 logging.getLogger("ppocr").setLevel(logging.ERROR)
+
+logger = structlog.get_logger(__name__)
 
 def run_paddle_ocr(file_path: str) -> Tuple[str, float, List[Dict]]:
     """
