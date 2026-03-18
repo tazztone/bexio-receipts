@@ -3,7 +3,6 @@ import mimetypes
 from pathlib import Path
 
 import structlog
-
 from .ocr import async_run_ocr
 from .extraction import extract_receipt
 from .validation import validate_receipt
@@ -119,7 +118,8 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
             str(expense.get("id")),
             total_incl_vat=receipt.total_incl_vat,
             merchant_name=receipt.merchant_name,
-            vat_amount=receipt.vat_amount
+            vat_amount=receipt.vat_amount,
+            ocr_confidence=avg_confidence
         )
 
         logger.info("Successfully booked expense in bexio", expense_id=expense.get("id"))

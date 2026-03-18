@@ -16,10 +16,25 @@ def test_dashboard_unauthorized():
     response = client.get("/")
     assert response.status_code == 401
 
-def test_dashboard_authorized():
-    response = client.get("/", auth=("admin", "admin"))
+# Use the same settings override as test_healthz
+def get_test_settings():
+    return Settings(
+        env="development",
+        bexio_api_token="dummy",
+        review_password="test",
+        ocr_engine="paddleocr",
+        database_path=":memory:",
+        review_dir="./review_queue_test"
+    )
+
+app.dependency_overrides[get_settings] = get_test_settings
+
+def test_dashboard_authorized(test_settings):
+    app.dependency_overrides[get_settings] = lambda: test_settings
+    response = client.get("/", auth=("admin", "test_password"))
     assert response.status_code == 200
 
-def test_stats_authorized():
-    response = client.get("/stats", auth=("admin", "admin"))
+def test_stats_authorized(test_settings):
+    app.dependency_overrides[get_settings] = lambda: test_settings
+    response = client.get("/stats", auth=("admin", "test_password"))
     assert response.status_code == 200

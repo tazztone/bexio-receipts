@@ -2,12 +2,18 @@ import json
 import mimetypes
 import secrets
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request, Form, Depends
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from fastapi import FastAPI, HTTPException, Request, Form, Depends, status, Response
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
+from starlette.middleware.sessions import SessionMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Gauge
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi import status
 
+import sqlite3
 import structlog
 
 from .config import Settings
@@ -22,6 +28,12 @@ app = FastAPI(title="bexio-receipts Review Dashboard")
 def get_settings() -> Settings:
     return Settings()
 
+app.add_middleware(SessionMiddleware, secret_key=get_settings().secret_key)
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 def get_db(settings: Settings = Depends(get_settings)) -> DuplicateDetector:
     return DuplicateDetector(settings.database_path)
 
@@ -31,17 +43,81 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 security = HTTPBasic()
 
-def verify_credentials(credentials: HTTPBasicCredentials = Depends(security), settings: Settings = Depends(get_settings)):
+def verify_credentials(request: Request, credentials: HTTPBasicCredentials = Depends(security), settings: Settings = Depends(get_settings)):
     is_correct_username = secrets.compare_digest(credentials.username.encode("utf8"), b"admin")
     is_correct_password = secrets.compare_digest(credentials.password.encode("utf8"), settings.review_password.encode("utf8"))
 
     if not (is_correct_username and is_correct_password):
+        # Apply rate limiting manually on auth failure (brute-force protection)
+        from limits import parse
+        limit = parse("5/minute")
+        if not limiter.limiter.hit(limit, get_remote_address(request)):
+            raise HTTPException(status_code=429, detail="Too Many Requests")
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Basic"},
         )
     return credentials.username
+
+RECEIPTS_PROCESSED = Gauge('receipts_processed_total', 'Total number of receipts processed')
+RECEIPTS_FAILED = Gauge('receipts_failed_total', 'Total number of receipts sent to review')
+OCR_CONFIDENCE = Gauge('ocr_confidence_avg', 'Average OCR confidence of receipts')
+
+@app.get("/metrics")
+async def metrics(settings: Settings = Depends(get_settings), db: DuplicateDetector = Depends(get_db)):
+    """Prometheus metrics endpoint."""
+
+    # Update metrics from DB/filesystem on the fly
+    stats = db.get_stats()
+    RECEIPTS_PROCESSED.set(stats["total_processed"])
+    OCR_CONFIDENCE.set(stats["ocr_confidence_avg"])
+
+    review_dir = Path(settings.review_dir)
+    review_count = 0
+    if review_dir.exists():
+        review_count = len(list(review_dir.glob("*.json")))
+    RECEIPTS_FAILED.set(review_count)
+
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+@app.get("/healthz")
+async def healthz(settings: Settings = Depends(get_settings)):
+    """Health check endpoint."""
+    status_data = {"status": "ok", "db": "unknown", "bexio": "unknown", "imap": "not_configured", "gdrive": "not_configured"}
+
+    # Check DB
+    try:
+        with sqlite3.connect(settings.database_path, timeout=5.0) as conn:
+            conn.execute("SELECT 1").fetchone()
+        status_data["db"] = "ok"
+    except Exception as e:
+        status_data["db"] = f"error: {e}"
+        status_data["status"] = "error"
+        logger.error("Health check DB error", error=str(e))
+
+    # Check Bexio
+    try:
+        async with BexioClient(settings.bexio_api_token, settings.bexio_base_url) as bexio:
+            resp = await bexio.client.get("/2.0/company_profile")
+            resp.raise_for_status()
+        status_data["bexio"] = "ok"
+    except Exception as e:
+        status_data["bexio"] = f"error: {e}"
+        status_data["status"] = "error"
+        logger.error("Health check Bexio error", error=str(e))
+
+    # Check IMAP configured
+    if settings.imap_server and settings.imap_user:
+        status_data["imap"] = "configured"
+
+    # Check GDrive configured
+    if settings.gdrive_credentials_file:
+        status_data["gdrive"] = "configured"
+
+    status_code = status.HTTP_200_OK if status_data["status"] == "ok" else status.HTTP_503_SERVICE_UNAVAILABLE
+    return JSONResponse(status_code=status_code, content=status_data)
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)):
@@ -80,11 +156,17 @@ async def review_receipt(request: Request, review_id: str, username: str = Depen
     with open(p) as f:
         data = json.load(f)
     
+    if "csrf_token" not in request.session:
+        request.session["csrf_token"] = secrets.token_urlsafe()
+
+    csrf_token = request.session["csrf_token"]
+
     return templates.TemplateResponse("review.html", {
         "request": request, 
         "id": review_id, 
         "data": data,
-        "receipt": data.get("extracted", {})
+        "receipt": data.get("extracted", {}),
+        "csrf_token": csrf_token
     })
 
 @app.get("/image/{review_id}")
@@ -107,16 +189,21 @@ async def get_receipt_image(review_id: str, username: str = Depends(verify_crede
 
 @app.post("/push/{review_id}")
 async def push_to_bexio(
+    request: Request,
     review_id: str,
     merchant_name: str = Form(...),
     date: str = Form(...),
     total_incl_vat: float = Form(...),
     vat_rate_pct: float | None = Form(None),
+    csrf_token: str = Form(...),
     username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
     db: DuplicateDetector = Depends(get_db)
 ):
     """Update receipt data and push to bexio."""
+    if not csrf_token or request.session.get("csrf_token") != csrf_token:
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
     review_dir = Path(settings.review_dir)
     review_dir.mkdir(exist_ok=True, parents=True)
     p = review_dir / f"{review_id}.json"
@@ -170,6 +257,7 @@ async def push_to_bexio(
 
         # Mark as processed in the database with financial stats
         file_hash = db.get_hash(img_path)
+        # Note: the review JSON doesn't store OCR confidence, so we just pass None.
         db.mark_processed(
             file_hash,
             img_path,
@@ -186,8 +274,11 @@ async def push_to_bexio(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/discard/{review_id}")
-async def discard_review(review_id: str, username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)):
+async def discard_review(request: Request, review_id: str, csrf_token: str = Form(...), username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)):
     """Remove a receipt from the review queue."""
+    if not csrf_token or request.session.get("csrf_token") != csrf_token:
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
     review_dir = Path(settings.review_dir)
     review_dir.mkdir(exist_ok=True, parents=True)
     p = review_dir / f"{review_id}.json"
