@@ -2,7 +2,7 @@ import sqlite3
 import hashlib
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
 
 class DuplicateDetector:
     def __init__(self, db_path: str = "processed_receipts.db"):
@@ -17,6 +17,12 @@ class DuplicateDetector:
                     file_path TEXT,
                     processed_at TIMESTAMP,
                     bexio_id TEXT
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS merchant_accounts (
+                    merchant_name TEXT PRIMARY KEY,
+                    booking_account_id INTEGER
                 )
             """)
 
@@ -45,3 +51,28 @@ class DuplicateDetector:
                 "INSERT INTO processed_receipts (file_hash, file_path, processed_at, bexio_id) VALUES (?, ?, ?, ?)",
                 (file_hash, str(file_path), datetime.now(), bexio_id)
             )
+
+    def get_merchant_account(self, merchant_name: str) -> Optional[int]:
+        """Get the last used booking account for a merchant."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT booking_account_id FROM merchant_accounts WHERE merchant_name = ?", 
+                (merchant_name,)
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def set_merchant_account(self, merchant_name: str, account_id: int):
+        """Save the booking account for a merchant."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
+                (merchant_name, account_id)
+            )
+
+    def get_stats(self) -> Dict:
+        """Fetch processing statistics."""
+        with sqlite3.connect(self.db_path) as conn:
+            count = conn.execute("SELECT COUNT(*) FROM processed_receipts").fetchone()[0]
+            # Simple stats for now, can be expanded to sums, counts by merchant etc.
+            return {"total_processed": count}

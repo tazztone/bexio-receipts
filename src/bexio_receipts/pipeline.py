@@ -80,14 +80,33 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
         file_uuid = await bexio.upload_file(file_path, file_path_obj.name, mime_type)
         
         # Ensure default account IDs are set
-        if not settings.default_booking_account_id or not settings.default_bank_account_id:
-            return await send_to_review(file_path, raw_text, ["Missing default bexio account IDs in settings"], receipt)
+        if not settings.default_booking_account_id:
+             return await send_to_review(file_path, raw_text, ["Missing default booking account ID in settings"], receipt)
 
-        expense = await bexio.create_expense(
-            receipt, file_uuid,
-            booking_account_id=settings.default_booking_account_id,
-            bank_account_id=settings.default_bank_account_id,
-        )
+        # Prefer Bill (v4) if we have a merchant name, otherwise fall back to simple Expense (v4)
+        if receipt.merchant_name:
+            logger.info(f"Creating Purchase Bill for {receipt.merchant_name}...")
+            
+            # Smart Account Mapping: lookup last used account for this merchant
+            booking_account_id = db.get_merchant_account(receipt.merchant_name) or settings.default_booking_account_id
+            
+            expense = await bexio.create_purchase_bill(
+                receipt, file_uuid,
+                booking_account_id=booking_account_id
+            )
+            
+            # Save mapping for next time
+            db.set_merchant_account(receipt.merchant_name, booking_account_id)
+        else:
+            if not settings.default_bank_account_id:
+                return await send_to_review(file_path, raw_text, ["Missing default bank account ID for simple expense"], receipt)
+            
+            logger.info("No merchant name, creating simple Expense...")
+            expense = await bexio.create_expense(
+                receipt, file_uuid,
+                booking_account_id=settings.default_booking_account_id,
+                bank_account_id=settings.default_bank_account_id,
+            )
         
         # 5. Mark as processed
         db.mark_processed(file_hash, file_path, str(expense.get("id")))

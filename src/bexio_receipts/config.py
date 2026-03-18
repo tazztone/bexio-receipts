@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     imap_folder: str = "INBOX"
     imap_poll_interval: int = 300  # seconds
     
+    # Telegram Settings
+    telegram_bot_token: Optional[str] = None
+    telegram_allowed_users: List[int] = [] # List of user IDs
+    
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()

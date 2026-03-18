@@ -13,6 +13,7 @@ import structlog
 from .config import Settings
 from .bexio_client import BexioClient
 from .models import Receipt
+from .pipeline import db
 
 logger = structlog.get_logger(__name__)
 
@@ -42,6 +43,12 @@ async def dashboard(request: Request):
             })
     
     return templates.TemplateResponse("dashboard.html", {"request": request, "reviews": reviews})
+
+@app.get("/stats", response_class=HTMLResponse)
+async def stats_view(request: Request):
+    """Show processing statistics."""
+    stats = db.get_stats()
+    return templates.TemplateResponse("stats.html", {"request": request, "stats": stats})
 
 @app.get("/review/{review_id}", response_class=HTMLResponse)
 async def review_receipt(request: Request, review_id: str):
@@ -110,13 +117,28 @@ async def push_to_bexio(
     filename = Path(img_path).name
     
     try:
-        file_uuid = await bexio.upload_file(img_path, filename, "image/png") # Simple mime guess for now
-        expense = await bexio.create_expense(
-            receipt, 
-            file_uuid,
-            booking_account_id=settings.default_booking_account_id,
-            bank_account_id=settings.default_bank_account_id,
-        )
+        file_uuid = await bexio.upload_file(img_path, filename, "image/png")
+        
+        # Prefer Bill if merchant exists
+        if receipt.merchant_name:
+            # Note: In the UI we could let the user choose the account, 
+            # for now we use the default and SAVE their mapping if they edited it?
+            # Actually, let's just use the default and let Phase 3 logic evolve.
+            booking_account_id = settings.default_booking_account_id
+            
+            expense = await bexio.create_purchase_bill(
+                receipt, file_uuid,
+                booking_account_id=booking_account_id
+            )
+            # Save mapping
+            db.set_merchant_account(receipt.merchant_name, booking_account_id)
+        else:
+            expense = await bexio.create_expense(
+                receipt, 
+                file_uuid,
+                booking_account_id=settings.default_booking_account_id,
+                bank_account_id=settings.default_bank_account_id,
+            )
         
         # If successful, delete from review queue
         p.unlink()

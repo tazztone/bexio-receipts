@@ -99,7 +99,24 @@ uv run bexio-receipts watch-folder --path ./inbox
 ```bash
 uv run bexio-receipts watch-email
 ```
-(Requires `IMAP_SERVER`, `IMAP_USER`, and `IMAP_PASSWORD` in your `.env` file).
+
+**Ingest via Telegram Bot:**
+```bash
+uv run bexio-receipts watch-telegram
+```
+(Requires `TELEGRAM_BOT_TOKEN` in your `.env` file).
+
+## bexio Integration (v4)
+
+The pipeline intelligently chooses between two bexio endpoints:
+- **Purchase Bills (Recommended):** If a merchant is identified, it creates a full Bill with line items per VAT rate. This supports multi-VAT receipts and supplier tracking.
+- **Expenses:** If no merchant is identified, it falls back to a simple expense booking.
+
+## Smart Features
+
+- **Smart Categorization:** Remembers the last used booking account for each merchant.
+- **Duplicate Detection:** Prevents double-booking via SHA-256 file hashing.
+- **Statistics Dashboard:** Track your processing volume and reclaimed VAT via the `/stats` view.
 
 ## Development & Testing
 

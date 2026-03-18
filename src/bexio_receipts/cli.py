@@ -91,6 +91,9 @@ def main():
     # Watch-email command
     email_parser = subparsers.add_parser("watch-email", help="Monitor an email inbox for new receipts")
 
+    # Watch-telegram command
+    telegram_parser = subparsers.add_parser("watch-telegram", help="Monitor Telegram for new receipts")
+
     args = parser.parse_args()
 
     if args.command == "process":
@@ -110,6 +113,12 @@ def main():
         from .email_ingest import watch_email
         try:
             asyncio.run(watch_email(settings))
+        except KeyboardInterrupt:
+            pass
+    elif args.command == "watch-telegram":
+        from .telegram_bot import run_bot
+        try:
+            asyncio.run(run_bot(settings))
         except KeyboardInterrupt:
             pass
     else:
