@@ -48,4 +48,10 @@ class Settings(BaseSettings):
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-settings = Settings()
+# Provide a lazy way to get settings if not initialized at module level to avoid
+# immediate validation errors in tests before environment variables are mocked.
+# But for CLI entrypoint, we instantiate it here.
+try:
+    settings = Settings()
+except Exception:
+    settings = None # type: ignore

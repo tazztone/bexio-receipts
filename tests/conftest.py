@@ -1,3 +1,10 @@
+import os
+
+# Set required environment variables before importing any app modules
+# to prevent Pydantic ValidationError on startup during testing.
+os.environ["BEXIO_API_TOKEN"] = "dummy_token_for_tests"
+os.environ["REVIEW_PASSWORD"] = "dummy_password_for_tests"
+
 import pytest
 from bexio_receipts.config import Settings
 from bexio_receipts.database import DuplicateDetector
