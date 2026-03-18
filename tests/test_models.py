@@ -1,4 +1,4 @@
-from src.bexio_receipts.models import Receipt
+from bexio_receipts.models import Receipt
 from datetime import date
 
 r1 = Receipt(merchant_name="MIGROS", date=date.today(), total_incl_vat=10.0)
