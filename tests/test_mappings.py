@@ -1,4 +1,3 @@
-import pytest
 import json
 from unittest.mock import patch
 from bexio_receipts.cli import main

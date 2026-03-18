@@ -39,7 +39,7 @@ def run_paddle_ocr(file_path: str) -> tuple[str, float, list[dict]]:
 
                 # Filter out near-blank pages (less than 10 characters) from confidence average
                 if page_text_len >= 10:
-                    page_avg = sum(l["confidence"] for l in page_lines) / len(page_lines)
+                    page_avg = sum(item["confidence"] for item in page_lines) / len(page_lines)
                     page_confidences.append(page_avg)
 
                 lines.extend(page_lines)
