@@ -44,6 +44,30 @@ class BexioClient:
         retry=retry_if_exception(is_retryable_exception),
         reraise=True
     )
+    async def fetch_taxes(self):
+        """Fetch and cache tax rates."""
+        resp = await self.client.get("/3.0/taxes")
+        resp.raise_for_status()
+        taxes = resp.json()
+        for t in taxes:
+            if t.get("value") is not None:
+                self._tax_cache[float(t["value"])] = t["id"]
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception(is_retryable_exception),
+        reraise=True
+    )
+    async def fetch_accounts(self):
+        """Fetch and cache accounts."""
+        resp = await self.client.get("/2.0/accounts")
+        resp.raise_for_status()
+        accounts = resp.json()
+        for a in accounts:
+            if "account_no" in a:
+                self._account_cache[str(a["account_no"])] = a["id"]
+
     async def cache_lookups(self):
         """Fetch and cache tenant-specific IDs at startup."""
         # User profile
@@ -51,20 +75,10 @@ class BexioClient:
             await self.get_profile()
 
         # Tax rates
-        resp = await self.client.get("/3.0/taxes")
-        resp.raise_for_status()
-        taxes = resp.json()
-        for t in taxes:
-            if t.get("value") is not None:
-                self._tax_cache[float(t["value"])] = t["id"]
+        await self.fetch_taxes()
         
-        # Accounts (for booking_account_id)
-        resp = await self.client.get("/2.0/accounts")
-        resp.raise_for_status()
-        accounts = resp.json()
-        for a in accounts:
-            if "account_no" in a:
-                self._account_cache[str(a["account_no"])] = a["id"]
+        # Accounts
+        await self.fetch_accounts()
     
     async def get_tax_id(self, rate: float | None) -> int:
         """Return bexio tax ID for a given rate, fallback to standard (8.1)."""

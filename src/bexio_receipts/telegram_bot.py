@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
 
 import structlog
 from telegram import Update, Message
