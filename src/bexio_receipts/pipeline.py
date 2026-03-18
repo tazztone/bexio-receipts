@@ -113,7 +113,14 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
             )
         
         # 5. Mark as processed
-        db.mark_processed(file_hash, file_path, str(expense.get("id")))
+        db.mark_processed(
+            file_hash,
+            file_path,
+            str(expense.get("id")),
+            total_incl_vat=receipt.total_incl_vat,
+            merchant_name=receipt.merchant_name,
+            vat_amount=receipt.vat_amount
+        )
 
         logger.info("Successfully booked expense in bexio", expense_id=expense.get("id"))
         return {"status": "booked", "expense_id": expense.get("id"), "receipt": receipt.model_dump(mode="json")}
