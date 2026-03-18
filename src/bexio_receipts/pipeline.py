@@ -2,7 +2,6 @@ import json
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import structlog
 
@@ -16,13 +15,11 @@ from .database import DuplicateDetector
 
 logger = structlog.get_logger(__name__)
 
-REVIEW_DIR = Path("./review_queue")
-db = DuplicateDetector()
-
-async def send_to_review(file_path: str, raw_text: str, errors: List[str], receipt: Optional[Receipt] = None) -> Dict:
+async def send_to_review(file_path: str, raw_text: str, errors: list[str], settings: Settings, receipt: Receipt | None = None) -> dict:
     """Save problematic receipts to a review directory."""
-    REVIEW_DIR.mkdir(exist_ok=True)
-    review_file = REVIEW_DIR / f"{Path(file_path).stem}.json"
+    review_dir = Path(settings.review_dir)
+    review_dir.mkdir(exist_ok=True, parents=True)
+    review_file = review_dir / f"{Path(file_path).stem}.json"
     
     review_data = {
         "original_file": str(file_path),
@@ -37,7 +34,7 @@ async def send_to_review(file_path: str, raw_text: str, errors: List[str], recei
     logger.warning(f"Receipt sent to review: {review_file}")
     return {"status": "review", "review_file": str(review_file)}
 
-async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient) -> Dict:
+async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient, db: DuplicateDetector) -> dict:
     """Full pipeline: OCR → Extract → Validate → Push."""
     file_path_obj = Path(file_path)
     if not file_path_obj.exists():
@@ -55,7 +52,7 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
     raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
     
     if avg_confidence < settings.ocr_confidence_threshold:
-        return await send_to_review(file_path, raw_text, [f"Low OCR confidence: {avg_confidence:.1%}"])
+        return await send_to_review(file_path, raw_text, [f"Low OCR confidence: {avg_confidence:.1%}"], settings)
     
     # 2. LLM extraction
     logger.info("Extracting data via LLM...")
@@ -63,13 +60,13 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
         receipt = await extract_receipt(raw_text, settings)
     except Exception as e:
         logger.error(f"LLM extraction failed: {e}")
-        return await send_to_review(file_path, raw_text, [f"LLM extraction failed: {str(e)}"])
+        return await send_to_review(file_path, raw_text, [f"LLM extraction failed: {str(e)}"], settings)
     
     # 3. Validation
     logger.info("Validating extracted data...")
-    errors = validate_receipt(receipt)
+    errors = validate_receipt(receipt, settings)
     if errors:
-        return await send_to_review(file_path, raw_text, errors, receipt)
+        return await send_to_review(file_path, raw_text, errors, settings, receipt)
     
     # 4. Push to bexio
     logger.info("Pushing to bexio...")
@@ -81,7 +78,7 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
         
         # Ensure default account IDs are set
         if not settings.default_booking_account_id:
-             return await send_to_review(file_path, raw_text, ["Missing default booking account ID in settings"], receipt)
+             return await send_to_review(file_path, raw_text, ["Missing default booking account ID in settings"], settings, receipt)
 
         # Prefer Bill (v4) if we have a merchant name, otherwise fall back to simple Expense (v4)
         if receipt.merchant_name:
@@ -99,7 +96,7 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
             db.set_merchant_account(receipt.merchant_name, booking_account_id)
         else:
             if not settings.default_bank_account_id:
-                return await send_to_review(file_path, raw_text, ["Missing default bank account ID for simple expense"], receipt)
+                return await send_to_review(file_path, raw_text, ["Missing default bank account ID for simple expense"], settings, receipt)
             
             logger.info("No merchant name, creating simple Expense...")
             expense = await bexio.create_expense(
@@ -115,4 +112,4 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
         return {"status": "booked", "expense_id": expense.get("id"), "receipt": receipt.model_dump(mode="json")}
     except Exception as e:
         logger.error(f"Failed to push to bexio: {e}")
-        return await send_to_review(file_path, raw_text, [f"bexio API error: {str(e)}"], receipt)
+        return await send_to_review(file_path, raw_text, [f"bexio API error: {str(e)}"], settings, receipt)

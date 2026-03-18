@@ -1,5 +1,4 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
 
 class Settings(BaseSettings):
     bexio_api_token: str
@@ -16,22 +15,25 @@ class Settings(BaseSettings):
     llm_model: str = "qwen2.5:7b"
     
     # Default accounts for bexio
-    default_booking_account_id: Optional[int] = None
-    default_bank_account_id: Optional[int] = None
+    default_booking_account_id: int | None = None
+    default_bank_account_id: int | None = None
     
     # bexio-receipts specific
     inbox_path: str = "./inbox"
+    database_path: str = "processed_receipts.db"
+    review_dir: str = "./review_queue"
+    max_receipt_age_days: int = 365
     
     # IMAP Settings
-    imap_server: Optional[str] = None
-    imap_user: Optional[str] = None
-    imap_password: Optional[str] = None
+    imap_server: str | None = None
+    imap_user: str | None = None
+    imap_password: str | None = None
     imap_folder: str = "INBOX"
     imap_poll_interval: int = 300  # seconds
     
     # Telegram Settings
-    telegram_bot_token: Optional[str] = None
-    telegram_allowed_users: List[int] = [] # List of user IDs
+    telegram_bot_token: str | None = None
+    telegram_allowed_users: list[int] = [] # List of user IDs
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

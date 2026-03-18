@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
 from datetime import date
 
 class LineItem(BaseModel):
@@ -14,14 +13,14 @@ class VatEntry(BaseModel):
     vat_amount: float = Field(..., description="Actual VAT amount for this rate")
 
 class Receipt(BaseModel):
-    merchant_name: str
+    merchant_name: str | None = None
     date: date
     currency: str = "CHF"
-    subtotal_excl_vat: Optional[float] = None
-    vat_rate_pct: Optional[float] = Field(None, description="Dominant Swiss VAT rate: 8.1, 2.6, 3.8, or 0.0")
-    vat_amount: Optional[float] = None
+    subtotal_excl_vat: float | None = None
+    vat_rate_pct: float | None = Field(None, description="Dominant Swiss VAT rate: 8.1, 2.6, 3.8, or 0.0")
+    vat_amount: float | None = None
     total_incl_vat: float
-    vat_breakdown: List[VatEntry] = Field(default_factory=list, description="Breakdown of VAT per rate found on the receipt")
-    line_items: Optional[List[LineItem]] = None
-    invoice_number: Optional[str] = None
-    payment_method: Optional[str] = None  # card/cash/twint etc.
+    vat_breakdown: list[VatEntry] = Field(default_factory=list, description="Breakdown of VAT per rate found on the receipt")
+    line_items: list[LineItem] | None = None
+    invoice_number: str | None = None
+    payment_method: str | None = None  # card/cash/twint etc.

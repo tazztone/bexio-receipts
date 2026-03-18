@@ -2,18 +2,16 @@ import base64
 import httpx
 import logging
 from paddleocr import PaddleOCR
-from typing import Tuple, List, Dict, Optional
 from .config import Settings
 
 import structlog
 
 # Disable paddleocr logging to keep CLI clean
-import logging
 logging.getLogger("ppocr").setLevel(logging.ERROR)
 
 logger = structlog.get_logger(__name__)
 
-def run_paddle_ocr(file_path: str) -> Tuple[str, float, List[Dict]]:
+def run_paddle_ocr(file_path: str) -> tuple[str, float, list[dict]]:
     """
     Run OCR on a file using PaddleOCR PP-OCRv5.
     """
@@ -39,7 +37,7 @@ def run_paddle_ocr(file_path: str) -> Tuple[str, float, List[Dict]]:
     
     return raw_text, avg_confidence, lines
 
-async def run_glm_ocr(file_path: str, settings: Settings) -> Tuple[str, float, List[Dict]]:
+async def run_glm_ocr(file_path: str, settings: Settings) -> tuple[str, float, list[dict]]:
     """
     Run OCR on a file using GLM-OCR via Ollama.
     """
@@ -65,16 +63,15 @@ async def run_glm_ocr(file_path: str, settings: Settings) -> Tuple[str, float, L
         
         raw_text = data["message"]["content"]
         # GLM-OCR via Ollama chat API doesn't easily provide confidence per word/line
-        # Returning 1.0 as a placeholder for now. 
-        # In a real scenario, we might want to check the logprobs if Ollama supports it for chat.
-        avg_confidence = 0.95 
+        # Using 0.90 as a default.
+        avg_confidence = 0.90 
         
         # We don't have per-line detail here like PaddleOCR
         lines = [{"text": raw_text, "confidence": avg_confidence}]
         
         return raw_text, avg_confidence, lines
 
-def run_ocr(file_path: str, settings: Optional[Settings] = None) -> Tuple[str, float, List[Dict]]:
+def run_ocr(file_path: str, settings: Settings | None = None) -> tuple[str, float, list[dict]]:
     """
     Unified entry point for OCR. Note: run_glm_ocr is async.
     If settings.ocr_engine is "glm-ocr", this function will fail if not awaited or handled.
@@ -89,7 +86,7 @@ def run_ocr(file_path: str, settings: Optional[Settings] = None) -> Tuple[str, f
         # This will be handled in the async pipeline
         raise ValueError(f"OCR engine {engine} must be run via async_run_ocr")
 
-async def async_run_ocr(file_path: str, settings: Settings) -> Tuple[str, float, List[Dict]]:
+async def async_run_ocr(file_path: str, settings: Settings) -> tuple[str, float, list[dict]]:
     if settings.ocr_engine == "paddleocr":
         # PaddleOCR is sync, wrap in thread to not block loop
         import asyncio

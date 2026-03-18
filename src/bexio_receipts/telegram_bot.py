@@ -11,6 +11,8 @@ from .pipeline import process_receipt
 from .config import Settings
 from .bexio_client import BexioClient
 
+from .database import DuplicateDetector
+
 logger = structlog.get_logger(__name__)
 
 class ReceiptBot:
@@ -19,11 +21,13 @@ class ReceiptBot:
         self.download_dir = Path(settings.inbox_path) / "telegram"
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.allowed_users = set(settings.telegram_allowed_users)
+        self.db = DuplicateDetector(settings.database_path)
 
     def _is_allowed(self, user_id: int) -> bool:
-        # If no users allowed, allow all for now (should be secured in production)
+        # Secure by default: if no users are allowed, deny all.
         if not self.allowed_users:
-            return True
+            logger.warning("TELEGRAM_ALLOWED_USERS is empty. Denying all access.")
+            return False
         return user_id in self.allowed_users
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -70,40 +74,38 @@ class ReceiptBot:
     async def _trigger_processing(self, message: Message, file_path: Path):
         status_msg = await message.reply_text("Processing receipt... 🔄")
         
-        bexio = BexioClient(
+        async with BexioClient(
             token=self.settings.bexio_api_token, 
             base_url=self.settings.bexio_base_url
-        )
-        try:
-            await bexio.cache_lookups()
-            result = await process_receipt(str(file_path), self.settings, bexio)
-            
-            status = result.get("status")
-            if status == "booked":
-                expense_id = result.get("expense_id")
-                merchant = result.get("receipt", {}).get("merchant_name", "Unknown")
-                total = result.get("receipt", {}).get("total_incl_vat", 0.0)
-                await status_msg.edit_text(
-                    f"✅ Success! Expense {expense_id} booked in bexio.\n"
-                    f"Merchant: {merchant}\n"
-                    f"Total: {total} CHF"
-                )
-            elif status == "review":
-                review_file = Path(result.get("review_file")).name
-                await status_msg.edit_text(
-                    f"⚠️ Sent to review. Validation errors found.\n"
-                    f"Visit the dashboard to approve."
-                )
-            elif status == "duplicate":
-                await status_msg.edit_text(f"ℹ️ Duplicate detected. Already booked with ID: {result.get('expense_id')}")
-            else:
-                await status_msg.edit_text(f"❌ Processing failed: {status}")
+        ) as bexio:
+            try:
+                await bexio.cache_lookups()
+                result = await process_receipt(str(file_path), self.settings, bexio, self.db)
                 
-        except Exception as e:
-            logger.error(f"Telegram processing error: {e}")
-            await status_msg.edit_text(f"❌ Error during processing: {str(e)}")
-        finally:
-            await bexio.close()
+                status = result.get("status")
+                if status == "booked":
+                    expense_id = result.get("expense_id")
+                    merchant = result.get("receipt", {}).get("merchant_name", "Unknown")
+                    total = result.get("receipt", {}).get("total_incl_vat", 0.0)
+                    await status_msg.edit_text(
+                        f"✅ Success! Expense {expense_id} booked in bexio.\n"
+                        f"Merchant: {merchant}\n"
+                        f"Total: {total} CHF"
+                    )
+                elif status == "review":
+                    review_file = Path(result.get("review_file")).name
+                    await status_msg.edit_text(
+                        f"⚠️ Sent to review. Validation errors found.\n"
+                        f"Visit the dashboard to approve."
+                    )
+                elif status == "duplicate":
+                    await status_msg.edit_text(f"ℹ️ Duplicate detected. Already booked with ID: {result.get('expense_id')}")
+                else:
+                    await status_msg.edit_text(f"❌ Processing failed: {status}")
+                    
+            except Exception as e:
+                logger.error(f"Telegram processing error: {e}")
+                await status_msg.edit_text(f"❌ Error during processing: {str(e)}")
 
 async def run_bot(settings: Settings):
     """Starts the Telegram bot."""

@@ -2,7 +2,6 @@ import asyncio
 import email
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 import aioimaplib
 import structlog
@@ -11,6 +10,8 @@ from .pipeline import process_receipt
 from .config import Settings
 from .bexio_client import BexioClient
 
+from .database import DuplicateDetector
+
 logger = structlog.get_logger(__name__)
 
 class EmailIngestor:
@@ -18,7 +19,8 @@ class EmailIngestor:
         self.settings = settings
         self.download_dir = Path(settings.inbox_path) / "email"
         self.download_dir.mkdir(parents=True, exist_ok=True)
-        self.imap_client: Optional[aioimaplib.IMAP4_SSL] = None
+        self.imap_client: aioimaplib.IMAP4_SSL | None = None
+        self.db = DuplicateDetector(settings.database_path)
 
     async def connect(self):
         if not self.settings.imap_server:
@@ -70,18 +72,16 @@ class EmailIngestor:
                     await self._process_file(filepath)
 
     async def _process_file(self, filepath: Path):
-        bexio = BexioClient(
+        async with BexioClient(
             token=self.settings.bexio_api_token, 
             base_url=self.settings.bexio_base_url
-        )
-        try:
-            await bexio.cache_lookups()
-            result = await process_receipt(str(filepath), self.settings, bexio)
-            logger.info(f"Email processing finished for {filepath}: {result.get('status')}")
-        except Exception as e:
-            logger.error(f"Error processing email attachment {filepath}: {e}")
-        finally:
-            await bexio.close()
+        ) as bexio:
+            try:
+                await bexio.cache_lookups()
+                result = await process_receipt(str(filepath), self.settings, bexio, self.db)
+                logger.info(f"Email processing finished for {filepath}: {result.get('status')}")
+            except Exception as e:
+                logger.error(f"Error processing email attachment {filepath}: {e}")
 
     async def run_once(self):
         try:

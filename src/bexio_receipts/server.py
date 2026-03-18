@@ -1,8 +1,6 @@
 import json
 import logging
 from pathlib import Path
-from typing import Optional
-
 from fastapi import FastAPI, HTTPException, Request, Form
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -13,19 +11,20 @@ import structlog
 from .config import Settings
 from .bexio_client import BexioClient
 from .models import Receipt
-from .pipeline import db
+from .database import DuplicateDetector
 
 logger = structlog.get_logger(__name__)
 
 app = FastAPI(title="bexio-receipts Review Dashboard")
 settings = Settings()
+db = DuplicateDetector(settings.database_path)
 
 # Setup templates and static files
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-REVIEW_DIR = Path("review_queue")
-REVIEW_DIR.mkdir(exist_ok=True)
+REVIEW_DIR = Path(settings.review_dir)
+REVIEW_DIR.mkdir(exist_ok=True, parents=True)
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
@@ -89,7 +88,7 @@ async def push_to_bexio(
     merchant_name: str = Form(...),
     date: str = Form(...),
     total_incl_vat: float = Form(...),
-    vat_rate_pct: Optional[float] = Form(None),
+    vat_rate_pct: float | None = Form(None),
 ):
     """Update receipt data and push to bexio."""
     p = REVIEW_DIR / f"{review_id}.json"
@@ -110,35 +109,31 @@ async def push_to_bexio(
     receipt = Receipt(**receipt_data)
     
     # Push to bexio
-    bexio = BexioClient(settings.bexio_api_token, settings.bexio_base_url)
-    await bexio.cache_lookups()
-    
     img_path = data.get("original_file")
     filename = Path(img_path).name
     
     try:
-        file_uuid = await bexio.upload_file(img_path, filename, "image/png")
-        
-        # Prefer Bill if merchant exists
-        if receipt.merchant_name:
-            # Note: In the UI we could let the user choose the account, 
-            # for now we use the default and SAVE their mapping if they edited it?
-            # Actually, let's just use the default and let Phase 3 logic evolve.
-            booking_account_id = settings.default_booking_account_id
+        async with BexioClient(settings.bexio_api_token, settings.bexio_base_url) as bexio:
+            await bexio.cache_lookups()
+            file_uuid = await bexio.upload_file(img_path, filename, "image/png")
             
-            expense = await bexio.create_purchase_bill(
-                receipt, file_uuid,
-                booking_account_id=booking_account_id
-            )
-            # Save mapping
-            db.set_merchant_account(receipt.merchant_name, booking_account_id)
-        else:
-            expense = await bexio.create_expense(
-                receipt, 
-                file_uuid,
-                booking_account_id=settings.default_booking_account_id,
-                bank_account_id=settings.default_bank_account_id,
-            )
+            # Prefer Bill if merchant exists
+            if receipt.merchant_name:
+                booking_account_id = settings.default_booking_account_id
+                
+                expense = await bexio.create_purchase_bill(
+                    receipt, file_uuid,
+                    booking_account_id=booking_account_id
+                )
+                # Save mapping
+                db.set_merchant_account(receipt.merchant_name, booking_account_id)
+            else:
+                expense = await bexio.create_expense(
+                    receipt, 
+                    file_uuid,
+                    booking_account_id=settings.default_booking_account_id,
+                    bank_account_id=settings.default_bank_account_id,
+                )
         
         # If successful, delete from review queue
         p.unlink()

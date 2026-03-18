@@ -49,7 +49,7 @@ async def process_file(file_path: str, dry_run: bool):
         receipt = await extract_receipt(raw_text, settings)
         print(f"\n--- Extracted Data ---\n{receipt.model_dump_json(indent=2)}\n")
         
-        errors = validate_receipt(receipt)
+        errors = validate_receipt(receipt, settings)
         if errors:
             print(f"\n--- Validation Errors ---\n" + "\n".join(f"- {e}" for e in errors) + "\n")
         else:
@@ -61,13 +61,13 @@ async def process_file(file_path: str, dry_run: bool):
         logger.error("BEXIO_API_TOKEN is not set.")
         sys.exit(1)
 
-    client = BexioClient(token=settings.bexio_api_token, base_url=settings.bexio_base_url)
-    try:
+    from .database import DuplicateDetector
+    db = DuplicateDetector(settings.database_path)
+
+    async with BexioClient(token=settings.bexio_api_token, base_url=settings.bexio_base_url) as client:
         await client.cache_lookups()
-        result = await process_receipt(file_path, settings, client)
+        result = await process_receipt(file_path, settings, client, db)
         print(f"\nFinal Result:\n{json.dumps(result, indent=2, default=str)}")
-    finally:
-        await client.close()
 
 def main():
     setup_logging()

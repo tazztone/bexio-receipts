@@ -12,9 +12,13 @@ async def extract_receipt(raw_text: str, settings: Settings) -> Receipt:
     Extract receipt data from OCR text using Pydantic AI.
     """
     if settings.llm_provider == "ollama":
+        base_url = settings.glm_ocr_url.rstrip("/")
+        if not base_url.endswith("/v1"):
+            base_url = f"{base_url}/v1"
+            
         model = OpenAIChatModel(
             model_name=settings.llm_model,
-            provider=OllamaProvider(base_url="http://localhost:11434/v1"),
+            provider=OllamaProvider(base_url=base_url),
         )
     elif settings.llm_provider == "openai":
         # Assumes OPENAI_API_KEY is set in environment

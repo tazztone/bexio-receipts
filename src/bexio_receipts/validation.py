@@ -1,10 +1,11 @@
 from datetime import date, timedelta
-from typing import List
 from .models import Receipt
+
+from .config import Settings
 
 VALID_CH_VAT = {0.0, 2.6, 3.8, 8.1}
 
-def validate_receipt(r: Receipt) -> List[str]:
+def validate_receipt(r: Receipt, settings: Settings) -> list[str]:
     """
     Validate receipt data against Swiss business rules.
     Returns a list of error strings.
@@ -30,8 +31,8 @@ def validate_receipt(r: Receipt) -> List[str]:
     # 4. Date sanity
     if r.date > date.today():
         errors.append(f"Future date: {r.date}")
-    if r.date < date.today() - timedelta(days=365):
-        errors.append(f"Receipt older than 1 year: {r.date}")
+    if r.date < date.today() - timedelta(days=settings.max_receipt_age_days):
+        errors.append(f"Receipt older than {settings.max_receipt_age_days} days: {r.date}")
     
     # 5. Amount sanity
     if r.total_incl_vat <= 0:
@@ -48,9 +49,7 @@ def validate_receipt(r: Receipt) -> List[str]:
             errors.append(f"VAT breakdown base ({total_base}) ≠ subtotal ({r.subtotal_excl_vat})")
         
         if r.vat_amount and abs(total_vat - r.vat_amount) > 0.05:
-            # Note: This error might be redundant if the dominant rate is also in the breakdown,
-            # but it catches cases where the dominant rate logic is flawed.
-            pass
+            errors.append(f"VAT breakdown total ({total_vat}) ≠ extracted VAT amount ({r.vat_amount})")
 
         if abs(total_base + total_vat - r.total_incl_vat) > 0.05:
             errors.append(f"VAT breakdown sum ({total_base + total_vat}) ≠ total incl. VAT ({r.total_incl_vat})")

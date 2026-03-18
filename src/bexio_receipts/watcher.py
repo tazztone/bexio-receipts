@@ -2,7 +2,6 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Set
 
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileCreatedEvent
@@ -12,6 +11,7 @@ import structlog
 from .pipeline import process_receipt
 from .config import Settings
 from .bexio_client import BexioClient
+from .database import DuplicateDetector
 
 logger = structlog.get_logger(__name__)
 
@@ -21,7 +21,8 @@ class ReceiptHandler(FileSystemEventHandler):
     def __init__(self, loop: asyncio.AbstractEventLoop, settings: Settings):
         self.loop = loop
         self.settings = settings
-        self.processing: Set[Path] = set()
+        self.processing: set[Path] = set()
+        self.db = DuplicateDetector(settings.database_path)
         
     def on_created(self, event: FileCreatedEvent):
         if event.is_directory:
@@ -51,16 +52,13 @@ class ReceiptHandler(FileSystemEventHandler):
             # Wait a bit for the file to be fully written (if needed)
             await asyncio.sleep(1)
             
-            bexio = BexioClient(
+            async with BexioClient(
                 token=self.settings.bexio_api_token, 
                 base_url=self.settings.bexio_base_url
-            )
-            try:
+            ) as bexio:
                 await bexio.cache_lookups()
-                result = await process_receipt(str(file_path), self.settings, bexio)
+                result = await process_receipt(str(file_path), self.settings, bexio, self.db)
                 logger.info(f"Processing finished for {file_path}: {result.get('status')}")
-            finally:
-                await bexio.close()
                 
         except Exception as e:
             logger.error(f"Error processing {file_path}: {e}")

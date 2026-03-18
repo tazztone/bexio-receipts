@@ -292,6 +292,7 @@ dependencies = [
     { name = "python-multipart" },
     { name = "python-telegram-bot" },
     { name = "structlog" },
+    { name = "tenacity" },
     { name = "uvicorn" },
     { name = "watchdog" },
 ]
@@ -319,6 +320,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.22" },
     { name = "python-telegram-bot", specifier = ">=22.7" },
     { name = "structlog", specifier = ">=25.5.0" },
+    { name = "tenacity", specifier = ">=9.1.4" },
     { name = "uvicorn", specifier = ">=0.42.0" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]

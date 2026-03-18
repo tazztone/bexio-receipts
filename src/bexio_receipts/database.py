@@ -2,7 +2,6 @@ import sqlite3
 import hashlib
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict
 
 class DuplicateDetector:
     def __init__(self, db_path: str = "processed_receipts.db"):
@@ -34,7 +33,7 @@ class DuplicateDetector:
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
 
-    def is_duplicate(self, file_hash: str) -> Optional[str]:
+    def is_duplicate(self, file_hash: str) -> str | None:
         """Check if hash exists in DB, returns bexio_id if found."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
@@ -52,7 +51,7 @@ class DuplicateDetector:
                 (file_hash, str(file_path), datetime.now(), bexio_id)
             )
 
-    def get_merchant_account(self, merchant_name: str) -> Optional[int]:
+    def get_merchant_account(self, merchant_name: str) -> int | None:
         """Get the last used booking account for a merchant."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
@@ -70,7 +69,7 @@ class DuplicateDetector:
                 (merchant_name, account_id)
             )
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """Fetch processing statistics."""
         with sqlite3.connect(self.db_path) as conn:
             count = conn.execute("SELECT COUNT(*) FROM processed_receipts").fetchone()[0]

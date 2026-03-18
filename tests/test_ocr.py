@@ -46,5 +46,5 @@ async def test_async_run_ocr_glm():
         with patch("builtins.open", return_value=mock_file):
             raw_text, conf, _ = await async_run_ocr("path.png", settings)
             assert raw_text == "GLM Text"
-            assert conf == 0.95
+            assert conf == 0.9
             mock_post.assert_called_once()
