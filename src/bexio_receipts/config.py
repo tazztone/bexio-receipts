@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     # Telegram Settings
     telegram_bot_token: str | None = None
     telegram_allowed_users: list[int] = [] # List of user IDs
+
+    # Google Drive Settings
+    gdrive_credentials_file: str | None = None
+    gdrive_folder_id: str | None = None
+    gdrive_poll_interval: int = 60
+    gdrive_processed_folder_id: str | None = None
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

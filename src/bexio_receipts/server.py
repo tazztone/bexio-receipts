@@ -1,10 +1,8 @@
 import json
-import logging
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Form
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
 
 import structlog
 
@@ -121,14 +119,14 @@ async def push_to_bexio(
             if receipt.merchant_name:
                 booking_account_id = settings.default_booking_account_id
                 
-                expense = await bexio.create_purchase_bill(
+                await bexio.create_purchase_bill(
                     receipt, file_uuid,
                     booking_account_id=booking_account_id
                 )
                 # Save mapping
                 db.set_merchant_account(receipt.merchant_name, booking_account_id)
             else:
-                expense = await bexio.create_expense(
+                await bexio.create_expense(
                     receipt, 
                     file_uuid,
                     booking_account_id=settings.default_booking_account_id,

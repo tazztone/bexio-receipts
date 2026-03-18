@@ -32,8 +32,8 @@ def run_paddle_ocr(file_path: str) -> tuple[str, float, list[dict]]:
                     confidence = line[1][1]
                     lines.append({"text": text, "confidence": confidence})
 
-    raw_text = "\n".join(l["text"] for l in lines)
-    avg_confidence = sum(l["confidence"] for l in lines) / len(lines) if lines else 0.0
+    raw_text = "\n".join(line["text"] for line in lines)
+    avg_confidence = sum(line["confidence"] for line in lines) / len(lines) if lines else 0.0
     
     return raw_text, avg_confidence, lines
 

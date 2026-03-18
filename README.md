@@ -8,6 +8,7 @@ An automated pipeline to ingest, OCR, and extract data from receipts directly in
   - **Folder Watcher:** Monitors a local directory for new files.
   - **Email (IMAP):** Automatically downloads attachments from an inbox.
   - **Telegram Bot:** Send photos or PDFs directly to the bot for processing.
+  - **Google Drive:** Polls a specific Drive folder for new receipts.
 - **Multi-Engine OCR:**
   - **PaddleOCR (Default):** High-performance PP-OCRv5 with orientation and unwarping support.
   - **GLM-OCR:** A lightweight (0.9B) multimodal LLM for high-accuracy text and table recognition (via Ollama).
@@ -81,6 +82,12 @@ MAX_RECEIPT_AGE_DAYS=365
 # Telegram Bot (Optional)
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_ALLOWED_USERS=1234567,8901234  # Comma-separated list of user IDs (Required for access)
+
+# Google Drive (Optional)
+GDRIVE_CREDENTIALS_FILE=service_account.json
+GDRIVE_FOLDER_ID=your_folder_id
+GDRIVE_POLL_INTERVAL=60
+GDRIVE_PROCESSED_FOLDER_ID=optional_archive_folder_id
 ```
 
 ## Usage
@@ -122,6 +129,11 @@ uv run bexio-receipts watch-email
 **Ingest via Telegram Bot:**
 ```bash
 uv run bexio-receipts watch-telegram
+```
+
+**Watch a Google Drive folder for new receipts:**
+```bash
+uv run bexio-receipts watch-gdrive
 ```
 
 ## bexio Integration (v4)

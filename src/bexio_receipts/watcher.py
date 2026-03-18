@@ -1,6 +1,5 @@
 import asyncio
-import logging
-import time
+import os
 from pathlib import Path
 
 from watchdog.observers import Observer
@@ -18,9 +17,10 @@ logger = structlog.get_logger(__name__)
 class ReceiptHandler(FileSystemEventHandler):
     """Handles file creation events in the watched directory."""
     
-    def __init__(self, loop: asyncio.AbstractEventLoop, settings: Settings):
+    def __init__(self, loop: asyncio.AbstractEventLoop, settings: Settings, bexio: BexioClient):
         self.loop = loop
         self.settings = settings
+        self.bexio = bexio
         self.processing: set[Path] = set()
         self.db = DuplicateDetector(settings.database_path)
         
@@ -31,13 +31,13 @@ class ReceiptHandler(FileSystemEventHandler):
         file_path = Path(event.src_path)
         # Check if it's an image or PDF
         if file_path.suffix.lower() not in [".png", ".jpg", ".jpeg", ".pdf"]:
-            logger.debug(f"Ignoring non-receipt file: {file_path}")
+            logger.debug("Ignoring non-receipt file", path=str(file_path))
             return
             
         if file_path in self.processing:
             return
             
-        logger.info(f"New file detected: {file_path}. Scheduling processing...")
+        logger.info("New file detected, scheduling processing", path=str(file_path))
         self.processing.add(file_path)
         
         # Schedule the async processing on the main loop
@@ -46,22 +46,35 @@ class ReceiptHandler(FileSystemEventHandler):
             self.loop
         )
 
+    async def _wait_for_file_stabilization(self, file_path: Path, timeout: int = 10):
+        """Poll file size until it stops changing."""
+        last_size = -1
+        start_time = asyncio.get_event_loop().time()
+        
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            try:
+                current_size = os.path.getsize(file_path)
+                if current_size == last_size and current_size > 0:
+                    return True
+                last_size = current_size
+            except OSError:
+                # File might not be accessible yet
+                pass
+            await asyncio.sleep(0.5)
+        return False
+
     async def _safe_process(self, file_path: Path):
         """Wrapper to handle errors and clean up state."""
         try:
-            # Wait a bit for the file to be fully written (if needed)
-            await asyncio.sleep(1)
-            
-            async with BexioClient(
-                token=self.settings.bexio_api_token, 
-                base_url=self.settings.bexio_base_url
-            ) as bexio:
-                await bexio.cache_lookups()
-                result = await process_receipt(str(file_path), self.settings, bexio, self.db)
-                logger.info(f"Processing finished for {file_path}: {result.get('status')}")
+            # Robust wait for file to be fully written
+            if not await self._wait_for_file_stabilization(file_path):
+                logger.warning("File stabilization timeout, attempting process anyway", path=str(file_path))
+
+            result = await process_receipt(str(file_path), self.settings, self.bexio, self.db)
+            logger.info("Processing finished", path=str(file_path), status=result.get("status"))
                 
         except Exception as e:
-            logger.error(f"Error processing {file_path}: {e}")
+            logger.error("Error processing file", path=str(file_path), error=str(e))
         finally:
             self.processing.remove(file_path)
 
@@ -69,22 +82,28 @@ async def watch_folder(path: str, settings: Settings):
     """Starts the folder watcher."""
     path_obj = Path(path)
     if not path_obj.exists():
-        logger.info(f"Creating watch directory: {path}")
+        logger.info("Creating watch directory", path=str(path_obj))
         path_obj.mkdir(parents=True, exist_ok=True)
         
-    logger.info(f"Starting folder watcher on {path_obj.absolute()}...")
+    logger.info("Starting folder watcher", path=str(path_obj.absolute()))
     
-    loop = asyncio.get_running_loop()
-    event_handler = ReceiptHandler(loop, settings)
-    observer = Observer()
-    observer.schedule(event_handler, str(path_obj), recursive=False)
-    observer.start()
-    
-    try:
-        while True:
-            await asyncio.sleep(1)
-    except asyncio.CancelledError:
-        observer.stop()
-        logger.info("Stopping folder watcher...")
-    
-    observer.join()
+    async with BexioClient(
+        token=settings.bexio_api_token, 
+        base_url=settings.bexio_base_url
+    ) as bexio:
+        await bexio.cache_lookups()
+        
+        loop = asyncio.get_running_loop()
+        event_handler = ReceiptHandler(loop, settings, bexio)
+        observer = Observer()
+        observer.schedule(event_handler, str(path_obj), recursive=False)
+        observer.start()
+        
+        try:
+            while True:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            observer.stop()
+            logger.info("Stopping folder watcher")
+        
+        observer.join()

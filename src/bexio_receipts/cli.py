@@ -33,7 +33,7 @@ async def process_file(file_path: str, dry_run: bool):
     logger = structlog.get_logger("bexio_receipts.cli")
     
     if not Path(file_path).exists():
-        logger.error(f"File not found: {file_path}")
+        logger.error("File not found", path=file_path)
         sys.exit(1)
 
     if dry_run:
@@ -51,7 +51,7 @@ async def process_file(file_path: str, dry_run: bool):
         
         errors = validate_receipt(receipt, settings)
         if errors:
-            print(f"\n--- Validation Errors ---\n" + "\n".join(f"- {e}" for e in errors) + "\n")
+            print("\n--- Validation Errors ---\n" + "\n".join(f"- {e}" for e in errors) + "\n")
         else:
             print("\n--- Validation Passed ---")
         return
@@ -86,13 +86,16 @@ def main():
 
     # Watch-folder command
     watch_parser = subparsers.add_parser("watch-folder", help="Monitor a folder for new receipts")
-    watch_parser.add_argument("--path", default="./inbox", help="Path to monitor")
+    watch_parser.add_argument("--path", default=settings.inbox_path, help=f"Path to monitor (default: {settings.inbox_path})")
 
     # Watch-email command
-    email_parser = subparsers.add_parser("watch-email", help="Monitor an email inbox for new receipts")
+    subparsers.add_parser("watch-email", help="Monitor an email inbox for new receipts")
 
     # Watch-telegram command
-    telegram_parser = subparsers.add_parser("watch-telegram", help="Monitor Telegram for new receipts")
+    subparsers.add_parser("watch-telegram", help="Monitor Telegram for new receipts")
+
+    # Watch-gdrive command
+    subparsers.add_parser("watch-gdrive", help="Monitor Google Drive for new receipts")
 
     args = parser.parse_args()
 
@@ -119,6 +122,12 @@ def main():
         from .telegram_bot import run_bot
         try:
             asyncio.run(run_bot(settings))
+        except KeyboardInterrupt:
+            pass
+    elif args.command == "watch-gdrive":
+        from .gdrive_ingest import watch_gdrive
+        try:
+            asyncio.run(watch_gdrive(settings))
         except KeyboardInterrupt:
             pass
     else:

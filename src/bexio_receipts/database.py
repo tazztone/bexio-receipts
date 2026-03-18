@@ -1,6 +1,5 @@
 import sqlite3
 import hashlib
-from pathlib import Path
 from datetime import datetime
 
 class DuplicateDetector:
