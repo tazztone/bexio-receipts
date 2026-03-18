@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from bexio_receipts.extraction import extract_receipt
-from bexio_receipts.config import Settings
 from bexio_receipts.models import Receipt
 from datetime import date
 
