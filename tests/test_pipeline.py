@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 from bexio_receipts.pipeline import process_receipt
-from bexio_receipts.config import Settings
 from bexio_receipts.database import DuplicateDetector
 from bexio_receipts.models import Receipt
 from datetime import date

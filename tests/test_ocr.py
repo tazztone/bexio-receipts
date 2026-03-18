@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from bexio_receipts.ocr import async_run_ocr, run_paddle_ocr
-from bexio_receipts.config import Settings
 
 @patch("bexio_receipts.ocr.PaddleOCR")
 def test_run_paddle_ocr(mock_paddle):
