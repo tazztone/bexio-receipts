@@ -36,6 +36,9 @@ async def test_pipeline_e2e(tmp_path):
     respx.post("https://api.bexio.com/2.0/contact").mock(return_value=httpx.Response(200, json={"id": 555}))
     expense_route = respx.post("https://api.bexio.com/4.0/purchase/bills").mock(return_value=httpx.Response(200, json={"id": 999}))
 
+    dummy_file = tmp_path / "dummy.png"
+    dummy_file.touch()
+
     with patch("bexio_receipts.pipeline.async_run_ocr") as mock_ocr, \
          patch("bexio_receipts.pipeline.extract_receipt") as mock_extract:
 
@@ -49,10 +52,10 @@ async def test_pipeline_e2e(tmp_path):
 
         async with BexioClient("dummy") as client:
             await client.cache_lookups()
-            result = await process_receipt("tests/fixtures/dummy.png", settings, client, db)
+            result = await process_receipt(str(dummy_file), settings, client, db)
 
         assert result["status"] == "booked"
         assert str(result["expense_id"]) == "999"
         assert expense_route.called
-        assert db.is_duplicate(db.get_hash("tests/fixtures/dummy.png")) == "999"
+        assert db.is_duplicate(db.get_hash(str(dummy_file))) == "999"
         assert db.get_merchant_account("Coop") == 100

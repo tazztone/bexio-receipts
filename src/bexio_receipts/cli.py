@@ -76,6 +76,11 @@ async def process_file(file_path: str, dry_run: bool):
         print(f"\nFinal Result:\n{json.dumps(result, indent=2, default=str)}")
 
 def main():
+    global settings
+    from .config import Settings
+    if settings is None:
+        settings = Settings()
+
     setup_logging(settings.env)
     parser = argparse.ArgumentParser(description="bexio-receipts: Automate receipt ingestion into bexio.")
     subparsers = parser.add_subparsers(dest="command", help="Sub-commands")
@@ -104,7 +109,7 @@ def main():
 
     # Watch-folder command
     watch_parser = subparsers.add_parser("watch-folder", help="Monitor a folder for new receipts")
-    watch_parser.add_argument("--path", default=settings.inbox_path, help=f"Path to monitor (default: {settings.inbox_path})")
+    watch_parser.add_argument("--path", default=settings.inbox_path if settings else "./inbox", help=f"Path to monitor (default: {settings.inbox_path if settings else './inbox'})")
 
     # Watch-email command
     subparsers.add_parser("watch-email", help="Monitor an email inbox for new receipts")
