@@ -1,4 +1,3 @@
-import httpx
 import asyncio
 
 async def main():

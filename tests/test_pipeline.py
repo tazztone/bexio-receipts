@@ -1,5 +1,4 @@
 import pytest
-import os
 from unittest.mock import AsyncMock, patch
 from bexio_receipts.pipeline import process_receipt
 from bexio_receipts.config import Settings
@@ -13,7 +12,7 @@ def mock_db(tmp_path):
     return DuplicateDetector(str(db_path))
 
 @pytest.mark.asyncio
-async def test_process_receipt_duplicate(mock_db, tmp_path):
+async def test_process_receipt_duplicate(mock_db, tmp_path, test_settings):
     # Create dummy file
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
@@ -22,25 +21,19 @@ async def test_process_receipt_duplicate(mock_db, tmp_path):
     file_hash = mock_db.get_hash(str(test_file))
     mock_db.mark_processed(file_hash, str(test_file), "123")
 
-    settings = Settings(bexio_api_token="test")
     bexio_client = AsyncMock()
 
-    result = await process_receipt(str(test_file), settings, bexio_client, mock_db)
+    result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
     assert result["status"] == "duplicate"
     assert result["expense_id"] == "123"
 
 @pytest.mark.asyncio
 @patch("bexio_receipts.pipeline.async_run_ocr")
 @patch("bexio_receipts.pipeline.extract_receipt")
-async def test_process_receipt_success(mock_extract, mock_ocr, mock_db, tmp_path):
+async def test_process_receipt_success(mock_extract, mock_ocr, mock_db, tmp_path, test_settings):
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
 
-    settings = Settings(
-        bexio_api_token="test",
-        default_booking_account_id=1,
-        default_bank_account_id=2
-    )
     bexio_client = AsyncMock()
     bexio_client.upload_file.return_value = "file-uuid"
     bexio_client.create_purchase_bill.return_value = {"id": 100}
@@ -52,7 +45,7 @@ async def test_process_receipt_success(mock_extract, mock_ocr, mock_db, tmp_path
         total_incl_vat=10.0
     )
 
-    result = await process_receipt(str(test_file), settings, bexio_client, mock_db)
+    result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
     assert result["status"] == "booked"
     assert result["expense_id"] == 100
 

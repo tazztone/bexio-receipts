@@ -18,19 +18,20 @@ from .database import DuplicateDetector
 logger = structlog.get_logger(__name__)
 
 app = FastAPI(title="bexio-receipts Review Dashboard")
-settings = Settings()
-db = DuplicateDetector(settings.database_path)
+
+def get_settings() -> Settings:
+    return Settings()
+
+def get_db(settings: Settings = Depends(get_settings)) -> DuplicateDetector:
+    return DuplicateDetector(settings.database_path)
 
 # Setup templates and static files
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-REVIEW_DIR = Path(settings.review_dir)
-REVIEW_DIR.mkdir(exist_ok=True, parents=True)
-
 security = HTTPBasic()
 
-def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
+def verify_credentials(credentials: HTTPBasicCredentials = Depends(security), settings: Settings = Depends(get_settings)):
     is_correct_username = secrets.compare_digest(credentials.username.encode("utf8"), b"admin")
     is_correct_password = secrets.compare_digest(credentials.password.encode("utf8"), settings.review_password.encode("utf8"))
 
@@ -43,10 +44,12 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
     return credentials.username
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request, username: str = Depends(verify_credentials)):
+async def dashboard(request: Request, username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)):
     """List all receipts awaiting review."""
+    review_dir = Path(settings.review_dir)
+    review_dir.mkdir(exist_ok=True, parents=True)
     reviews = []
-    for p in REVIEW_DIR.glob("*.json"):
+    for p in review_dir.glob("*.json"):
         with open(p) as f:
             data = json.load(f)
             reviews.append({
@@ -60,15 +63,17 @@ async def dashboard(request: Request, username: str = Depends(verify_credentials
     return templates.TemplateResponse("dashboard.html", {"request": request, "reviews": reviews})
 
 @app.get("/stats", response_class=HTMLResponse)
-async def stats_view(request: Request, username: str = Depends(verify_credentials)):
+async def stats_view(request: Request, username: str = Depends(verify_credentials), db: DuplicateDetector = Depends(get_db)):
     """Show processing statistics."""
     stats = db.get_stats()
     return templates.TemplateResponse("stats.html", {"request": request, "stats": stats})
 
 @app.get("/review/{review_id}", response_class=HTMLResponse)
-async def review_receipt(request: Request, review_id: str, username: str = Depends(verify_credentials)):
+async def review_receipt(request: Request, review_id: str, username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)):
     """Show review form for a specific receipt."""
-    p = REVIEW_DIR / f"{review_id}.json"
+    review_dir = Path(settings.review_dir)
+    review_dir.mkdir(exist_ok=True, parents=True)
+    p = review_dir / f"{review_id}.json"
     if not p.exists():
         raise HTTPException(status_code=404, detail="Review not found")
     
@@ -83,9 +88,11 @@ async def review_receipt(request: Request, review_id: str, username: str = Depen
     })
 
 @app.get("/image/{review_id}")
-async def get_receipt_image(review_id: str, username: str = Depends(verify_credentials)):
+async def get_receipt_image(review_id: str, username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)):
     """Serve the original receipt image."""
-    p = REVIEW_DIR / f"{review_id}.json"
+    review_dir = Path(settings.review_dir)
+    review_dir.mkdir(exist_ok=True, parents=True)
+    p = review_dir / f"{review_id}.json"
     if not p.exists():
         raise HTTPException(status_code=404, detail="Review not found")
     
@@ -105,10 +112,14 @@ async def push_to_bexio(
     date: str = Form(...),
     total_incl_vat: float = Form(...),
     vat_rate_pct: float | None = Form(None),
-    username: str = Depends(verify_credentials)
+    username: str = Depends(verify_credentials),
+    settings: Settings = Depends(get_settings),
+    db: DuplicateDetector = Depends(get_db)
 ):
     """Update receipt data and push to bexio."""
-    p = REVIEW_DIR / f"{review_id}.json"
+    review_dir = Path(settings.review_dir)
+    review_dir.mkdir(exist_ok=True, parents=True)
+    p = review_dir / f"{review_id}.json"
     if not p.exists():
         raise HTTPException(status_code=404, detail="Review not found")
     
@@ -132,7 +143,7 @@ async def push_to_bexio(
     mime_type = mime_type or "application/octet-stream"
     
     try:
-        async with BexioClient(settings.bexio_api_token, settings.bexio_base_url) as bexio:
+        async with BexioClient(settings.bexio_api_token, settings.bexio_base_url, settings.default_vat_rate) as bexio:
             await bexio.cache_lookups()
             file_uuid = await bexio.upload_file(img_path, filename, mime_type)
             
@@ -175,9 +186,11 @@ async def push_to_bexio(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/discard/{review_id}")
-async def discard_review(review_id: str, username: str = Depends(verify_credentials)):
+async def discard_review(review_id: str, username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)):
     """Remove a receipt from the review queue."""
-    p = REVIEW_DIR / f"{review_id}.json"
+    review_dir = Path(settings.review_dir)
+    review_dir.mkdir(exist_ok=True, parents=True)
+    p = review_dir / f"{review_id}.json"
     if p.exists():
         p.unlink()
     return RedirectResponse(url="/", status_code=303)

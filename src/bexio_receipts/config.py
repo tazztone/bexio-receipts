@@ -17,10 +17,11 @@ class Settings(BaseSettings):
     # Default accounts for bexio
     default_booking_account_id: int | None = None
     default_bank_account_id: int | None = None
+    default_vat_rate: float = 8.1
     
     # bexio-receipts specific
     inbox_path: str = "./inbox"
-    review_password: str = "admin"
+    review_password: str
     database_path: str = "processed_receipts.db"
     review_dir: str = "./review_queue"
     max_receipt_age_days: int = 365
@@ -44,5 +45,3 @@ class Settings(BaseSettings):
     gdrive_processed_folder_id: str | None = None
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-
-settings = Settings()

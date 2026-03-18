@@ -22,17 +22,17 @@ def test_run_paddle_ocr(mock_paddle):
     assert len(lines) == 2
 
 @pytest.mark.asyncio
-async def test_async_run_ocr_paddle():
-    settings = Settings(bexio_api_token="test", ocr_engine="paddleocr")
+async def test_async_run_ocr_paddle(test_settings):
+    test_settings.ocr_engine = "paddleocr"
     with patch("bexio_receipts.ocr.run_paddle_ocr") as mock_paddle:
         mock_paddle.return_value = ("Paddle Text", 0.9, [])
-        raw_text, conf, _ = await async_run_ocr("path.png", settings)
+        raw_text, conf, _ = await async_run_ocr("path.png", test_settings)
         assert raw_text == "Paddle Text"
         mock_paddle.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_async_run_ocr_glm():
-    settings = Settings(bexio_api_token="test", ocr_engine="glm-ocr")
+async def test_async_run_ocr_glm(test_settings):
+    test_settings.ocr_engine = "glm-ocr"
     
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"message": {"content": "GLM Text"}}
@@ -44,7 +44,7 @@ async def test_async_run_ocr_glm():
         mock_file = MagicMock()
         mock_file.__enter__.return_value.read.return_value = b"fake-image-bytes"
         with patch("builtins.open", return_value=mock_file):
-            raw_text, conf, _ = await async_run_ocr("path.png", settings)
+            raw_text, conf, _ = await async_run_ocr("path.png", test_settings)
             assert raw_text == "GLM Text"
             assert conf == 0.9
             mock_post.assert_called_once()
