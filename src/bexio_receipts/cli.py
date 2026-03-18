@@ -13,16 +13,22 @@ from .bexio_client import BexioClient
 from .pipeline import process_receipt
 from .server import app
 
-def setup_logging():
+def setup_logging(env: str = "development"):
+    processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.StackInfoRenderer(),
+        structlog.dev.set_exc_info,
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False),
+    ]
+
+    if env == "production":
+        processors.append(structlog.processors.JSONRenderer())
+    else:
+        processors.append(structlog.dev.ConsoleRenderer())
+
     structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.StackInfoRenderer(),
-            structlog.dev.set_exc_info,
-            structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False),
-            structlog.dev.ConsoleRenderer()
-        ],
+        processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
@@ -70,7 +76,7 @@ async def process_file(file_path: str, dry_run: bool):
         print(f"\nFinal Result:\n{json.dumps(result, indent=2, default=str)}")
 
 def main():
-    setup_logging()
+    setup_logging(settings.env)
     parser = argparse.ArgumentParser(description="bexio-receipts: Automate receipt ingestion into bexio.")
     subparsers = parser.add_subparsers(dest="command", help="Sub-commands")
 
@@ -78,6 +84,18 @@ def main():
     process_parser = subparsers.add_parser("process", help="Process a single receipt file")
     process_parser.add_argument("file", help="Path to the receipt file")
     process_parser.add_argument("--dry-run", action="store_true", help="OCR and extraction only")
+
+    # Mappings command
+    export_parser = subparsers.add_parser("export-mappings", help="Export merchant account mappings to a JSON file")
+    export_parser.add_argument("file", help="Path to the output JSON file")
+
+    import_parser = subparsers.add_parser("import-mappings", help="Import merchant account mappings from a JSON file")
+    import_parser.add_argument("file", help="Path to the input JSON file")
+
+    # Reprocess command
+    reprocess_parser = subparsers.add_parser("reprocess", help="Re-process a receipt from the review queue")
+    reprocess_parser.add_argument("review_file", help="Path to the review JSON file")
+    reprocess_parser.add_argument("--dry-run", action="store_true", help="OCR and extraction only")
 
     # Serve command
     serve_parser = subparsers.add_parser("serve", help="Start the review dashboard server")
@@ -108,6 +126,35 @@ def main():
             asyncio.run(process_file(args.file, args.dry_run))
         except KeyboardInterrupt:
             pass
+    elif args.command == "reprocess":
+        try:
+            review_file = Path(args.review_file)
+            if not review_file.exists():
+                print(f"Review file {args.review_file} not found.")
+                sys.exit(1)
+            with open(review_file) as f:
+                data = json.load(f)
+            orig_file = data.get("original_file")
+            if not orig_file or not Path(orig_file).exists():
+                print(f"Original file {orig_file} not found.")
+                sys.exit(1)
+            asyncio.run(process_file(orig_file, args.dry_run))
+        except KeyboardInterrupt:
+            pass
+    elif args.command == "export-mappings":
+        from .database import DuplicateDetector
+        db = DuplicateDetector(settings.database_path)
+        mappings = db.get_all_merchant_accounts()
+        with open(args.file, "w") as f:
+            json.dump(mappings, f, indent=2)
+        print(f"Exported {len(mappings)} mappings to {args.file}")
+    elif args.command == "import-mappings":
+        from .database import DuplicateDetector
+        db = DuplicateDetector(settings.database_path)
+        with open(args.file) as f:
+            mappings = json.load(f)
+        db.import_merchant_accounts(mappings)
+        print(f"Imported {len(mappings)} mappings from {args.file}")
     elif args.command == "serve":
         uvicorn.run(app, host=args.host, port=args.port)
     elif args.command == "watch-folder":

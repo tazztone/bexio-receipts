@@ -1,5 +1,7 @@
 import asyncio
 import io
+import os
+import stat
 from pathlib import Path
 
 import structlog
@@ -37,6 +39,12 @@ class GoogleDriveIngestor:
         creds = None
         creds_path = Path(self.settings.gdrive_credentials_file)
         
+        # Check permissions
+        if creds_path.exists():
+            st = os.stat(creds_path)
+            if bool(st.st_mode & (stat.S_IRWXG | stat.S_IRWXO)):
+                logger.warning("Google Drive credentials file has insecure permissions (too open). Consider running `chmod 600` on it.", path=str(creds_path))
+
         # 1. Try Service Account
         try:
             creds = service_account.Credentials.from_service_account_file(

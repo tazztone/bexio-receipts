@@ -31,6 +31,11 @@ class DuplicateDetector:
             except sqlite3.OperationalError:
                 pass # Columns already exist
 
+            try:
+                conn.execute("ALTER TABLE processed_receipts ADD COLUMN ocr_confidence REAL")
+            except sqlite3.OperationalError:
+                pass
+
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS merchant_accounts (
                     merchant_name TEXT PRIMARY KEY,
@@ -63,14 +68,15 @@ class DuplicateDetector:
             return row[0] if row else None
 
     def mark_processed(self, file_hash: str, file_path: str, bexio_id: str,
-                       total_incl_vat: float | None = None, merchant_name: str | None = None, vat_amount: float | None = None):
+                       total_incl_vat: float | None = None, merchant_name: str | None = None, vat_amount: float | None = None,
+                       ocr_confidence: float | None = None):
         """Record a processed receipt."""
         with sqlite3.connect(self.db_path, timeout=10.0) as conn:
             conn.execute(
                 """INSERT INTO processed_receipts
-                   (file_hash, file_path, processed_at, bexio_id, total_incl_vat, merchant_name, vat_amount)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (file_hash, str(file_path), datetime.now(), bexio_id, total_incl_vat, merchant_name, vat_amount)
+                   (file_hash, file_path, processed_at, bexio_id, total_incl_vat, merchant_name, vat_amount, ocr_confidence)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (file_hash, str(file_path), datetime.now(), bexio_id, total_incl_vat, merchant_name, vat_amount, ocr_confidence)
             )
 
     def get_merchant_account(self, merchant_name: str) -> int | None:
@@ -89,6 +95,20 @@ class DuplicateDetector:
             conn.execute(
                 "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
                 (merchant_name, account_id)
+            )
+
+    def get_all_merchant_accounts(self) -> dict[str, int]:
+        """Get all merchant to booking account mappings."""
+        with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+            cursor = conn.execute("SELECT merchant_name, booking_account_id FROM merchant_accounts")
+            return {row[0]: row[1] for row in cursor.fetchall()}
+
+    def import_merchant_accounts(self, mappings: dict[str, int]):
+        """Import merchant to booking account mappings."""
+        with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+            conn.executemany(
+                "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
+                mappings.items()
             )
 
     def is_gdrive_seen(self, file_id: str) -> bool:
@@ -113,7 +133,7 @@ class DuplicateDetector:
         with sqlite3.connect(self.db_path, timeout=10.0) as conn:
             count = conn.execute("SELECT COUNT(*) FROM processed_receipts").fetchone()[0]
             sums = conn.execute(
-                "SELECT SUM(total_incl_vat), SUM(vat_amount) FROM processed_receipts"
+                "SELECT SUM(total_incl_vat), SUM(vat_amount), AVG(ocr_confidence) FROM processed_receipts"
             ).fetchone()
 
             top_merchants_query = """
@@ -133,5 +153,6 @@ class DuplicateDetector:
                 "total_processed": count,
                 "total_booked": round(sums[0], 2) if sums and sums[0] else 0.0,
                 "total_vat": round(sums[1], 2) if sums and sums[1] else 0.0,
+                "ocr_confidence_avg": round(sums[2], 4) if sums and sums[2] else 0.0,
                 "top_merchants": top_merchants
             }

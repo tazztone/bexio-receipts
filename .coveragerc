@@ -1,0 +1,7 @@
+[run]
+omit =
+    src/bexio_receipts/cli.py
+    src/bexio_receipts/email_ingest.py
+    src/bexio_receipts/telegram_bot.py
+    src/bexio_receipts/watcher.py
+    src/bexio_receipts/gdrive_ingest.py

@@ -151,10 +151,12 @@ The Google Drive ingestor supports two authentication modes:
 - **Service Account (Recommended for Servers):**
   1. Create a Service Account in the [Google Cloud Console](https://console.cloud.google.com/).
   2. Download the JSON key file and set `GDRIVE_CREDENTIALS_FILE` to its path.
+     *Note: Ensure this file has restrictive permissions (e.g., `chmod 600 credentials.json`) to protect your service account token.*
   3. Share your target Google Drive folder with the Service Account's email address (e.g., `your-sa@project.iam.gserviceaccount.com`).
 - **User Account (OAuth2):**
   1. Create an OAuth 2.0 Client ID in the Google Cloud Console.
   2. Download the `credentials.json` and set `GDRIVE_CREDENTIALS_FILE` to its path.
+     *Note: Ensure this file has restrictive permissions (e.g., `chmod 600 credentials.json`) to protect your OAuth client secrets.*
   3. Run the interactive authentication command:
      ```bash
      uv run bexio-receipts gdrive-auth
