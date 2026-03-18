@@ -1,0 +1,33 @@
+[project]
+name = "bexio-receipts"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "tazztone", email = "62671577+tazztone@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "paddleocr>=3.4.0",
+    "paddlepaddle>=3.3.0",
+    "pdf2image>=1.17.0",
+    "pillow>=12.1.1",
+    "pydantic-ai>=1.70.0",
+    "pydantic-settings>=2.13.1",
+    "python-dotenv>=1.2.2",
+]
+
+[project.scripts]
+bexio-receipts = "bexio_receipts.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "ruff>=0.15.6",
+]
