@@ -1,9 +1,16 @@
-import pytest
-import os
 from fastapi.testclient import TestClient
-from bexio_receipts.server import app
+from bexio_receipts.server import app, get_settings
 
 client = TestClient(app)
+
+def override_get_settings():
+    from bexio_receipts.config import Settings
+    return Settings(
+        bexio_api_token="test_token",
+        review_password="admin"
+    )
+
+app.dependency_overrides[get_settings] = override_get_settings
 
 def test_dashboard_unauthorized():
     response = client.get("/")

@@ -1,4 +1,4 @@
-from src.bexio_receipts.database import DuplicateDetector
+from bexio_receipts.database import DuplicateDetector
 import os
 
 if os.path.exists("test.db"):
