@@ -28,7 +28,6 @@ class GoogleDriveIngestor:
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.service = None
         self.db = DuplicateDetector(settings.database_path)
-        self._seen_file_ids: set[str] = set()
 
     async def connect(self):
         """Authenticate and build the Drive service (non-interactive)."""
@@ -106,13 +105,13 @@ class GoogleDriveIngestor:
             file_path = self.download_dir / f"{stem}_{counter}{suffix}"
             counter += 1
 
-        fh = io.FileIO(file_path, "wb")
-        downloader = MediaIoBaseDownload(fh, request)
-        
-        done = False
-        while not done:
-            # next_chunk() is blocking
-            _, done = await asyncio.to_thread(downloader.next_chunk)
+        with io.FileIO(file_path, "wb") as fh:
+            downloader = MediaIoBaseDownload(fh, request)
+            
+            done = False
+            while not done:
+                # next_chunk() is blocking
+                _, done = await asyncio.to_thread(downloader.next_chunk)
             
         return file_path
 
@@ -148,7 +147,7 @@ class GoogleDriveIngestor:
             if not files:
                 return
 
-            potential_files = [f for f in files if f.get("id") not in self._seen_file_ids]
+            potential_files = [f for f in files if not self.db.is_gdrive_seen(f.get("id"))]
             if not potential_files:
                 return
 
@@ -168,26 +167,25 @@ class GoogleDriveIngestor:
                     
                     if status in ["booked", "duplicate"]:
                         await self.archive_file(file_id)
-                        self._seen_file_ids.add(file_id)
+                        self.db.mark_gdrive_seen(file_id)
                         # Delete local temp file if successfully booked or already processed
                         if file_path.exists():
                             file_path.unlink()
                     else:
                         # For "review" or "review_failed", we keep the local file
                         # so it's available for the dashboard/manual inspection.
-                        # We don't add it to _seen_file_ids so it can be re-attempted
-                        # if the user moves it back or after it's cleared from review.
-                        # Actually, to avoid infinite re-downloads, we might want to track it
-                        # but "review" status is usually a final state for the ingestor.
-                        self._seen_file_ids.add(file_id)
+                        self.db.mark_gdrive_seen(file_id)
 
                 except Exception as e:
                     logger.error("Error processing Google Drive file", file=file_name, error=str(e))
         except Exception as e:
             logger.error("Google Drive polling error", error=str(e))
 
-async def watch_gdrive(settings: Settings):
+async def watch_gdrive(settings: Settings, folder_id: str | None = None):
     """Periodically check Google Drive for new receipts."""
+    if folder_id:
+        settings.gdrive_folder_id = folder_id
+
     if not settings.gdrive_credentials_file:
         logger.error("Google Drive credentials file is not set.")
         return
@@ -227,3 +225,4 @@ def run_gdrive_auth(settings: Settings):
         token.write(creds.to_json())
     
     print(f"Successfully saved OAuth2 token to {settings.gdrive_token_path}")
+    print("\nYou can now run: uv run bexio-receipts watch-gdrive")

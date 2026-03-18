@@ -23,6 +23,12 @@ class DuplicateDetector:
                     booking_account_id INTEGER
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS gdrive_seen_files (
+                    file_id TEXT PRIMARY KEY,
+                    seen_at TIMESTAMP
+                )
+            """)
 
     def get_hash(self, file_path: str) -> str:
         """Calculate SHA-256 hash of a file."""
@@ -66,6 +72,23 @@ class DuplicateDetector:
             conn.execute(
                 "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
                 (merchant_name, account_id)
+            )
+
+    def is_gdrive_seen(self, file_id: str) -> bool:
+        """Check if a Google Drive file ID has been seen."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT 1 FROM gdrive_seen_files WHERE file_id = ?", 
+                (file_id,)
+            )
+            return cursor.fetchone() is not None
+
+    def mark_gdrive_seen(self, file_id: str):
+        """Mark a Google Drive file ID as seen."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO gdrive_seen_files (file_id, seen_at) VALUES (?, ?)",
+                (file_id, datetime.now())
             )
 
     def get_stats(self) -> dict:

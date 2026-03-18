@@ -95,7 +95,8 @@ def main():
     subparsers.add_parser("watch-telegram", help="Monitor Telegram for new receipts")
 
     # Watch-gdrive command
-    subparsers.add_parser("watch-gdrive", help="Monitor Google Drive for new receipts")
+    gdrive_parser = subparsers.add_parser("watch-gdrive", help="Monitor Google Drive for new receipts")
+    gdrive_parser.add_argument("--folder-id", help="Override Google Drive folder ID")
 
     # Gdrive-auth command
     subparsers.add_parser("gdrive-auth", help="Run interactive Google Drive OAuth2 authentication")
@@ -130,7 +131,7 @@ def main():
     elif args.command == "watch-gdrive":
         from .gdrive_ingest import watch_gdrive
         try:
-            asyncio.run(watch_gdrive(settings))
+            asyncio.run(watch_gdrive(settings, args.folder_id))
         except KeyboardInterrupt:
             pass
     elif args.command == "gdrive-auth":
