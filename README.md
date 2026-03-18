@@ -142,6 +142,29 @@ uv run bexio-receipts watch-gdrive
 uv run bexio-receipts gdrive-auth
 ```
 
+## Ingestion Sources
+
+### Google Drive Setup
+
+The Google Drive ingestor supports two authentication modes:
+
+- **Service Account (Recommended for Servers):**
+  1. Create a Service Account in the [Google Cloud Console](https://console.cloud.google.com/).
+  2. Download the JSON key file and set `GDRIVE_CREDENTIALS_FILE` to its path.
+  3. Share your target Google Drive folder with the Service Account's email address (e.g., `your-sa@project.iam.gserviceaccount.com`).
+- **User Account (OAuth2):**
+  1. Create an OAuth 2.0 Client ID in the Google Cloud Console.
+  2. Download the `credentials.json` and set `GDRIVE_CREDENTIALS_FILE` to its path.
+  3. Run the interactive authentication command:
+     ```bash
+     uv run bexio-receipts gdrive-auth
+     ```
+  4. This saves a `token.json` file, allowing the watcher to run headlessly thereafter.
+
+**Optional Archiving:** If `GDRIVE_PROCESSED_FOLDER_ID` is set, processed files will be moved to that folder in Google Drive instead of being left in the inbox.
+
+---
+
 ## bexio Integration (v4)
 
 The pipeline intelligently chooses between two bexio endpoints:
@@ -152,7 +175,13 @@ The pipeline intelligently chooses between two bexio endpoints:
 ## Smart Features
 
 - **Smart Categorization:** Remembers the last used booking account for each merchant (SQLite-backed, survives restarts).
-- **Duplicate Detection:** Prevents double-booking via SHA-256 file hashing.
+- **Persistent Deduplication:**
+  - **Google Drive ID Tracking:** Drive file IDs are tracked in the database to prevent re-downloads.
+  - **Content Hashing:** A SHA-256 hash is used to prevent double-booking even if a file is re-uploaded.
+- **Handling "Review" Status:**
+  - Files that fail validation are moved to the review queue.
+  - The watcher marks these as "seen" to avoid infinite re-processing.
+  - To re-ingest a file after deleting it from the review queue, you must manually clear its ID from the `gdrive_seen_files` table in the database.
 - **Statistics Dashboard:** Track your processing volume and reclaimed VAT via the `/stats` view.
 
 ## Development & Testing
