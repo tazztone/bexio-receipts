@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     
     # LLM Settings
     llm_provider: str = "ollama"  # or "openai"
-    llm_model: str = "qwen2.5:7b"
+    llm_model: str = "qwen3.5:9b"
     
     # Default accounts for bexio
     default_booking_account_id: int | None = None
