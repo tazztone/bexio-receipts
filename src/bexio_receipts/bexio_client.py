@@ -35,7 +35,16 @@ class BexioClient:
         resp.raise_for_status()
         profile = resp.json()
         self._user_id = profile.get("id")
-        self._owner_id = profile.get("id") # Often the same, but bexio can differ
+
+        # Try to get the actual tenant owner ID from company profile
+        try:
+            comp_resp = await self.client.get("/2.0/company_profile")
+            comp_resp.raise_for_status()
+            self._owner_id = comp_resp.json().get("owner_id", 1)
+        except Exception as e:
+            logger.warning("Failed to fetch company profile owner_id, defaulting to 1", error=str(e))
+            self._owner_id = 1
+
         return profile
 
     @retry(

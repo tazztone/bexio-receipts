@@ -1,8 +1,12 @@
 import json
+import mimetypes
+import secrets
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request, Form
+from fastapi import FastAPI, HTTPException, Request, Form, Depends
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi import status
 
 import structlog
 
@@ -24,8 +28,22 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 REVIEW_DIR = Path(settings.review_dir)
 REVIEW_DIR.mkdir(exist_ok=True, parents=True)
 
+security = HTTPBasic()
+
+def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
+    is_correct_username = secrets.compare_digest(credentials.username.encode("utf8"), b"admin")
+    is_correct_password = secrets.compare_digest(credentials.password.encode("utf8"), settings.review_password.encode("utf8"))
+
+    if not (is_correct_username and is_correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
+async def dashboard(request: Request, username: str = Depends(verify_credentials)):
     """List all receipts awaiting review."""
     reviews = []
     for p in REVIEW_DIR.glob("*.json"):
@@ -42,13 +60,13 @@ async def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request, "reviews": reviews})
 
 @app.get("/stats", response_class=HTMLResponse)
-async def stats_view(request: Request):
+async def stats_view(request: Request, username: str = Depends(verify_credentials)):
     """Show processing statistics."""
     stats = db.get_stats()
     return templates.TemplateResponse("stats.html", {"request": request, "stats": stats})
 
 @app.get("/review/{review_id}", response_class=HTMLResponse)
-async def review_receipt(request: Request, review_id: str):
+async def review_receipt(request: Request, review_id: str, username: str = Depends(verify_credentials)):
     """Show review form for a specific receipt."""
     p = REVIEW_DIR / f"{review_id}.json"
     if not p.exists():
@@ -65,7 +83,7 @@ async def review_receipt(request: Request, review_id: str):
     })
 
 @app.get("/image/{review_id}")
-async def get_receipt_image(review_id: str):
+async def get_receipt_image(review_id: str, username: str = Depends(verify_credentials)):
     """Serve the original receipt image."""
     p = REVIEW_DIR / f"{review_id}.json"
     if not p.exists():
@@ -87,6 +105,7 @@ async def push_to_bexio(
     date: str = Form(...),
     total_incl_vat: float = Form(...),
     vat_rate_pct: float | None = Form(None),
+    username: str = Depends(verify_credentials)
 ):
     """Update receipt data and push to bexio."""
     p = REVIEW_DIR / f"{review_id}.json"
@@ -109,11 +128,13 @@ async def push_to_bexio(
     # Push to bexio
     img_path = data.get("original_file")
     filename = Path(img_path).name
+    mime_type, _ = mimetypes.guess_type(img_path)
+    mime_type = mime_type or "application/octet-stream"
     
     try:
         async with BexioClient(settings.bexio_api_token, settings.bexio_base_url) as bexio:
             await bexio.cache_lookups()
-            file_uuid = await bexio.upload_file(img_path, filename, "image/png")
+            file_uuid = await bexio.upload_file(img_path, filename, mime_type)
             
             # Prefer Bill if merchant exists
             if receipt.merchant_name:
@@ -135,6 +156,18 @@ async def push_to_bexio(
         
         # If successful, delete from review queue
         p.unlink()
+
+        # Mark as processed in the database with financial stats
+        file_hash = db.get_hash(img_path)
+        db.mark_processed(
+            file_hash,
+            img_path,
+            str(file_uuid),
+            total_incl_vat=receipt.total_incl_vat,
+            merchant_name=receipt.merchant_name,
+            vat_amount=receipt.vat_amount
+        )
+
         return RedirectResponse(url="/", status_code=303)
         
     except Exception as e:
@@ -142,7 +175,7 @@ async def push_to_bexio(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/discard/{review_id}")
-async def discard_review(review_id: str):
+async def discard_review(review_id: str, username: str = Depends(verify_credentials)):
     """Remove a receipt from the review queue."""
     p = REVIEW_DIR / f"{review_id}.json"
     if p.exists():

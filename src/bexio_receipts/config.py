@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     
     # bexio-receipts specific
     inbox_path: str = "./inbox"
+    review_password: str = "admin"
     database_path: str = "processed_receipts.db"
     review_dir: str = "./review_queue"
     max_receipt_age_days: int = 365
