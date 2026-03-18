@@ -2,7 +2,7 @@ import pytest
 import respx
 import httpx
 from datetime import date
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from bexio_receipts.pipeline import process_receipt
 from bexio_receipts.bexio_client import BexioClient
 from bexio_receipts.database import DuplicateDetector

@@ -1,5 +1,4 @@
 import pytest
-from unittest.mock import patch, MagicMock
 from bexio_receipts.bexio_client import BexioClient
 from bexio_receipts.models import Receipt
 from datetime import date

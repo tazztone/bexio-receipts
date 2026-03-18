@@ -11,7 +11,6 @@ from slowapi.errors import RateLimitExceeded
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Gauge
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi import status
 
 import sqlite3
 import structlog

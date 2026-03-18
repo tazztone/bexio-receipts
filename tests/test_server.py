@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from bexio_receipts.server import app, get_settings
+from bexio_receipts.config import Settings
 
 client = TestClient(app)
 

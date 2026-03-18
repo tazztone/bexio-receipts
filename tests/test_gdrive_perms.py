@@ -1,14 +1,10 @@
 import pytest
-import os
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from bexio_receipts.gdrive_ingest import GoogleDriveIngestor
-import structlog
 
 @pytest.mark.asyncio
 async def test_gdrive_credentials_permissions(test_settings, tmp_path):
     import stat
-    import logging
     from structlog.testing import capture_logs
 
     creds_file = tmp_path / "creds.json"
