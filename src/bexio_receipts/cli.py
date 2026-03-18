@@ -2,11 +2,14 @@ import argparse
 import asyncio
 import logging
 import sys
+import json
 from pathlib import Path
+import uvicorn
 
 from .config import settings
 from .bexio_client import BexioClient
 from .pipeline import process_receipt
+from .server import app
 
 def setup_logging():
     logging.basicConfig(
@@ -15,25 +18,15 @@ def setup_logging():
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-async def main_async():
-    parser = argparse.ArgumentParser(description="bexio Receipt Pipeline CLI")
-    parser.add_argument("file", help="Path to the receipt file (image or PDF)")
-    parser.add_argument("--dry-run", action="store_true", help="OCR and extraction only, do not push to bexio")
-    args = parser.parse_args()
-
-    setup_logging()
+async def process_file(file_path: str, dry_run: bool):
     logger = logging.getLogger("bexio_receipts.cli")
-
-    file_path = args.file
+    
     if not Path(file_path).exists():
         logger.error(f"File not found: {file_path}")
         sys.exit(1)
 
-    if args.dry_run:
+    if dry_run:
         logger.info("Dry run: OCR and Extraction only.")
-        # We can implement a dry run mode in pipeline or just mock the client
-        # For now, let's just use the pipeline but bypass the final push
-        # Actually, let's just implement it in a simple way here
         from .ocr import async_run_ocr
         from .extraction import extract_receipt
         from .validation import validate_receipt
@@ -50,7 +43,6 @@ async def main_async():
             print(f"\n--- Validation Errors ---\n" + "\n".join(f"- {e}" for e in errors) + "\n")
         else:
             print("\n--- Validation Passed ---")
-        
         return
 
     # Real run
@@ -67,11 +59,31 @@ async def main_async():
         await client.close()
 
 def main():
-    import json # locally for result printing
-    try:
-        asyncio.run(main_async())
-    except KeyboardInterrupt:
-        pass
+    setup_logging()
+    parser = argparse.ArgumentParser(description="bexio-receipts: Automate receipt ingestion into bexio.")
+    subparsers = parser.add_subparsers(dest="command", help="Sub-commands")
+
+    # Process command
+    process_parser = subparsers.add_parser("process", help="Process a single receipt file")
+    process_parser.add_argument("file", help="Path to the receipt file")
+    process_parser.add_argument("--dry-run", action="store_true", help="OCR and extraction only")
+
+    # Serve command
+    serve_parser = subparsers.add_parser("serve", help="Start the review dashboard server")
+    serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
+    serve_parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+
+    args = parser.parse_args()
+
+    if args.command == "process":
+        try:
+            asyncio.run(process_file(args.file, args.dry_run))
+        except KeyboardInterrupt:
+            pass
+    elif args.command == "serve":
+        uvicorn.run(app, host=args.host, port=args.port)
+    else:
+        parser.print_help()
 
 if __name__ == "__main__":
     main()

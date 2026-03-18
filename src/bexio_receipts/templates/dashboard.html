@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>bexio-receipts Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+</head>
+<body>
+    <header class="container">
+        <nav>
+            <ul>
+                <li><strong>bexio-receipts</strong></li>
+            </ul>
+            <ul>
+                <li><a href="/">Dashboard</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main class="container">
+        <h1>Review Queue</h1>
+        
+        {% if not reviews %}
+        <p>No receipts awaiting review! 🎉</p>
+        {% else %}
+        <table class="striped">
+            <thead>
+                <tr>
+                    <th>Merchant</th>
+                    <th>Total</th>
+                    <th>Errors</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for review in reviews %}
+                <tr>
+                    <td>{{ review.merchant }}</td>
+                    <td>{{ review.total }} CHF</td>
+                    <td>
+                        <small>
+                        {% for err in review.errors %}
+                        <span style="color: red;">• {{ err }}</span><br>
+                        {% endfor %}
+                        </small>
+                    </td>
+                    <td>
+                        <a href="/review/{{ review.id }}" role="button" class="outline">Review</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </main>
+</body>
+</html>
