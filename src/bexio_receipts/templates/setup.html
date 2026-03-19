@@ -26,13 +26,22 @@
         </nav>
     </header>
     <main class="container">
-        <h1>System Setup & Health</h1>
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <h1>System Setup & Health</h1>
+            <div>
+                <small id="last-check" style="margin-right: 1rem; opacity: 0.7;"></small>
+                <button hx-get="/setup/run-all" hx-target="#checks" hx-swap="none" style="margin-bottom: 0;">Run All Checks</button>
+            </div>
+        </div>
         <p>This wizard helps you verify that all dependencies are correctly configured and reachable.</p>
 
         <section id="checks">
             <div id="status-summary" style="margin-bottom: 2rem; display: none;">
                 <article>
                     <div id="status-summary-content"></div>
+                    <div id="next-step-container" style="display: none; margin-top: 1rem;">
+                        <a href="/" role="button" class="contrast">Next step: Process your first receipt</a>
+                    </div>
                 </article>
             </div>
 
@@ -141,6 +150,11 @@ DEFAULT_BANK_ACCOUNT_ID={{ settings.default_bank_account_id }}</pre>
         function runAllChecks() {
             const summaryDiv = document.getElementById('status-summary');
             summaryDiv.style.display = 'none';
+            document.getElementById('next-step-container').style.display = 'none';
+            
+            const now = new Date();
+            document.getElementById('last-check').innerText = 'Last check: ' + now.toLocaleTimeString();
+
             const buttons = document.querySelectorAll('button[hx-get^="/setup/check/"]');
             buttons.forEach(btn => htmx.trigger(btn, "click"));
             
@@ -179,14 +193,18 @@ DEFAULT_BANK_ACCOUNT_ID={{ settings.default_bank_account_id }}</pre>
 
             const summaryDiv = document.getElementById('status-summary');
             const summaryContent = document.getElementById('status-summary-content');
+            const nextStep = document.getElementById('next-step-container');
             
             summaryDiv.style.display = 'block';
             if (errors > 0) {
                 summaryContent.innerHTML = `<h3 style="color: #c62828; margin: 0;">⚠️ ${errors} critical issues found.</h3><p style="margin: 0;">Please fix the errors below to continue.</p>`;
+                nextStep.style.display = 'none';
             } else if (warnings > 0) {
                 summaryContent.innerHTML = `<h3 style="color: #f9a825; margin: 0;">💡 Ready with warnings.</h3><p style="margin: 0;">System is functional, but ${warnings} minor issues were detected.</p>`;
+                nextStep.style.display = 'block';
             } else if (ok === statuses.length) {
                 summaryContent.innerHTML = `<h3 style="color: #2e7d32; margin: 0;">✅ Ready to go!</h3><p style="margin: 0;">All dependencies are correctly configured.</p>`;
+                nextStep.style.display = 'block';
             }
         }
 

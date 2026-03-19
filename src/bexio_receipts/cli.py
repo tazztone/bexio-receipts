@@ -88,8 +88,15 @@ def init(
     use_defaults: bool = typer.Option(
         False, "--defaults", help="Use default values for optional settings"
     ),
+    quickstart: bool = typer.Option(
+        False, "--quickstart", help="One-shot setup with defaults and a demo receipt"
+    ),
 ):
     """Interactive setup wizard to create .env file."""
+    if quickstart:
+        non_interactive = True
+        use_defaults = True
+
     console.print(Panel.fit("Welcome to bexio-receipts setup! 🧾🚀", style="bold blue"))
 
     env_path = Path(".env")
@@ -104,6 +111,11 @@ def init(
         ocr_engine = os.getenv("OCR_ENGINE", "glm-ocr")
         llm_provider = os.getenv("LLM_PROVIDER", "ollama")
         secret_key = os.getenv("SECRET_KEY", "change-me-in-production")
+        
+        console.print("\n[bold]Using assumed configuration:[/bold]")
+        console.print(f"  - OCR: [cyan]{ocr_engine}[/cyan]")
+        console.print(f"  - LLM: [cyan]{llm_provider}[/cyan]")
+        console.print("  - Default Accounts: [cyan]630/1[/cyan]")
     else:
         token = Prompt.ask(
             "Enter your Bexio API Token (from bexio Admin -> API Tokens)"
@@ -116,7 +128,7 @@ def init(
                 try:
                     async with BexioClient(token=token) as client:
                         profile = await client.get_profile()
-                        return profile.get("name")
+                        return profile.get("company_name") or profile.get("name")
                 except Exception:
                     return None
 
@@ -174,6 +186,43 @@ def init(
         f.write("\n".join(config) + "\n")
 
     console.print("[green]Successfully created .env file![/green]")
+
+    if quickstart:
+        console.print("\n[bold blue]🚀 Quickstart: Processing demo receipt...[/bold blue]")
+        import shutil
+        inbox_path = Path("inbox")
+        inbox_path.mkdir(exist_ok=True)
+        demo_receipt = Path("tests/fixtures/sample_receipt.png")
+        if demo_receipt.exists():
+            target = inbox_path / "demo_receipt.png"
+            shutil.copy(demo_receipt, target)
+            console.print(f"  - Copied demo receipt to [cyan]{target}[/cyan]")
+            
+            # Run dry-run process
+            from .config import Settings
+            # We need to reload settings since we just wrote .env
+            os.environ["BEXIO_API_TOKEN"] = token # Ensure it's in env for this process
+            settings = Settings()
+            
+            async def _dry_run():
+                from .ocr import async_run_ocr
+                from .extraction import extract_receipt
+                with console.status("[bold green]Running demo OCR..."):
+                    raw_text, conf, _ = await async_run_ocr(str(target), settings)
+                console.print(f"  - OCR Confidence: [bold]{conf:.1%}[/bold]")
+                with console.status("[bold blue]Extracting demo data..."):
+                    receipt = await extract_receipt(raw_text, settings)
+                console.print(f"  - Detected Merchant: [bold]{receipt.merchant_name}[/bold]")
+                console.print(f"  - Detected Total: [bold]{receipt.total_incl_vat} {receipt.currency}[/bold]")
+            
+            asyncio.run(_dry_run())
+            console.print("\n[bold green]✨ Quickstart complete![/bold green]")
+            console.print("Next steps:")
+            console.print("  1. Run [bold]uv run bexio-receipts serve[/bold] to start the dashboard")
+            console.print("  2. Open [link=http://localhost:8000/setup]http://localhost:8000/setup[/link] to verify health")
+        else:
+            console.print("[yellow]Warning: Demo receipt fixture not found. Skipping demo process.[/yellow]")
+
 
 
 @app.command()
@@ -360,6 +409,9 @@ def watch_telegram():
             me = await bot.get_me()
             console.print(
                 f"[bold green]Bot started! Open [link=https://t.me/{me.username}]https://t.me/{me.username}[/link] to begin.[/bold green]"
+            )
+            console.print(
+                "[dim]💡 Tip: Send a photo of a receipt now; it should appear in the dashboard within ~30 seconds.[/dim]"
             )
         except Exception as e:
             console.print(

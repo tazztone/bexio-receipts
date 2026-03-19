@@ -46,6 +46,7 @@ class BexioClient:
         self._account_cache: dict[str, int] = {}
         self._user_id: int | None = None
         self._owner_id: int | None = None
+        self._company_name: str | None = None
 
     @BEXIO_RETRY
     async def get_profile(self) -> dict:
@@ -59,7 +60,9 @@ class BexioClient:
         try:
             comp_resp = await self.client.get("/2.0/company_profile")
             comp_resp.raise_for_status()
-            self._owner_id = comp_resp.json().get("owner_id", 1)
+            comp_data = comp_resp.json()
+            self._owner_id = comp_data.get("owner_id", 1)
+            self._company_name = comp_data.get("name")
         except Exception as e:
             logger.warning(
                 "Failed to fetch company profile owner_id, defaulting to 1",
@@ -67,6 +70,8 @@ class BexioClient:
             )
             self._owner_id = 1
 
+        if self._company_name:
+            profile["company_name"] = self._company_name
         return profile
 
     @BEXIO_RETRY

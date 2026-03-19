@@ -196,8 +196,12 @@ async def dashboard(
         request.session["csrf_token"] = secrets.token_urlsafe()
     csrf_token = request.session["csrf_token"]
 
+    success_msg = request.session.pop("success_msg", None)
+
     return templates.TemplateResponse(
-        request, "dashboard.html", {"reviews": reviews, "csrf_token": csrf_token}
+        request,
+        "dashboard.html",
+        {"reviews": reviews, "csrf_token": csrf_token, "success_msg": success_msg},
     )
 
 
@@ -372,6 +376,8 @@ async def push_to_bexio(
         # If successful, delete from review queue
         p.unlink()
 
+        request.session["success_msg"] = f"✅ Successfully booked receipt from {receipt.merchant_name}."
+
         # Mark as processed in the database with financial stats
         file_hash = db.get_hash(img_path)
         # Note: the review JSON doesn't store OCR confidence, so we just pass None.
@@ -407,6 +413,7 @@ async def discard_review(
     p = review_dir / f"{review_id}.json"
     if p.exists():
         p.unlink()
+    request.session["success_msg"] = "🗑️ Receipt discarded."
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -423,10 +430,15 @@ async def bulk_discard_review(
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
     review_dir = Path(settings.review_dir)
+    count = 0
     for review_id in ids:
         p = review_dir / f"{review_id}.json"
         if p.exists():
             p.unlink()
+            count += 1
+    
+    if count > 0:
+        request.session["success_msg"] = f"🗑️ Discarded {count} receipts."
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -470,7 +482,9 @@ async def check_ocr_status(settings: Settings = Depends(get_settings)):
             )
         except ImportError:
             return HTMLResponse(
-                '<span class="status-badge status-error">Error: paddleocr not installed. <br><small>Run: <code>uv add paddleocr paddlepaddle</code></small></span>'
+                '<span class="status-badge status-error">Error: paddleocr not installed. <br>'
+                '<small>Run: <code>uv add paddleocr paddlepaddle</code> '
+                '<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'uv add paddleocr paddlepaddle\')">Copy</button></small></span>'
             )
     elif settings.ocr_engine == "glm-ocr":
         try:
@@ -490,11 +504,15 @@ async def check_ocr_status(settings: Settings = Depends(get_settings)):
                     )
                 else:
                     return HTMLResponse(
-                        f'<span class="status-badge status-warning">Warning: Model {settings.glm_ocr_model} not found. <br><small>Run: <code>ollama pull {settings.glm_ocr_model}</code></small></span>'
+                        f'<span class="status-badge status-warning">Warning: Model {settings.glm_ocr_model} not found. <br>'
+                        f'<small>Run: <code>ollama pull {settings.glm_ocr_model}</code> '
+                        f'<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama pull {settings.glm_ocr_model}\')">Copy</button></small></span>'
                     )
         except Exception as e:
             return HTMLResponse(
-                f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}. <br><small>Run: <code>ollama serve</code></small></span>'
+                f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}. <br>'
+                '<small>Run: <code>ollama serve</code> '
+                '<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama serve\')">Copy</button></small></span>'
             )
     return HTMLResponse('<span class="status-badge status-error">Unknown Engine</span>')
 
@@ -518,11 +536,15 @@ async def check_llm_status(settings: Settings = Depends(get_settings)):
                     )
                 else:
                     return HTMLResponse(
-                        f'<span class="status-badge status-warning">Warning: Model {settings.llm_model} not found. <br><small>Run: <code>ollama pull {settings.llm_model}</code></small></span>'
+                        f'<span class="status-badge status-warning">Warning: Model {settings.llm_model} not found. <br>'
+                        f'<small>Run: <code>ollama pull {settings.llm_model}</code> '
+                        f'<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama pull {settings.llm_model}\')">Copy</button></small></span>'
                     )
         except Exception as e:
             return HTMLResponse(
-                f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}. <br><small>Run: <code>ollama serve</code></small></span>'
+                f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}. <br>'
+                '<small>Run: <code>ollama serve</code> '
+                '<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama serve\')">Copy</button></small></span>'
             )
     elif settings.llm_provider == "openai":
         import os
@@ -551,7 +573,9 @@ async def check_system_status():
         )
     else:
         return HTMLResponse(
-            '<span class="status-badge status-error">Error: Poppler not found. <br><small>Run: <code>sudo apt install poppler-utils</code></small></span>'
+            '<span class="status-badge status-error">Error: Poppler not found. <br>'
+            '<small>Run: <code>sudo apt install poppler-utils</code> '
+            '<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'sudo apt install poppler-utils\')">Copy</button></small></span>'
         )
 
 
