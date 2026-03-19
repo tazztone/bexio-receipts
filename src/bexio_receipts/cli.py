@@ -8,10 +8,10 @@ import uvicorn
 
 import structlog
 
-from .config import settings
 from .bexio_client import BexioClient
 from .pipeline import process_receipt
 from .server import app
+from .config import Settings
 
 def setup_logging(env: str = "development"):
     processors = [
@@ -35,7 +35,7 @@ def setup_logging(env: str = "development"):
         cache_logger_on_first_use=True,
     )
 
-async def process_file(file_path: str, dry_run: bool):
+async def process_file(file_path: str, dry_run: bool, settings: Settings):
     logger = structlog.get_logger("bexio_receipts.cli")
     
     if not Path(file_path).exists():
@@ -76,10 +76,11 @@ async def process_file(file_path: str, dry_run: bool):
         print(f"\nFinal Result:\n{json.dumps(result, indent=2, default=str)}")
 
 def main():
-    global settings
-    from .config import Settings
-    if settings is None:
+    try:
         settings = Settings()
+    except Exception as e:
+        print(f"Configuration error: {e}")
+        sys.exit(1)
 
     setup_logging(settings.env)
     parser = argparse.ArgumentParser(description="bexio-receipts: Automate receipt ingestion into bexio.")
@@ -128,7 +129,7 @@ def main():
 
     if args.command == "process":
         try:
-            asyncio.run(process_file(args.file, args.dry_run))
+            asyncio.run(process_file(args.file, args.dry_run, settings))
         except KeyboardInterrupt:
             pass
     elif args.command == "reprocess":
@@ -143,7 +144,7 @@ def main():
             if not orig_file or not Path(orig_file).exists():
                 print(f"Original file {orig_file} not found.")
                 sys.exit(1)
-            asyncio.run(process_file(orig_file, args.dry_run))
+            asyncio.run(process_file(orig_file, args.dry_run, settings))
         except KeyboardInterrupt:
             pass
     elif args.command == "export-mappings":

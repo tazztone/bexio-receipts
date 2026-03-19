@@ -22,7 +22,7 @@ async def extract_receipt(raw_text: str, settings: Settings) -> Receipt:
     # Add explicit timeout for httpx client
     async with httpx.AsyncClient(timeout=60.0) as http_client:
         if settings.llm_provider == "ollama":
-            base_url = settings.glm_ocr_url.rstrip("/")
+            base_url = settings.ollama_url.rstrip("/")
             if not base_url.endswith("/v1"):
                 base_url = f"{base_url}/v1"
 

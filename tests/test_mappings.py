@@ -14,7 +14,7 @@ def test_merchant_mappings(tmp_path, test_settings):
     export_file = tmp_path / "mappings.json"
 
     with patch("sys.argv", ["bexio-receipts", "export-mappings", str(export_file)]):
-        with patch("bexio_receipts.cli.settings", test_settings):
+        with patch("bexio_receipts.cli.Settings", return_value=test_settings):
             main()
 
     assert export_file.exists()
@@ -30,7 +30,7 @@ def test_merchant_mappings(tmp_path, test_settings):
         json.dump(data, f)
 
     with patch("sys.argv", ["bexio-receipts", "import-mappings", str(export_file)]):
-        with patch("bexio_receipts.cli.settings", test_settings):
+        with patch("bexio_receipts.cli.Settings", return_value=test_settings):
             main()
 
     assert db.get_merchant_account("Aldi") == 300

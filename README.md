@@ -38,6 +38,8 @@ Google Drive    ┘                                                    │ fail
 
 ### Installation
 
+> **Note on Dependencies:** The default installation includes `paddlepaddle` and `paddleocr`, which are large dependencies (~500MB+ installed). For a lightweight alternative or cleaner isolation, a Docker-only deployment path is highly recommended.
+
 ```bash
 # Clone the repository
 git clone https://github.com/tazztone/bexio-receipts.git
