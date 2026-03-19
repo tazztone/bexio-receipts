@@ -18,5 +18,9 @@ jobs:
         run: uv sync --all-extras --dev
       - name: Run ruff check
         run: uv run ruff check
+      - name: Run mypy
+        run: uv run mypy src/
       - name: Run pytest
         run: uv run pytest tests/
+      - name: Build Docker image
+        run: docker build .

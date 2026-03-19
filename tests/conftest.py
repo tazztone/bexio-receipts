@@ -5,6 +5,8 @@ import os
 os.environ["BEXIO_API_TOKEN"] = "dummy_token_for_tests"
 os.environ["REVIEW_PASSWORD"] = "dummy_password_for_tests"
 os.environ["SECRET_KEY"] = "dummy_secret_key_for_tests"
+os.environ["DEFAULT_BOOKING_ACCOUNT_ID"] = "1"
+os.environ["DEFAULT_BANK_ACCOUNT_ID"] = "2"
 
 import pytest
 from bexio_receipts.config import Settings
