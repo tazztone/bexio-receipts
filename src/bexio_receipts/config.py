@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    env: str = "development"
     bexio_api_token: str
     bexio_base_url: str = "https://api.bexio.com"
     
@@ -22,6 +23,7 @@ class Settings(BaseSettings):
     # bexio-receipts specific
     inbox_path: str = "./inbox"
     review_password: str
+    secret_key: str = "super-secret-key-change-me-in-prod"
     database_path: str = "processed_receipts.db"
     review_dir: str = "./review_queue"
     max_receipt_age_days: int = 365
@@ -45,3 +47,11 @@ class Settings(BaseSettings):
     gdrive_processed_folder_id: str | None = None
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+# Provide a lazy way to get settings if not initialized at module level to avoid
+# immediate validation errors in tests before environment variables are mocked.
+# But for CLI entrypoint, we instantiate it here.
+try:
+    settings = Settings()
+except Exception:
+    settings = None # type: ignore

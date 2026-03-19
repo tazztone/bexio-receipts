@@ -24,16 +24,33 @@ def run_paddle_ocr(file_path: str) -> tuple[str, float, list[dict]]:
     results = ocr.ocr(file_path)
 
     lines = []
+    page_confidences = []
+
     if results:
         for res in results:
             if res:
+                page_lines = []
+                page_text_len = 0
                 for line in res:
                     text = line[1][0]
                     confidence = line[1][1]
-                    lines.append({"text": text, "confidence": confidence})
+                    page_lines.append({"text": text, "confidence": confidence})
+                    page_text_len += len(text)
+
+                # Filter out near-blank pages (less than 10 characters) from confidence average
+                if page_text_len >= 10:
+                    page_avg = sum(item["confidence"] for item in page_lines) / len(page_lines)
+                    page_confidences.append(page_avg)
+
+                lines.extend(page_lines)
 
     raw_text = "\n".join(line["text"] for line in lines)
-    avg_confidence = sum(line["confidence"] for line in lines) / len(lines) if lines else 0.0
+
+    if page_confidences:
+        avg_confidence = sum(page_confidences) / len(page_confidences)
+    else:
+        # Fallback if all pages were near-blank or no results
+        avg_confidence = sum(line["confidence"] for line in lines) / len(lines) if lines else 0.0
     
     return raw_text, avg_confidence, lines
 
