@@ -4,6 +4,7 @@ import os
 # to prevent Pydantic ValidationError on startup during testing.
 os.environ["BEXIO_API_TOKEN"] = "dummy_token_for_tests"
 os.environ["REVIEW_PASSWORD"] = "dummy_password_for_tests"
+os.environ["SECRET_KEY"] = "dummy_secret_key_for_tests"
 
 import pytest
 from bexio_receipts.config import Settings
@@ -14,6 +15,7 @@ def test_settings():
     return Settings(
         bexio_api_token="test_token",
         review_password="test_password",
+        secret_key="test_secret_key",
         default_booking_account_id=1,
         default_bank_account_id=2,
         ocr_engine="paddleocr"
