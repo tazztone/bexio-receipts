@@ -49,32 +49,21 @@ graph TD
 ### 3. Extraction Layer (`extraction.py`)
 - **Pydantic AI**: Orchestrates the LLM prompt. It enforces a strict schema using the `Receipt` model.
 - **Deduplication**: Every file is hashed. If the hash exists in `processed_receipts.db`, it is skipped to prevent double bookings.
+- **Model Intelligence**: Extracts structured data into Pydantic models. This layer handles merchant identification, date/currency parsing, and Swiss VAT rate detection.
 
 ### 4. bexio Integration (`bexio_client.py`)
+A custom async client (using `httpx`) that:
 - **API v3**: Used for file uploads (Bexio's file storage).
 - **API v4**: Used for creating Expenses and Purchase Bills (modern endpoints with better supplier tracking).
+- **Merchant Mapping**: Remembers the last used booking account for each merchant (SQLite-backed).
 - **Retry Logic**: All API calls are wrapped in a `@BEXIO_RETRY` decorator (using `tenacity`) to handle rate limits and transient network issues.
 
 ### 5. Review Dashboard (`server.py`)
-- **FastAPI**: Provides the API and serving logic.
-- **HTMX**: Enables a dynamic, "single-page" feel for approving receipts without full page reloads.
-ext into structured Pydantic models (`Receipt`). This layer handles:
-- Merchant identification.
-- Date and Currency parsing.
-- VAT rate detection (Swiss-specific).
-- Automatic retries on hallucinated or invalid schemas.
+- **FastAPI**: Provides the backend and API logic.
+- **HTMX**: Enables a dynamic, "single-page" feel for manually reviewing, correcting, and pushing receipts that failed automated validation without full page reloads.
 
+### 6. Validation Logic (`validation.py`)
 Strict business rules for the Swiss market:
 - VAT rate verification (8.1%, 2.6%, 3.8%).
 - Total/Subtotal cross-checks with 5-rappen Swiss rounding tolerance.
 - Future/Old date warnings.
-
-### 5. bexio Integration (`bexio_client.py`)
-A custom async client (using `httpx`) that:
-- Maps merchants to booking accounts (caching the mapping in SQLite).
-- Handles file uploads to bexio's storage.
-- Creates **Expenses** (v4 API) or **Purchase Bills** (v3 API) depending on the certainty of merchant identification.
-- Includes automatic retries for transient API failures.
-
-### 6. Review Dashboard (`server.py`)
-A FastAPI server with an HTMX-powered UI for manually reviewing, correcting, and pushing receipts that failed automated validation.

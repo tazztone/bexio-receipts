@@ -41,10 +41,13 @@ Before pushing, ensure these pass:
 
 ## Internal Best Practices
 
-1. **Type Safety**: All new functions should have type hints.
+1. **Type Safety**: All new functions should have type hints. Pre-commit hooks for `ruff` and `mypy` are mandatory.
 2. **Validated Models**: Use `Receipt` (Pydantic) for all data passing.
 3. **Async first**: Keep I/O non-blocking using `httpx.AsyncClient` and `asyncio`.
-4. **Documentation**:
+4. **API Robustness**: Always use the `@BEXIO_RETRY` decorator for remote calls (handles 429/5xx).
+5. **Configuration**: New settings must be added to `Settings` in `config.py`. We prefer mandatory fields over fallbacks.
+6. **Database Persistence**: The `DuplicateDetector` class should always be used as a context manager (`with` statement) to ensure proper connection cleanup.
+7. **Documentation**:
    - Update `CHANGELOG.md` for every significant change.
    - Refactor `ARCHITECTURE.md` if the data flow changes.
    - Note: The `docs/archive/` directory contains historical design notes and is for context only; it is not normative for the current system.
@@ -55,27 +58,6 @@ Our GitHub Actions workflow enforces:
 - Test coverage > 85%.
 - Static analysis (Ruff/Mypy) passing.
 - Successful Docker build.
-3. **Database Isolation**: Always use the `tmp_path` fixture for SQLite tests to avoid side-effects between runs.
-
----
-
-## 🏗️ Internal Best Practices
-
-### 1. Robust API Calls
-Always use the `@BEXIO_RETRY` decorator for any remote API calls. It handles transient network errors and rate limits (`429`) with exponential backoff.
-
-### 2. Configuration & Fail-Fast
-New settings must be added to `Settings` in `config.py`. We prefer mandatory fields over "safe" fallbacks—it's better to fail at startup than to run with insecure or unexpected state.
-
-### 3. Database Resource Management
-The `DuplicateDetector` class should always be used as a context manager:
-```python
-with DuplicateDetector(path) as db:
-    db.mark_processed(...)
-```
-
-### 4. Static Analysis
-Pre-commit hooks for `ruff` and `mypy` are mandatory. All code must pass type-checking before being committed. We use `type: ignore` sparingly and only for 3rd-party library inconsistencies.
 
 ---
 
