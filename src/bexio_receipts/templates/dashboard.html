@@ -25,35 +25,59 @@
         {% if not reviews %}
         <p>No receipts awaiting review! 🎉</p>
         {% else %}
-        <table class="striped">
-            <thead>
-                <tr>
-                    <th>Merchant</th>
-                    <th>Total</th>
-                    <th>Errors</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for review in reviews %}
-                <tr>
-                    <td>{{ review.merchant }}</td>
-                    <td>{{ review.total }} CHF</td>
-                    <td>
-                        <small>
-                        {% for err in review.errors %}
-                        <span style="color: red;">• {{ err }}</span><br>
-                        {% endfor %}
-                        </small>
-                    </td>
-                    <td>
-                        <a href="/review/{{ review.id }}" role="button" class="outline">Review</a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <form id="bulk-form" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <table class="striped">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="select-all" onclick="toggleAll(this)"></th>
+                        <th>Preview</th>
+                        <th>Merchant</th>
+                        <th>Date</th>
+                        <th>Total</th>
+                        <th>Errors</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for review in reviews %}
+                    <tr>
+                        <td><input type="checkbox" name="ids" value="{{ review.id }}"></td>
+                        <td><img src="/thumbnail/{{ review.id }}" style="max-height: 50px; cursor: pointer;" onclick="window.location.href='/review/{{ review.id }}'"></td>
+                        <td>{{ review.merchant }}</td>
+                        <td>{{ review.date }}</td>
+                        <td>{{ review.total }} CHF</td>
+                        <td>
+                            <small>
+                            {% for err in review.errors %}
+                            <span style="color: red;" title="{{ err }}">• {{ err[:20] }}{% if err|length > 20 %}...{% endif %}</span><br>
+                            {% endfor %}
+                            </small>
+                        </td>
+                        <td>
+                            <a href="/review/{{ review.id }}" role="button" class="outline">Review</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="grid">
+                <button type="submit" formaction="/bulk-discard" class="secondary outline" onclick="return confirm('Discard all selected?')">Discard Selected</button>
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+        </form>
         {% endif %}
     </main>
+
+    <script>
+        function toggleAll(source) {
+            checkboxes = document.getElementsByName('ids');
+            for(var i=0, n=checkboxes.length;i<n;i++) {
+                checkboxes[i].checked = source.checked;
+            }
+        }
+    </script>
 </body>
 </html>

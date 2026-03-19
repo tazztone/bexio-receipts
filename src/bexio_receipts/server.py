@@ -126,21 +126,60 @@ async def healthz(settings: Settings = Depends(get_settings)):
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)):
     """List all receipts awaiting review."""
+    # Auto-redirect to setup if not configured
+    if not settings.bexio_api_token or settings.bexio_api_token == "your_bexio_token":
+        return RedirectResponse(url="/setup")
+
     review_dir = Path(settings.review_dir)
     review_dir.mkdir(exist_ok=True, parents=True)
     reviews = []
     for p in review_dir.glob("*.json"):
         with open(p) as f:
             data = json.load(f)
+            extracted = data.get("extracted", {}) or {}
             reviews.append({
                 "id": p.stem,
                 "file": data.get("original_file"),
                 "errors": data.get("errors", []),
-                "merchant": data.get("extracted", {}).get("merchant_name", "Unknown"),
-                "total": data.get("extracted", {}).get("total_incl_vat", 0.0),
+                "merchant": extracted.get("merchant_name", "Unknown"),
+                "total": extracted.get("total_incl_vat", 0.0),
+                "date": extracted.get("transaction_date", "Unknown"),
             })
     
-    return templates.TemplateResponse(request, "dashboard.html", {"reviews": reviews})
+    if "csrf_token" not in request.session:
+        request.session["csrf_token"] = secrets.token_urlsafe()
+    csrf_token = request.session["csrf_token"]
+    
+    return templates.TemplateResponse(request, "dashboard.html", {"reviews": reviews, "csrf_token": csrf_token})
+
+@app.get("/thumbnail/{review_id}")
+async def get_receipt_thumbnail(review_id: str, username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)):
+    """Serve a thumbnail of the original receipt image."""
+    review_dir = Path(settings.review_dir)
+    p = review_dir / f"{review_id}.json"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Review not found")
+    
+    with open(p) as f:
+        data = json.load(f)
+        img_path = data.get("original_file")
+    
+    if not img_path or not Path(img_path).exists():
+        raise HTTPException(status_code=404, detail="Image file not found")
+    
+    # Simple thumbnail generation using Pillow
+    from PIL import Image
+    import io
+    
+    try:
+        with Image.open(img_path) as img:
+            img.thumbnail((200, 200))
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            return Response(content=buf.getvalue(), media_type="image/jpeg")
+    except Exception as e:
+        logger.error("Thumbnail generation failed", error=str(e))
+        return FileResponse(img_path) # Fallback to original image
 
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_view(request: Request, username: str = Depends(verify_credentials), db: DuplicateDetector = Depends(get_db)):
@@ -283,10 +322,28 @@ async def discard_review(request: Request, review_id: str, csrf_token: str = For
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
     review_dir = Path(settings.review_dir)
-    review_dir.mkdir(exist_ok=True, parents=True)
     p = review_dir / f"{review_id}.json"
     if p.exists():
         p.unlink()
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/bulk-discard")
+async def bulk_discard_review(
+    request: Request,
+    ids: list[str] = Form([]),
+    csrf_token: str = Form(...),
+    username: str = Depends(verify_credentials),
+    settings: Settings = Depends(get_settings)
+):
+    """Batch remove receipts from the review queue."""
+    if not csrf_token or request.session.get("csrf_token") != csrf_token:
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    review_dir = Path(settings.review_dir)
+    for review_id in ids:
+        p = review_dir / f"{review_id}.json"
+        if p.exists():
+            p.unlink()
     return RedirectResponse(url="/", status_code=303)
 
 @app.get("/setup", response_class=HTMLResponse)

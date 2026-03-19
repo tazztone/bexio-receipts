@@ -43,11 +43,21 @@
         <div class="split-view">
             <!-- Left: Image -->
             <div>
-                <img src="/image/{{ id }}" class="receipt-image" alt="Receipt">
+                <a href="/image/{{ id }}" target="_blank" title="Click to open full size">
+                    <img src="/image/{{ id }}" class="receipt-image" alt="Receipt">
+                </a>
+                <p style="text-align: center;"><small>Click image to open full size in new tab</small></p>
             </div>
 
             <!-- Right: Form -->
             <div>
+                {% if data.ocr_confidence %}
+                <div style="margin-bottom: 1rem; padding: 0.5rem; border-radius: 5px; background: {% if data.ocr_confidence < 0.8 %}#fff3cd{% else %}#d4edda{% endif %};">
+                    <strong>OCR Confidence:</strong> {{ (data.ocr_confidence * 100)|round(1) }}%
+                    {% if data.ocr_confidence < 0.8 %} ⚠️ (Low){% endif %}
+                </div>
+                {% endif %}
+
                 {% if data.errors %}
                 <div class="error-list">
                     <strong>Errors found:</strong>
@@ -92,7 +102,7 @@
                 </form>
                 
                 <hr>
-                <details>
+                <details open>
                     <summary>Original OCR Text</summary>
                     <pre style="font-size: 0.8rem; background: #f4f4f4; padding: 1rem;">{{ data.ocr_text }}</pre>
                 </details>

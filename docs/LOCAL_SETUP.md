@@ -16,17 +16,21 @@ The project is configured to use the official Qwen 3.5 9B model via your host's 
   - **Host**: Uses the same host-based Ollama instance as the LLM to leverage GPU acceleration.
   - **Advantage**: Superior accuracy on Swiss receipts with minimal container-side overhead.
 
+## 🚀 Setup & Initialization
+The project uses `uv` for dependency management and a custom CLI for initialization.
+
+1. **Sync dependencies**: `uv sync`
+2. **Initialize Configuration**: Run `uv run bexio-receipts init` to generate your `.env` file interactively.
+3. **Pull Models**: Use the **Setup Wizard** at `http://localhost:8000/setup` to download the required Ollama models automatically.
+
 ## 🚀 Docker Environment
 The environment uses a `Makefile` for unified management:
-- `make up`: Starts the dashboard, mock bexio, watcher, and mock imap.
-- `make process-test`: Runs a full pipeline test (OCR -> Extraction -> Dry Run) using a sample receipt.
-- `make logs`: Follows logs for all services.
-- `make down`: Stops the environment.
-
+...
 ## 🛠️ Mock Environment & Dashboard
 - **Bexio API**: Redirected to `http://mock-bexio:8001` (FastAPI Mock Server). No real tokens are used in the local environment.
-- **Setup Wizard**: Access `http://localhost:8000/setup` to verify all components (DB, OCR, LLM, Bexio) are healthy.
-- **Review Queue**: Receipts failing validation (e.g., missing date) are sent to `http://localhost:8000/` for manual review.
+- **Setup Wizard**: Access `http://localhost:8000/setup` to verify all components (DB, OCR, LLM, Bexio) are healthy and **pull models directly from the UI**.
+- **Review Queue**: Receipts failing validation are sent to `http://localhost:8000/`.
+  - **New Features**: Preview thumbnails, sorted date columns, and bulk discard actions for faster processing.
 
 ## 🔧 Troubleshooting
 - **Ollama Connection**: Ensure Ollama is running on your host and listening on all interfaces (`OLLAMA_HOST=0.0.0.0`).

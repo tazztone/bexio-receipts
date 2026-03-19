@@ -13,7 +13,7 @@ from .database import DuplicateDetector
 
 logger = structlog.get_logger(__name__)
 
-async def send_to_review(file_path: str, raw_text: str, errors: list[str], settings: Settings, receipt: Receipt | None = None) -> dict:
+async def send_to_review(file_path: str, raw_text: str, errors: list[str], settings: Settings, receipt: Receipt | None = None, ocr_confidence: float | None = None) -> dict:
     """Save problematic receipts to a review directory."""
     try:
         review_dir = Path(settings.review_dir)
@@ -23,6 +23,7 @@ async def send_to_review(file_path: str, raw_text: str, errors: list[str], setti
         review_data = {
             "original_file": str(file_path),
             "ocr_text": raw_text,
+            "ocr_confidence": ocr_confidence,
             "errors": errors,
             "extracted": receipt.model_dump(mode="json") if receipt else None,
         }
@@ -59,7 +60,7 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
     
     # Only enforce confidence for PaddleOCR; GLM-OCR is a VLM and uses validation instead
     if settings.ocr_engine == "paddleocr" and avg_confidence < settings.ocr_confidence_threshold:
-        return await send_to_review(file_path, raw_text, [f"Low OCR confidence: {avg_confidence:.1%}"], settings)
+        return await send_to_review(file_path, raw_text, [f"Low OCR confidence: {avg_confidence:.1%}"], settings, ocr_confidence=avg_confidence)
     
     # 2. Extract structured data
     receipt = None
@@ -86,13 +87,13 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
             receipt = await extract_receipt(raw_text, settings)
         except Exception as e:
             logger.error("LLM extraction failed", error=str(e))
-            return await send_to_review(file_path, raw_text, [f"LLM extraction failed: {str(e)}"], settings)
+            return await send_to_review(file_path, raw_text, [f"LLM extraction failed: {str(e)}"], settings, ocr_confidence=avg_confidence)
     
     # 3. Validation
     logger.info("Validating extracted data")
     errors = validate_receipt(receipt, settings)
     if errors:
-        return await send_to_review(file_path, raw_text, errors, settings, receipt)
+        return await send_to_review(file_path, raw_text, errors, settings, receipt, ocr_confidence=avg_confidence)
     
     # 4. Push to bexio
     logger.info("Pushing to bexio")
@@ -104,7 +105,7 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
         
         # Ensure default account IDs are set
         if not settings.default_booking_account_id:
-             return await send_to_review(file_path, raw_text, ["Missing default booking account ID in settings"], settings, receipt)
+             return await send_to_review(file_path, raw_text, ["Missing default booking account ID in settings"], settings, receipt, ocr_confidence=avg_confidence)
 
         # Prefer Bill (v4) if we have a merchant name, otherwise fall back to simple Expense (v4)
         if receipt.merchant_name:
@@ -122,7 +123,7 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
             db.set_merchant_account(receipt.merchant_name, booking_account_id)
         else:
             if not settings.default_bank_account_id:
-                return await send_to_review(file_path, raw_text, ["Missing default bank account ID for simple expense"], settings, receipt)
+                return await send_to_review(file_path, raw_text, ["Missing default bank account ID for simple expense"], settings, receipt, ocr_confidence=avg_confidence)
             
             logger.info("No merchant name, creating simple Expense")
             expense = await bexio.create_expense(
@@ -146,4 +147,4 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
         return {"status": "booked", "expense_id": expense.get("id"), "receipt": receipt.model_dump(mode="json")}
     except Exception as e:
         logger.error("Failed to push to bexio", error=str(e))
-        return await send_to_review(file_path, raw_text, [f"bexio API error: {str(e)}"], settings, receipt)
+        return await send_to_review(file_path, raw_text, [f"bexio API error: {str(e)}"], settings, receipt, ocr_confidence=avg_confidence)

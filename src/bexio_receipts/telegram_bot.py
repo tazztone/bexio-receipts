@@ -35,10 +35,44 @@ class ReceiptBot:
                 await update.message.reply_text(f"Access denied. Your user ID: {user_id}")  # type: ignore
             return
             
-            await update.message.reply_text(  # type: ignore
-                "Welcome to bexio-receipts bot! 🧾🚀\n"
-                "Send me a photo or a PDF of a receipt, and I'll process it for you."
-            )
+        await update.message.reply_text(  # type: ignore
+            "Welcome to bexio-receipts bot! 🧾🚀\n"
+            "Send me a photo or a PDF of a receipt, and I'll process it for you.\n\n"
+            "Commands:\n"
+            "/start - Show this message\n"
+            "/help - Detailed help\n"
+            "/status - Check system health"
+        )
+
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.message or not update.effective_user or not self._is_allowed(update.effective_user.id):
+            return
+        await update.message.reply_text(
+            "bexio-receipts Bot Help:\n\n"
+            "1. Send a photo (directly or as file) or a PDF.\n"
+            "2. The bot will run OCR and extract data via LLM.\n"
+            "3. If validation succeeds, it's booked directly in bexio.\n"
+            "4. If validation fails, it's sent to the review queue.\n\n"
+            "Visit the dashboard to manage the review queue."
+        )
+
+    async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.message or not update.effective_user or not self._is_allowed(update.effective_user.id):
+            return
+        
+        # Simple health check
+        status_msg = "System Status:\n"
+        try:
+            resp = await self.bexio.client.get("/2.0/company_profile")
+            if resp.status_code == 200:
+                status_msg += "✅ Bexio API: Connected\n"
+            else:
+                status_msg += f"❌ Bexio API: Error {resp.status_code}\n"
+        except Exception as e:
+            status_msg += f"❌ Bexio API: {str(e)}\n"
+            
+        status_msg += f"✅ Database: Online"
+        await update.message.reply_text(status_msg)
 
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = update.message
@@ -97,10 +131,9 @@ class ReceiptBot:
                     f"Total: {total} CHF"
                 )
             elif status == "review":
-                await status_msg.edit_text(
-                    "⚠️ Sent to review. Validation errors found.\n"
-                    "Visit the dashboard to approve."
-                )
+                review_id = result.get("review_file")
+                msg = "⚠️ Sent to review. Validation errors found.\nVisit the dashboard to approve."
+                await status_msg.edit_text(msg)
             elif status == "duplicate":
                 await status_msg.edit_text(f"ℹ️ Duplicate detected. Already booked with ID: {result.get('expense_id')}")
             else:
@@ -127,6 +160,8 @@ async def run_bot(settings: Settings):
         application = ApplicationBuilder().token(settings.telegram_bot_token).build()
         
         application.add_handler(CommandHandler("start", bot.start))
+        application.add_handler(CommandHandler("help", bot.help_command))
+        application.add_handler(CommandHandler("status", bot.status_command))
         application.add_handler(MessageHandler(filters.PHOTO, bot.handle_photo))
         application.add_handler(MessageHandler(filters.Document.ALL, bot.handle_document))
         
