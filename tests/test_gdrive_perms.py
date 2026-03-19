@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import MagicMock
 from bexio_receipts.gdrive_ingest import GoogleDriveIngestor
 
+
 @pytest.mark.asyncio
 async def test_gdrive_credentials_permissions(test_settings, tmp_path):
     import stat

@@ -12,6 +12,7 @@ import pytest
 from bexio_receipts.config import Settings
 from bexio_receipts.database import DuplicateDetector
 
+
 @pytest.fixture
 def test_settings():
     return Settings(
@@ -20,8 +21,9 @@ def test_settings():
         secret_key="test_secret_key",
         default_booking_account_id=1,
         default_bank_account_id=2,
-        ocr_engine="paddleocr"
+        ocr_engine="paddleocr",
     )
+
 
 @pytest.fixture
 def mock_db(tmp_path):

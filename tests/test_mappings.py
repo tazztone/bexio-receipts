@@ -1,7 +1,11 @@
 import json
 from unittest.mock import patch
-from bexio_receipts.cli import main
+from bexio_receipts.cli import app
 from bexio_receipts.database import DuplicateDetector
+from typer.testing import CliRunner
+
+runner = CliRunner()
+
 
 def test_merchant_mappings(tmp_path, test_settings):
     db_path = str(tmp_path / "test.db")
@@ -13,24 +17,24 @@ def test_merchant_mappings(tmp_path, test_settings):
 
     export_file = tmp_path / "mappings.json"
 
-    with patch("sys.argv", ["bexio-receipts", "export-mappings", str(export_file)]):
-        with patch("bexio_receipts.cli.Settings", return_value=test_settings):
-            main()
+    with patch("bexio_receipts.cli.Settings", return_value=test_settings):
+        # Export
+        result = runner.invoke(app, ["mapping", "export", str(export_file)])
+        assert result.exit_code == 0
 
-    assert export_file.exists()
-    with open(export_file) as f:
-        data = json.load(f)
+        assert export_file.exists()
+        with open(export_file) as f:
+            data = json.load(f)
 
-    assert data["Coop"] == 100
-    assert data["Migros"] == 200
+        assert data["Coop"] == 100
+        assert data["Migros"] == 200
 
-    # Modify data for import
-    data["Aldi"] = 300
-    with open(export_file, "w") as f:
-        json.dump(data, f)
+        # Modify data for import
+        data["Aldi"] = 300
+        with open(export_file, "w") as f:
+            json.dump(data, f)
 
-    with patch("sys.argv", ["bexio-receipts", "import-mappings", str(export_file)]):
-        with patch("bexio_receipts.cli.Settings", return_value=test_settings):
-            main()
-
-    assert db.get_merchant_account("Aldi") == 300
+        # Import
+        result = runner.invoke(app, ["mapping", "import", str(export_file)])
+        assert result.exit_code == 0
+        assert db.get_merchant_account("Aldi") == 300

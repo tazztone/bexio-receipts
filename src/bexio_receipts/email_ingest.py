@@ -12,6 +12,7 @@ from .database import DuplicateDetector
 
 logger = structlog.get_logger(__name__)
 
+
 class EmailIngestor:
     def __init__(self, settings: Settings, bexio: BexioClient):
         self.settings = settings
@@ -25,17 +26,19 @@ class EmailIngestor:
         """Authenticate and connect to IMAP server."""
         if not self.settings.imap_server:
             raise ValueError("IMAP server not configured.")
-            
+
         self.imap_client = aioimaplib.IMAP4_SSL(self.settings.imap_server)
         await self.imap_client.wait_hello_from_server()
-        await self.imap_client.login(self.settings.imap_user, self.settings.imap_password)
+        await self.imap_client.login(
+            self.settings.imap_user, self.settings.imap_password
+        )
         await self.imap_client.select(self.settings.imap_folder)
 
     async def fetch_new_emails(self):
         """Find UNSEEN emails with attachments."""
         obj = await self.imap_client.search("UNSEEN")
         msg_ids = obj.lines[0].decode().split()
-        
+
         if not msg_ids or (len(msg_ids) == 1 and not msg_ids[0]):
             return []
 
@@ -46,11 +49,11 @@ class EmailIngestor:
         """Download attachments from an email and process them."""
         if self.imap_client is None:
             return
-            
+
         obj = await self.imap_client.fetch(msg_id, "RFC822")
         raw_email = obj.lines[1]
         msg = email.message_from_bytes(raw_email)
-        
+
         subject = msg.get("Subject", "No Subject")
         logger.info("Processing email", subject=subject)
 
@@ -66,22 +69,30 @@ class EmailIngestor:
                 if ext in [".png", ".jpg", ".jpeg", ".pdf"]:
                     filepath = self.download_dir / filename
                     logger.info("Downloading attachment", filename=filename)
-                    
+
                     with open(filepath, "wb") as f:
                         payload = part.get_payload(decode=True)
                         if isinstance(payload, bytes):
                             f.write(payload)
-                    
+
                     # Process the file
                     await self._process_file(filepath)
 
     async def _process_file(self, filepath: Path):
         """Run the full pipeline on a file."""
         try:
-            result = await process_receipt(str(filepath), self.settings, self.bexio, self.db)
-            logger.info("Email attachment processing finished", path=str(filepath), status=result.get("status"))
+            result = await process_receipt(
+                str(filepath), self.settings, self.bexio, self.db
+            )
+            logger.info(
+                "Email attachment processing finished",
+                path=str(filepath),
+                status=result.get("status"),
+            )
         except Exception as e:
-            logger.error("Error processing email attachment", path=str(filepath), error=str(e))
+            logger.error(
+                "Error processing email attachment", path=str(filepath), error=str(e)
+            )
 
     async def run_once(self):
         """Single check for new emails."""
@@ -94,6 +105,7 @@ class EmailIngestor:
         except Exception as e:
             logger.error("IMAP Error", error=str(e))
 
+
 async def watch_email(settings: Settings):
     """Periodically check email for new receipts."""
     if not all([settings.imap_server, settings.imap_user, settings.imap_password]):
@@ -101,15 +113,15 @@ async def watch_email(settings: Settings):
         return
 
     async with BexioClient(
-        token=settings.bexio_api_token, 
+        token=settings.bexio_api_token,
         base_url=settings.bexio_base_url,
-        default_vat_rate=settings.default_vat_rate
+        default_vat_rate=settings.default_vat_rate,
     ) as bexio:
         await bexio.cache_lookups()
-        
+
         ingestor = EmailIngestor(settings, bexio)
         logger.info("Starting email watcher", interval=settings.imap_poll_interval)
-        
+
         while True:
             await ingestor.run_once()
             await asyncio.sleep(settings.imap_poll_interval)
