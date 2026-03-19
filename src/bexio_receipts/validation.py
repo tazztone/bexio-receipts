@@ -38,9 +38,11 @@ def validate_receipt(r: Receipt, settings: Settings) -> list[str]:
             errors.append(f"Receipt older than {settings.max_receipt_age_days} days: {r.transaction_date}")
     
     # 5. Amount sanity
-    if r.total_incl_vat <= 0:
+    if r.total_incl_vat is None:
+        errors.append("Missing total amount")
+    elif r.total_incl_vat <= 0:
         errors.append("Total must be positive")
-    if r.total_incl_vat > 10_000:
+    elif r.total_incl_vat > 10_000:
         errors.append(f"Unusually large amount: {r.total_incl_vat} CHF — manual review")
     
     # 6. VAT breakdown cross-check
