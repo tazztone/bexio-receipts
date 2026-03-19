@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     
     # LLM Settings
     llm_provider: str = "ollama"  # or "openai"
-    llm_model: str = "qwen2.5:7b"
+    llm_model: str = "qwen3.5:9b"
     ollama_url: str = "http://localhost:11434"
     
     # Default accounts for bexio

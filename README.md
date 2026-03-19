@@ -106,7 +106,7 @@ uv sync
 
 # Pull Ollama models
 ollama pull glm-ocr        # for OCR
-ollama pull qwen2.5:7b     # for extraction
+ollama pull qwen3.5:9b     # for extraction
 ```
 
 ### Docker
@@ -123,7 +123,7 @@ The dashboard will be available at `http://localhost:8000`.
 Copy `.env.example` to `.env` and fill in your credentials. Key variables include:
 - `BEXIO_API_TOKEN`: Your API token.
 - `OCR_ENGINE`: `paddleocr` or `glm-ocr`.
-- `LLM_MODEL`: e.g., `qwen2.5:7b`.
+- `LLM_MODEL`: e.g., `qwen3.5:9b`.
 
 ---
 
