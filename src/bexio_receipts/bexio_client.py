@@ -1,6 +1,7 @@
 import httpx
 import structlog
 from .models import Receipt
+from typing import Any
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 logger = structlog.get_logger(__name__)
@@ -8,7 +9,7 @@ logger = structlog.get_logger(__name__)
 CONTACT_TYPE_COMPANY = 1
 CONTACT_TYPE_PERSON = 2
 
-def is_retryable_exception(exception: Exception) -> bool:
+def is_retryable_exception(exception: BaseException) -> bool:
     """Retries on 429 and 5xx errors from httpx."""
     if isinstance(exception, httpx.HTTPStatusError):
         return exception.response.status_code == 429 or 500 <= exception.response.status_code < 600
@@ -139,7 +140,7 @@ class BexioClient:
                 breakdown=receipt.vat_breakdown
             )
 
-        payload = {
+        payload: dict[str, Any] = {
             "title": receipt.merchant_name,
             "paid_on": receipt.date.isoformat(),
             "currency_code": receipt.currency,
@@ -161,6 +162,8 @@ class BexioClient:
     async def create_purchase_bill(self, receipt: Receipt, file_uuid: str,
                                     booking_account_id: int) -> dict:
         """Create a full purchase bill with line items (bexio v4)."""
+        if not receipt.merchant_name:
+            raise ValueError("Merchant name is required to create a purchase bill")
         supplier_id = await self.find_or_create_contact(receipt.merchant_name)
         
         line_items = []

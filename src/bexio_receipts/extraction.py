@@ -39,7 +39,7 @@ async def extract_receipt(raw_text: str, settings: Settings) -> Receipt:
         else:
             raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
 
-        agent = Agent(
+        agent = Agent(  # type: ignore[call-overload]
             model,
             result_type=Receipt,
             system_prompt=(
