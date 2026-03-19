@@ -187,6 +187,8 @@ async def dashboard(
                     "merchant": extracted.get("merchant_name", "Unknown"),
                     "total": extracted.get("total_incl_vat", 0.0),
                     "date": extracted.get("transaction_date", "Unknown"),
+                    "ocr_confidence": data.get("ocr_confidence"),
+                    "failed_stage": data.get("failed_stage", "unknown"),
                 }
             )
 
@@ -451,9 +453,10 @@ async def check_bexio_status(settings: Settings = Depends(get_settings)):
                 f'<span class="status-badge status-ok">OK ({data.get("name", "Connected")})</span>'
             )
     except Exception as e:
-        return HTMLResponse(
-            f'<span class="status-badge status-error">Error: {str(e)}</span>'
-        )
+        msg = f"Error: {str(e)}"
+        if "401" in msg:
+            msg += ' <br><small>Tip: Check <a href="https://office.bexio.com/index.php/admin/apiTokens" target="_blank">Bexio API Tokens</a></small>'
+        return HTMLResponse(f'<span class="status-badge status-error">{msg}</span>')
 
 
 @app.get("/setup/check/ocr")
@@ -467,7 +470,7 @@ async def check_ocr_status(settings: Settings = Depends(get_settings)):
             )
         except ImportError:
             return HTMLResponse(
-                '<span class="status-badge status-error">Error: paddleocr or paddlepaddle not installed</span>'
+                '<span class="status-badge status-error">Error: paddleocr not installed. <br><small>Run: <code>uv add paddleocr paddlepaddle</code></small></span>'
             )
     elif settings.ocr_engine == "glm-ocr":
         try:
@@ -477,11 +480,6 @@ async def check_ocr_status(settings: Settings = Depends(get_settings)):
                 resp = await client.get(f"{settings.glm_ocr_url}/api/tags")
                 resp.raise_for_status()
                 models = [m["name"] for m in resp.json().get("models", [])]
-                logger.info(
-                    "Ollama OCR tags check",
-                    models=models,
-                    target=settings.glm_ocr_model,
-                )
                 if any(
                     m == settings.glm_ocr_model
                     or m.startswith(f"{settings.glm_ocr_model}:")
@@ -492,11 +490,11 @@ async def check_ocr_status(settings: Settings = Depends(get_settings)):
                     )
                 else:
                     return HTMLResponse(
-                        f'<span class="status-badge status-warning">Warning: Model {settings.glm_ocr_model} not found in Ollama (found: {", ".join(models)})</span>'
+                        f'<span class="status-badge status-warning">Warning: Model {settings.glm_ocr_model} not found. <br><small>Run: <code>ollama pull {settings.glm_ocr_model}</code></small></span>'
                     )
         except Exception as e:
             return HTMLResponse(
-                f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}</span>'
+                f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}. <br><small>Run: <code>ollama serve</code></small></span>'
             )
     return HTMLResponse('<span class="status-badge status-error">Unknown Engine</span>')
 
@@ -511,9 +509,6 @@ async def check_llm_status(settings: Settings = Depends(get_settings)):
                 resp = await client.get(f"{settings.ollama_url}/api/tags")
                 resp.raise_for_status()
                 models = [m["name"] for m in resp.json().get("models", [])]
-                logger.info(
-                    "Ollama LLM tags check", models=models, target=settings.llm_model
-                )
                 if any(
                     m == settings.llm_model or m.startswith(f"{settings.llm_model}:")
                     for m in models
@@ -523,11 +518,11 @@ async def check_llm_status(settings: Settings = Depends(get_settings)):
                     )
                 else:
                     return HTMLResponse(
-                        f'<span class="status-badge status-warning">Warning: Model {settings.llm_model} not found in Ollama (found: {", ".join(models)})</span>'
+                        f'<span class="status-badge status-warning">Warning: Model {settings.llm_model} not found. <br><small>Run: <code>ollama pull {settings.llm_model}</code></small></span>'
                     )
         except Exception as e:
             return HTMLResponse(
-                f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}</span>'
+                f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}. <br><small>Run: <code>ollama serve</code></small></span>'
             )
     elif settings.llm_provider == "openai":
         import os
@@ -538,7 +533,7 @@ async def check_llm_status(settings: Settings = Depends(get_settings)):
             )
         else:
             return HTMLResponse(
-                '<span class="status-badge status-error">Error: OPENAI_API_KEY not set</span>'
+                '<span class="status-badge status-error">Error: OPENAI_API_KEY not set. <br><small>Add to .env or environment</small></span>'
             )
     return HTMLResponse(
         '<span class="status-badge status-error">Unknown Provider</span>'
@@ -556,7 +551,7 @@ async def check_system_status():
         )
     else:
         return HTMLResponse(
-            '<span class="status-badge status-error">Error: pdftoppm (Poppler) not found in PATH</span>'
+            '<span class="status-badge status-error">Error: Poppler not found. <br><small>Run: <code>sudo apt install poppler-utils</code></small></span>'
         )
 
 

@@ -8,6 +8,7 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
+from rich.table import Table
 
 from .bexio_client import BexioClient
 from .pipeline import process_receipt
@@ -60,33 +61,95 @@ def get_settings() -> Settings:
         return Settings()  # type: ignore[call-arg]
     except ValidationError as e:
         console.print("[red]Configuration error: Missing or invalid settings.[/red]")
+        is_missing_token = False
         for err in e.errors():
             loc = ".".join(map(str, err.get("loc", [])))
             msg = err.get("msg", "")
             console.print(f"  - [bold]{loc}[/bold]: {msg}")
-        console.print(
-            "\n[yellow]Run [bold]bexio-receipts init[/bold] to set up your configuration.[/yellow]"
-        )
+            if "bexio_api_token" in loc:
+                is_missing_token = True
+
+        if is_missing_token:
+            console.print(
+                "\n[yellow]💡 Tip: Run [bold]bexio-receipts init[/bold] to set up your Bexio API token.[/yellow]"
+            )
+        else:
+            console.print(
+                "\n[yellow]Run [bold]bexio-receipts init[/bold] to update your configuration.[/yellow]"
+            )
         raise typer.Exit(code=1)
 
 
 @app.command()
-def init():
+def init(
+    non_interactive: bool = typer.Option(
+        False, "--non-interactive", help="Skip prompts and use defaults/env vars"
+    ),
+    use_defaults: bool = typer.Option(
+        False, "--defaults", help="Use default values for optional settings"
+    ),
+):
     """Interactive setup wizard to create .env file."""
     console.print(Panel.fit("Welcome to bexio-receipts setup! 🧾🚀", style="bold blue"))
 
     env_path = Path(".env")
-    if env_path.exists():
+    if env_path.exists() and not non_interactive:
         if not Confirm.ask("An .env file already exists. Overwrite?"):
             raise typer.Exit()
 
-    token = Prompt.ask("Enter your Bexio API Token (from bexio Admin -> API Tokens)")
-    ocr_engine = Prompt.ask(
-        "OCR Engine", choices=["glm-ocr", "paddleocr"], default="glm-ocr"
-    )
-    llm_provider = Prompt.ask(
-        "LLM Provider", choices=["ollama", "openai"], default="ollama"
-    )
+    if non_interactive:
+        import os
+
+        token = os.getenv("BEXIO_API_TOKEN", "your_bexio_token")
+        ocr_engine = os.getenv("OCR_ENGINE", "glm-ocr")
+        llm_provider = os.getenv("LLM_PROVIDER", "ollama")
+        secret_key = os.getenv("SECRET_KEY", "change-me-in-production")
+    else:
+        token = Prompt.ask(
+            "Enter your Bexio API Token (from bexio Admin -> API Tokens)"
+        )
+
+        # Live validation
+        with console.status("[bold green]Validating token..."):
+
+            async def validate():
+                try:
+                    async with BexioClient(token=token) as client:
+                        profile = await client.get_profile()
+                        return profile.get("name")
+                except Exception:
+                    return None
+
+            company_name = asyncio.run(validate())
+
+        if company_name:
+            console.print(
+                f"[green]✅ Token valid! Connected to: [bold]{company_name}[/bold][/green]"
+            )
+        else:
+            console.print(
+                "[red]❌ Token validation failed. Please check your token and try again.[/red]"
+            )
+            if not Confirm.ask("Continue anyway?"):
+                raise typer.Exit(1)
+
+        ocr_engine = Prompt.ask(
+            "OCR Engine", choices=["glm-ocr", "paddleocr"], default="glm-ocr"
+        )
+        llm_provider = Prompt.ask(
+            "LLM Provider",
+            choices=["ollama", "openai"],
+            default="ollama",
+            show_choices=True,
+        )
+        if llm_provider == "ollama":
+            console.print(
+                "[dim](Note: qwen3.5:9b requires ~16 GB RAM for optimal performance)[/dim]"
+            )
+
+        secret_key = Prompt.ask(
+            "Secret Key (for dashboard sessions)", default="change-me-in-production"
+        )
 
     config = [
         f"BEXIO_API_TOKEN={token}",
@@ -105,12 +168,7 @@ def init():
 
     config.append("DEFAULT_BOOKING_ACCOUNT_ID=630")
     config.append("DEFAULT_BANK_ACCOUNT_ID=1")
-    config.append(
-        "SECRET_KEY="
-        + Prompt.ask(
-            "Secret Key (for dashboard sessions)", default="change-me-in-production"
-        )
-    )
+    config.append(f"SECRET_KEY={secret_key}")
 
     with open(env_path, "w") as f:
         f.write("\n".join(config) + "\n")
@@ -134,16 +192,24 @@ def process(
             from .extraction import extract_receipt
             from .validation import validate_receipt
 
-            raw_text, avg_confidence, _ = await async_run_ocr(str(file), settings)
+            with console.status("[bold green]Running OCR..."):
+                raw_text, avg_confidence, _ = await async_run_ocr(str(file), settings)
             console.print(f"\n[bold]OCR Confidence:[/bold] {avg_confidence:.1%}")
             console.print(f"\n[bold]Raw OCR Text:[/bold]\n{raw_text}\n")
 
-            receipt = await extract_receipt(raw_text, settings)
-            console.print(
-                f"\n[bold]Extracted Data:[/bold]\n{receipt.model_dump_json(indent=2)}\n"
-            )
+            with console.status("[bold blue]Extracting data via LLM..."):
+                receipt = await extract_receipt(raw_text, settings)
 
-            errors = validate_receipt(receipt, settings)
+            table = Table(title="Extracted Data (Dry Run)", show_header=True)
+            table.add_column("Field", style="cyan")
+            table.add_column("Value", style="magenta")
+
+            for field, value in receipt.model_dump().items():
+                table.add_row(field, str(value))
+            console.print(table)
+
+            with console.status("[bold yellow]Validating..."):
+                errors = validate_receipt(receipt, settings)
             if errors:
                 console.print(
                     "\n[bold red]Validation Errors:[/bold red]\n"
@@ -162,8 +228,10 @@ def process(
             base_url=settings.bexio_base_url,
             default_vat_rate=settings.default_vat_rate,
         ) as client:
-            await client.cache_lookups()
-            result = await process_receipt(str(file), settings, client, db)
+            with console.status("[bold blue]Connecting to Bexio..."):
+                await client.cache_lookups()
+            with console.status("[bold green]Processing receipt..."):
+                result = await process_receipt(str(file), settings, client, db)
             console.print(
                 f"\n[bold]Final Result:[/bold]\n{json.dumps(result, indent=2, default=str)}"
             )
@@ -196,16 +264,24 @@ def reprocess(
             from .extraction import extract_receipt
             from .validation import validate_receipt
 
-            raw_text, avg_confidence, _ = await async_run_ocr(orig_file, settings)
+            with console.status("[bold green]Running OCR..."):
+                raw_text, avg_confidence, _ = await async_run_ocr(orig_file, settings)
             console.print(f"\n[bold]OCR Confidence:[/bold] {avg_confidence:.1%}")
             console.print(f"\n[bold]Raw OCR Text:[/bold]\n{raw_text}\n")
 
-            receipt = await extract_receipt(raw_text, settings)
-            console.print(
-                f"\n[bold]Extracted Data:[/bold]\n{receipt.model_dump_json(indent=2)}\n"
-            )
+            with console.status("[bold blue]Extracting data via LLM..."):
+                receipt = await extract_receipt(raw_text, settings)
 
-            errors = validate_receipt(receipt, settings)
+            table = Table(title="Extracted Data (Dry Run)", show_header=True)
+            table.add_column("Field", style="cyan")
+            table.add_column("Value", style="magenta")
+
+            for field, value in receipt.model_dump().items():
+                table.add_row(field, str(value))
+            console.print(table)
+
+            with console.status("[bold yellow]Validating..."):
+                errors = validate_receipt(receipt, settings)
             if errors:
                 console.print(
                     "\n[bold red]Validation Errors:[/bold red]\n"
@@ -224,8 +300,10 @@ def reprocess(
             base_url=settings.bexio_base_url,
             default_vat_rate=settings.default_vat_rate,
         ) as client:
-            await client.cache_lookups()
-            result = await process_receipt(orig_file, settings, client, db)
+            with console.status("[bold blue]Connecting to Bexio..."):
+                await client.cache_lookups()
+            with console.status("[bold green]Processing receipt..."):
+                result = await process_receipt(orig_file, settings, client, db)
             console.print(
                 f"\n[bold]Final Result:[/bold]\n{json.dumps(result, indent=2, default=str)}"
             )
@@ -274,7 +352,23 @@ def watch_telegram():
     setup_logging(settings.env)
     from .telegram_bot import run_bot
 
-    asyncio.run(run_bot(settings))
+    async def _run_and_print():
+        from telegram import Bot
+
+        try:
+            bot = Bot(token=settings.telegram_bot_token)
+            me = await bot.get_me()
+            console.print(
+                f"[bold green]Bot started! Open [link=https://t.me/{me.username}]https://t.me/{me.username}[/link] to begin.[/bold green]"
+            )
+        except Exception as e:
+            console.print(
+                f"[yellow]Warning: Could not fetch bot username: {e}[/yellow]"
+            )
+
+        await run_bot(settings)
+
+    asyncio.run(_run_and_print())
 
 
 @watch_app.command("gdrive")
