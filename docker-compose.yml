@@ -1,0 +1,63 @@
+services:
+  app:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - BEXIO_API_TOKEN=${BEXIO_API_TOKEN:-test_token}
+      - REVIEW_PASSWORD=${REVIEW_PASSWORD:-admin}
+      - SECRET_KEY=super-secret-key-change-me-in-prod
+      - IMAP_SERVER=mock-imap
+      - IMAP_USER=test@example.com
+      - IMAP_PASSWORD=password
+      - GLM_OCR_URL=http://ollama:11434
+      - LLM_PROVIDER=ollama
+      - LLM_MODEL=qwen3.5:9b
+      - OCR_ENGINE=glm-ocr
+      - DEFAULT_BOOKING_ACCOUNT_ID=4000
+      - DEFAULT_BANK_ACCOUNT_ID=1020
+    ports:
+      - "8000:8000"
+    command: ["uv", "run", "bexio-receipts", "serve", "--host", "0.0.0.0"]
+    depends_on:
+      - mock-imap
+      - ollama
+
+  watcher:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - BEXIO_API_TOKEN=${BEXIO_API_TOKEN:-test_token}
+      - REVIEW_PASSWORD=${REVIEW_PASSWORD:-admin}
+      - SECRET_KEY=super-secret-key-change-me-in-prod
+      - IMAP_SERVER=mock-imap
+      - IMAP_USER=test@example.com
+      - IMAP_PASSWORD=password
+      - GLM_OCR_URL=http://ollama:11434
+      - LLM_PROVIDER=ollama
+      - LLM_MODEL=qwen3.5:9b
+      - OCR_ENGINE=glm-ocr
+      - DEFAULT_BOOKING_ACCOUNT_ID=4000
+      - DEFAULT_BANK_ACCOUNT_ID=1020
+    command: ["uv", "run", "bexio-receipts", "watch-email"]
+    depends_on:
+      - mock-imap
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  mock-imap:
+    image: greenmail/standalone:latest
+    environment:
+      - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=test@example.com:password
+    ports:
+      - "3143:3143"
+
+volumes:
+  ollama_data:
