@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>bexio-receipts Stats</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/pico.min.css">
 </head>
 <body>
     <header class="container">
@@ -24,17 +24,17 @@
         <article>
             <div class="grid">
                 <div>
-                    <h5>Total Processed</h5>
+                    <h2>Total Processed</h2>
                     <p style="font-size: 2rem; font-weight: bold;">{{ stats.total_processed }}</p>
                     <small>Receipts booked or duplicated</small>
                 </div>
                 <div>
-                    <h5>Total Booked Amount</h5>
+                    <h2>Total Booked Amount</h2>
                     <p style="font-size: 2rem; font-weight: bold;">{{ "%.2f"|format(stats.total_booked) }} CHF</p>
                     <small>Total amount of expenses created</small>
                 </div>
                 <div>
-                    <h5>Total VAT Reclaimed</h5>
+                    <h2>Total VAT Reclaimed</h2>
                     <p style="font-size: 2rem; font-weight: bold;">{{ "%.2f"|format(stats.total_vat) }} CHF</p>
                     <small>Sum of extracted VAT</small>
                 </div>
@@ -42,7 +42,7 @@
         </article>
 
         <article>
-            <h5>Top Merchants</h5>
+            <h2>Top Merchants</h2>
             {% if stats.top_merchants %}
                 <ul>
                 {% for merchant in stats.top_merchants %}

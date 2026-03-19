@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>bexio-receipts Dashboard</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/pico.min.css">
 </head>
 <body>
     <header class="container">
@@ -21,8 +21,8 @@
     </header>
     <main class="container">
         {% if success_msg %}
-        <article class="status-ok" style="background-color: #dcedc8; color: #33691e; border: none; padding: 1rem; margin-bottom: 1rem;">
-            {{ success_msg }}
+        <article class="success-message" style="background-color: var(--pico-ins-background-color); color: var(--pico-ins-color); border: none; padding: 1rem; margin-bottom: 1rem; border-radius: 8px; display: flex; align-items: center; gap: 0.5rem; animation: slideDownFade 0.4s ease-out;">
+            <span>{{ success_msg }}</span>
         </article>
         {% endif %}
 
@@ -61,73 +61,89 @@
         </div>
 
         <form id="bulk-form" method="POST">
-
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <table class="striped">
-                <thead>
-                    <tr>
-                        <th><input type="checkbox" id="select-all" onclick="toggleAll(this)"></th>
-                        <th>Preview</th>
-                        <th>Merchant</th>
-                        <th>Date</th>
-                        <th>Total</th>
-                        <th>Confidence</th>
-                        <th>Stage</th>
-                        <th>Errors</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for review in reviews %}
-                    <tr>
-                        <td><input type="checkbox" name="ids" value="{{ review.id }}"></td>
-                        <td><img src="/thumbnail/{{ review.id }}" style="max-height: 50px; cursor: pointer; border-radius: 4px;" onclick="window.location.href='/review/{{ review.id }}'"></td>
-                        <td>{{ review.merchant }}</td>
-                        <td>{{ review.date }}</td>
-                        <td>{{ review.total }} CHF</td>
-                        <td>
-                            {% if review.ocr_confidence %}
-                                {% set conf = (review.ocr_confidence * 100)|round|int %}
-                                <span class="status-badge {% if conf > 90 %}status-ok{% elif conf > 70 %}status-warning{% else %}status-error{% endif %}">
-                                    {{ conf }}%
+            
+            <div style="overflow-x: auto;">
+                <table class="striped">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="select-all" onclick="toggleAll(this)" aria-label="Select all receipts"></th>
+                            <th>Preview</th>
+                            <th>Merchant</th>
+                            <th>Date</th>
+                            <th>Total</th>
+                            <th style="text-align: center;">Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for review in reviews %}
+                        <tr>
+                            <td><input type="checkbox" name="ids" value="{{ review.id }}"></td>
+                            <td>
+                                <a href="/review/{{ review.id }}" title="Review receipt">
+                                    <img src="/thumbnail/{{ review.id }}" style="max-height: 50px; border-radius: 4px;" alt="Receipt thumbnail">
+                                </a>
+                            </td>
+                            <td>
+                                <strong style="font-size: 1.1rem; color: var(--pico-heading-color);">{{ review.merchant }}</strong>
+                                {% if review.errors %}
+                                <span style="cursor: help; margin-left: 0.5rem; color: var(--pico-del-color);" 
+                                      title="{% for err in review.errors %}{{ err }}{% if not loop.last %}\n{% endif %}{% endfor %}">
+                                    ⚠️
                                 </span>
-                            {% else %}
-                                <span class="status-badge status-checking">N/A</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <span class="status-badge status-checking" style="text-transform: capitalize;">{{ review.failed_stage }}</span>
-                        </td>
-                        <td>
-                            <small>
-                            {% for err in review.errors %}
-                            <abbr title="{{ err }}" style="color: red; text-decoration: none; cursor: help;">• {{ err[:20] }}{% if err|length > 20 %}...{% endif %}</abbr><br>
-                            {% endfor %}
-                            </small>
-                        </td>
-                        <td>
-                            <a href="/review/{{ review.id }}" role="button" class="outline">Review</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            <div class="grid">
+                                {% endif %}
+                            </td>
+                            <td class="hide-mobile">{{ review.date }}</td>
+                            <td><strong style="color: var(--pico-primary-color); white-space: nowrap;">{{ review.total }} CHF</strong></td>
+                            <td style="text-align: center;">
+                                <div style="display: flex; flex-direction: column; align-items: center; gap: 0.2rem;">
+                                    {% if review.ocr_confidence %}
+                                        {% set conf = (review.ocr_confidence * 100)|round|int %}
+                                        <span class="status-badge {% if conf > 90 %}status-ok{% elif conf > 70 %}status-warning{% else %}status-error{% endif %}">
+                                            {{ conf }}%
+                                        </span>
+                                    {% else %}
+                                        <span class="status-badge status-checking">N/A</span>
+                                    {% endif %}
+                                    <small style="text-transform: capitalize; opacity: 0.7; font-size: 0.7rem;">{{ review.failed_stage }}</small>
+                                </div>
+                            </td>
+                            <td>
+                                <a href="/review/{{ review.id }}" role="button" class="outline" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">Review</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>                </table>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
                 <button type="submit" formaction="/bulk-discard" class="secondary outline" onclick="return confirm('Discard all selected?')">Discard Selected</button>
-                <div></div>
-                <div></div>
-                <div></div>
             </div>
         </form>
         {% endif %}
     </main>
 
     <style>
-        .status-badge { padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: bold; font-size: 0.8rem; }
-        .status-ok { background-color: #2e7d32; color: white; }
-        .status-error { background-color: #c62828; color: white; }
-        .status-warning { background-color: #f9a825; color: black; }
-        .status-checking { background-color: #1565c0; color: white; }
+        @keyframes slideDownFade {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @media (max-width: 600px) {
+            .hide-mobile { display: none; }
+        }
+        .status-badge { 
+            padding: 0.1rem 0.4rem; 
+            border-radius: 4px; 
+            font-weight: bold; 
+            font-size: 0.8rem; 
+            display: inline-block;
+            white-space: nowrap;
+        }
+        .status-ok { background-color: var(--pico-ins-background-color); color: var(--pico-ins-color); }
+        .status-error { background-color: var(--pico-del-background-color); color: var(--pico-del-color); }
+        .status-warning { background-color: #f9a825; color: #000; }
+        .status-checking { background-color: var(--pico-primary-background); color: var(--pico-primary-inverse); }
     </style>
 
     <script>
