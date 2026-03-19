@@ -1,3 +1,4 @@
+from __future__ import annotations
 from pydantic import BaseModel, Field, field_validator
 from datetime import date
 import re
@@ -15,12 +16,12 @@ class VatEntry(BaseModel):
 
 class Receipt(BaseModel):
     merchant_name: str | None = None
-    date: date
+    transaction_date: date | None = Field(None, alias="date")
     currency: str = "CHF"
     subtotal_excl_vat: float | None = None
     vat_rate_pct: float | None = Field(None, description="Dominant Swiss VAT rate: 8.1, 2.6, 3.8, or 0.0")
     vat_amount: float | None = None
-    total_incl_vat: float
+    total_incl_vat: float | None = None
     vat_breakdown: list[VatEntry] = Field(default_factory=list, description="Breakdown of VAT per rate found on the receipt")
     line_items: list[LineItem] | None = None
     invoice_number: str | None = None

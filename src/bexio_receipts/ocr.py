@@ -15,11 +15,7 @@ logger = structlog.get_logger(__name__)
 @lru_cache(maxsize=1)
 def get_paddle_ocr() -> PaddleOCR:
     """Instantiate and cache the PaddleOCR model to avoid 2-5s loading time per call."""
-    return PaddleOCR(
-        use_doc_orientation_classify=True,
-        use_doc_unwarping=True,
-        use_textline_orientation=True,
-    )
+    return PaddleOCR()
 
 def run_paddle_ocr(file_path: str) -> tuple[str, float, list[dict]]:
     """

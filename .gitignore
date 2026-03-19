@@ -220,3 +220,4 @@ review_queue/
 
 # SQLite databases
 *.db
+*.gguf

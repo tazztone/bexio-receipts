@@ -1,6 +1,7 @@
 import json
 import mimetypes
 import secrets
+import httpx
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Form, Depends, status, Response
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
@@ -284,3 +285,108 @@ async def discard_review(request: Request, review_id: str, csrf_token: str = For
     if p.exists():
         p.unlink()
     return RedirectResponse(url="/", status_code=303)
+
+@app.get("/setup", response_class=HTMLResponse)
+async def setup_wizard(request: Request, username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)):
+    """Render the setup wizard page."""
+    return templates.TemplateResponse(request, "setup.html", {"settings": settings})
+
+@app.get("/setup/check/bexio")
+async def check_bexio_status(settings: Settings = Depends(get_settings)):
+    try:
+        async with BexioClient(settings.bexio_api_token, settings.bexio_base_url, settings.default_vat_rate) as bexio:
+            resp = await bexio.client.get("/2.0/company_profile")
+            resp.raise_for_status()
+            data = resp.json()
+            return HTMLResponse(f'<span class="status-badge status-ok">OK ({data.get("name", "Connected")})</span>')
+    except Exception as e:
+        return HTMLResponse(f'<span class="status-badge status-error">Error: {str(e)}</span>')
+
+@app.get("/setup/check/ocr")
+async def check_ocr_status(settings: Settings = Depends(get_settings)):
+    if settings.ocr_engine == "paddleocr":
+        try:
+            import paddleocr
+            import paddle
+            return HTMLResponse(f'<span class="status-badge status-ok">OK (PaddleOCR {paddleocr.__version__})</span>')
+        except ImportError:
+            return HTMLResponse('<span class="status-badge status-error">Error: paddleocr or paddlepaddle not installed</span>')
+    elif settings.ocr_engine == "glm-ocr":
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{settings.glm_ocr_url}/api/tags")
+                resp.raise_for_status()
+                models = [m["name"] for m in resp.json().get("models", [])]
+                logger.info("Ollama OCR tags check", models=models, target=settings.glm_ocr_model)
+                if any(m == settings.glm_ocr_model or m.startswith(f"{settings.glm_ocr_model}:") for m in models):
+                    return HTMLResponse(f'<span class="status-badge status-ok">OK (Model {settings.glm_ocr_model} loaded)</span>')
+                else:
+                    return HTMLResponse(f'<span class="status-badge status-warning">Warning: Model {settings.glm_ocr_model} not found in Ollama (found: {", ".join(models)})</span>')
+        except Exception as e:
+            return HTMLResponse(f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}</span>')
+    return HTMLResponse('<span class="status-badge status-error">Unknown Engine</span>')
+
+@app.get("/setup/check/llm")
+async def check_llm_status(settings: Settings = Depends(get_settings)):
+    if settings.llm_provider == "ollama":
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{settings.ollama_url}/api/tags")
+                resp.raise_for_status()
+                models = [m["name"] for m in resp.json().get("models", [])]
+                logger.info("Ollama LLM tags check", models=models, target=settings.llm_model)
+                if any(m == settings.llm_model or m.startswith(f"{settings.llm_model}:") for m in models):
+                    return HTMLResponse(f'<span class="status-badge status-ok">OK (Model {settings.llm_model} loaded)</span>')
+                else:
+                    return HTMLResponse(f'<span class="status-badge status-warning">Warning: Model {settings.llm_model} not found in Ollama (found: {", ".join(models)})</span>')
+        except Exception as e:
+            return HTMLResponse(f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}</span>')
+    elif settings.llm_provider == "openai":
+        import os
+        if os.getenv("OPENAI_API_KEY"):
+            return HTMLResponse('<span class="status-badge status-ok">OK (API Key set)</span>')
+        else:
+            return HTMLResponse('<span class="status-badge status-error">Error: OPENAI_API_KEY not set</span>')
+    return HTMLResponse('<span class="status-badge status-error">Unknown Provider</span>')
+
+@app.get("/setup/check/system")
+async def check_system_status():
+    import shutil
+    pdftoppm = shutil.which("pdftoppm")
+    if pdftoppm:
+        return HTMLResponse(f'<span class="status-badge status-ok">OK ({pdftoppm})</span>')
+    else:
+        return HTMLResponse('<span class="status-badge status-error">Error: pdftoppm (Poppler) not found in PATH</span>')
+
+@app.get("/setup/check/db")
+async def check_db_status(settings: Settings = Depends(get_settings)):
+    try:
+        db_path = Path(settings.database_path)
+        with sqlite3.connect(db_path, timeout=5.0) as conn:
+            conn.execute("SELECT 1").fetchone()
+        return HTMLResponse(f'<span class="status-badge status-ok">OK ({db_path.name})</span>')
+    except Exception as e:
+        return HTMLResponse(f'<span class="status-badge status-error">Error: {str(e)}</span>')
+
+@app.post("/setup/pull-model")
+async def pull_ollama_model(request: Request, model: str = Form(...), settings: Settings = Depends(get_settings)):
+    """Trigger Ollama model pull."""
+    url = settings.ollama_url if "ollama_url" in settings.model_fields else settings.glm_ocr_url
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=None) as client:
+            # We use stream=True but here we'll just wait for completion for simplicity in this MVP
+            # A better version would use Server-Sent Events to show progress
+            resp = await client.post(f"{url}/api/pull", json={"name": model}, timeout=None)
+            resp.raise_for_status()
+            return HTMLResponse(f'<div class="status-badge status-ok">Successfully pulled {model}</div>')
+    except Exception as e:
+        return HTMLResponse(f'<div class="status-badge status-error">Failed to pull {model}: {str(e)}</div>')
+
+@app.get("/setup/run-all")
+async def run_all_checks():
+    """Hacky way to trigger all checks via HTMX by returning a trigger header."""
+    # This tells HTMX to trigger these events on the client side
+    return Response(headers={"HX-Trigger": "load-checks"})

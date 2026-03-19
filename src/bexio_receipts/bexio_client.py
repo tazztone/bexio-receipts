@@ -142,7 +142,7 @@ class BexioClient:
 
         payload: dict[str, Any] = {
             "title": receipt.merchant_name,
-            "paid_on": receipt.date.isoformat(),
+            "paid_on": (receipt.transaction_date or date.today()).isoformat(),
             "currency_code": receipt.currency,
             "amount": round(receipt.total_incl_vat, 2),
             "tax_id": await self.get_tax_id(receipt.vat_rate_pct),
@@ -189,8 +189,8 @@ class BexioClient:
             "supplier_id": supplier_id,
             "title": receipt.merchant_name or "Receipt",
             "contact_partner_id": supplier_id,
-            "bill_date": receipt.date.isoformat(),
-            "due_date": receipt.date.isoformat(),
+            "bill_date": (receipt.transaction_date or date.today()).isoformat(),
+            "due_date": (receipt.transaction_date or date.today()).isoformat(),
             "amount_man": round(receipt.total_incl_vat, 2),
             "manual_amount": True,
             "currency_code": receipt.currency,
