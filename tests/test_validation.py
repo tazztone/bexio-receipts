@@ -1,5 +1,5 @@
 from datetime import date, timedelta
-from bexio_receipts.models import Receipt, LineItem
+from bexio_receipts.models import Receipt, LineItem, VatEntry
 from bexio_receipts.validation import validate_receipt
 
 def test_valid_receipt(test_settings):
@@ -55,7 +55,7 @@ def test_old_date(test_settings):
         total_incl_vat=10.0
     )
     errors = validate_receipt(receipt, test_settings)
-    assert any(f"Receipt older than 365 days" in e for e in errors)
+    assert any("Receipt older than 365 days" in e for e in errors)
 
 def test_line_items_mismatch(test_settings):
     receipt = Receipt(
@@ -119,8 +119,6 @@ def test_missing_merchant(test_settings):
     )
     errors = validate_receipt(receipt, test_settings)
     assert len(errors) == 0
-
-from bexio_receipts.models import VatEntry
 
 def test_vat_back_calculation_mismatch(test_settings):
     receipt = Receipt(
