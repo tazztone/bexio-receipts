@@ -48,7 +48,6 @@ class Settings(BaseSettings):
     gdrive_poll_interval: int = 60
     gdrive_processed_folder_id: str | None = None
     
-
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @model_validator(mode="after")

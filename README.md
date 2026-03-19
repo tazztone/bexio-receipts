@@ -45,7 +45,7 @@ Google Drive    ┘                                                    │ fail
 
 ### Installation
 
-> **Note on Dependencies:** The default installation includes `paddlepaddle` and `paddleocr`, which are large dependencies (~500MB+ installed). For a lightweight alternative or cleaner isolation, a Docker-only deployment path is highly recommended.
+> **Note on Dependencies:** The default installation includes `paddlepaddle` and `paddleocr`, which are large dependencies (~500MB+ installed). For a lightweight alternative or cleaner isolation, a Docker-only deployment path is highly recommended. The project includes an optimized multi-stage `Dockerfile` with `uv` and build caching for fast deployments.
 
 ```bash
 # Clone the repository
@@ -211,7 +211,8 @@ uv run pytest tests/ -v
 - `src/bexio_receipts/extraction.py`: Pydantic AI agent for structured data extraction.
 - `src/bexio_receipts/validation.py`: Swiss-specific business rules and data validation.
 - `src/bexio_receipts/server.py`: FastAPI server for the review dashboard.
-- `src/bexio_receipts/bexio_client.py`: Async bexio API client with retries.
-- `src/bexio_receipts/pipeline.py`: Orchestrator for the full ingestion flow.
-- `src/bexio_receipts/cli.py`: Command-line interface with `process` and `serve` commands.
-- `docs/`: Internal implementation plans and design documents.
+- `docs/ARCHITECTURE.md`: High-level system flow and engine details.
+- `docs/DEVELOPMENT.md`: Environment setup, testing, and internal best practices.
+- `docs/archive/`: Historical design plans and workshop notes.
+- `CHANGELOG.md`: Detailed history of changes and bug fixes.
+- `mypy.ini`: Static type checking configuration.

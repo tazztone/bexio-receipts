@@ -82,6 +82,9 @@ class GoogleDriveIngestor:
         query = f"'{self.settings.gdrive_folder_id}' in parents and trashed = false"
         
         # Execute blocking call in thread
+        if self.service is None:
+            return []
+            
         results = await asyncio.to_thread(
             self.service.files().list(
                 q=query, 
@@ -101,6 +104,8 @@ class GoogleDriveIngestor:
 
     async def download_file(self, file_id: str, file_name: str) -> Path:
         """Download a file from Drive (async-wrapped)."""
+        if self.service is None:
+            raise RuntimeError("Drive service not connected")
         request = self.service.files().get_media(fileId=file_id)
         file_path = self.download_dir / file_name
         
@@ -129,12 +134,18 @@ class GoogleDriveIngestor:
             return
 
         # Retrieve parents
+        if self.service is None:
+            return
+            
         file = await asyncio.to_thread(
             self.service.files().get(fileId=file_id, fields="parents").execute
         )
         previous_parents = ",".join(file.get("parents", []))
         
         # Move file
+        if self.service is None:
+            return
+
         await asyncio.to_thread(
             self.service.files().update(
                 fileId=file_id,

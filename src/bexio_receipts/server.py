@@ -12,7 +12,6 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Gauge
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import functools
-import os
 import sqlite3
 import structlog
 
@@ -29,7 +28,7 @@ app = FastAPI(title="bexio-receipts Review Dashboard")
 def get_settings() -> Settings:
     return Settings()
 
-app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SECRET_KEY", "fallback-secret-for-startup"))
+app.add_middleware(SessionMiddleware, secret_key=get_settings().secret_key)
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -137,13 +136,13 @@ async def dashboard(request: Request, username: str = Depends(verify_credentials
                 "total": data.get("extracted", {}).get("total_incl_vat", 0.0),
             })
     
-    return templates.TemplateResponse("dashboard.html", {"request": request, "reviews": reviews})
+    return templates.TemplateResponse(request, "dashboard.html", {"reviews": reviews})
 
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_view(request: Request, username: str = Depends(verify_credentials), db: DuplicateDetector = Depends(get_db)):
     """Show processing statistics."""
     stats = db.get_stats()
-    return templates.TemplateResponse("stats.html", {"request": request, "stats": stats})
+    return templates.TemplateResponse(request, "stats.html", {"stats": stats})
 
 @app.get("/review/{review_id}", response_class=HTMLResponse)
 async def review_receipt(request: Request, review_id: str, username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)):
@@ -162,8 +161,7 @@ async def review_receipt(request: Request, review_id: str, username: str = Depen
 
     csrf_token = request.session["csrf_token"]
 
-    return templates.TemplateResponse("review.html", {
-        "request": request, 
+    return templates.TemplateResponse(request, "review.html", {
         "id": review_id, 
         "data": data,
         "receipt": data.get("extracted", {}),
