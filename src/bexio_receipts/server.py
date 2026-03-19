@@ -100,7 +100,7 @@ async def healthz(settings: Settings = Depends(get_settings)):
 
     # Check Bexio
     try:
-        async with BexioClient(settings.bexio_api_token, settings.bexio_base_url) as bexio:
+        async with BexioClient(settings.bexio_api_token, settings.bexio_base_url, settings.default_vat_rate) as bexio:
             resp = await bexio.client.get("/2.0/company_profile")
             resp.raise_for_status()
         status_data["bexio"] = "ok"
