@@ -29,13 +29,13 @@ def validate_receipt(r: Receipt, settings: Settings) -> list[str]:
             errors.append(f"VAT amount doesn't match rate: {r.vat_rate_pct}% of {r.subtotal_excl_vat} ≠ {r.vat_amount}")
     
     # 4. Date sanity
-    if r.date is None:
+    if r.transaction_date is None:
         errors.append("Missing date")
     else:
-        if r.date > date.today():
-            errors.append(f"Future date: {r.date}")
-        if r.date < date.today() - timedelta(days=settings.max_receipt_age_days):
-            errors.append(f"Receipt older than {settings.max_receipt_age_days} days: {r.date}")
+        if r.transaction_date > date.today():
+            errors.append(f"Future date: {r.transaction_date}")
+        if r.transaction_date < date.today() - timedelta(days=settings.max_receipt_age_days):
+            errors.append(f"Receipt older than {settings.max_receipt_age_days} days: {r.transaction_date}")
     
     # 5. Amount sanity
     if r.total_incl_vat <= 0:

@@ -41,19 +41,18 @@ async def extract_receipt(raw_text: str, settings: Settings) -> Receipt:
 
         agent = Agent(  # type: ignore[call-overload]
             model,
-            result_type=Receipt,
+            output_type=Receipt,
             system_prompt=(
-                "Extract receipt data from OCR text. Swiss VAT rates are: "
-                "8.1% (standard), 2.6% (reduced — food, books), 3.8% (accommodation). "
+                "Extract receipt data from OCR text. "
+                "Swiss VAT rates are: 8.1% (standard), 2.6% (reduced), 3.8% (accommodation). "
                 "Return null for fields not found. "
-                "IMPORTANT: If the receipt shows multiple VAT rates, extract the detailed "
-                "breakdown into the 'vat_breakdown' field (rate, base_amount, vat_amount). "
-                "The 'vat_rate_pct' and 'vat_amount' should represent the dominant rate "
-                "found on the receipt. "
-                "Ensure the total_incl_vat is accurately extracted. "
-                "Swiss receipts often use 'CHF' as currency."
+                "CRITICAL: If the OCR output is sparse (e.g. just a brand and total), "
+                "treat the first line as the 'merchant_name' and prioritize 'total_incl_vat'. "
+                "Swiss receipts often use 'CHF' as currency. "
+                "If multiple VAT rates are present, breakdown into 'vat_breakdown'. "
+                "Ensure merchant name is extracted as cleanly as possible."
             ),
         )
 
         result = await agent.run(f"Receipt text:\n{raw_text}")
-        return result.data
+        return result.output

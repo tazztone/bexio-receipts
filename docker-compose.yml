@@ -2,55 +2,72 @@ services:
   app:
     build: .
     volumes:
-      - .:/app
+      - ./src/bexio_receipts:/app/src/bexio_receipts
+      - ./src/bexio_receipts/templates:/app/src/bexio_receipts/templates
+      - ./tests:/app/tests
     environment:
       - BEXIO_API_TOKEN=${BEXIO_API_TOKEN:-test_token}
+      - BEXIO_BASE_URL=http://mock-bexio:8001
       - REVIEW_PASSWORD=${REVIEW_PASSWORD:-admin}
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=${SECRET_KEY:-super-secret-key-change-me-in-prod}
       - IMAP_SERVER=mock-imap
       - IMAP_USER=test@example.com
       - IMAP_PASSWORD=password
-      - GLM_OCR_URL=http://ollama:11434
+      - GLM_OCR_URL=http://host.docker.internal:11434
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - GLM_OCR_MODEL=glm-ocr
       - LLM_PROVIDER=ollama
-      - LLM_MODEL=qwen3.5:9b
+      - LLM_MODEL=qwen3.5
       - OCR_ENGINE=glm-ocr
-      - DEFAULT_BOOKING_ACCOUNT_ID=4000
-      - DEFAULT_BANK_ACCOUNT_ID=1020
+      - DEFAULT_BOOKING_ACCOUNT_ID=100
+      - DEFAULT_BANK_ACCOUNT_ID=200
     ports:
       - "8000:8000"
-    command: ["uv", "run", "bexio-receipts", "serve", "--host", "0.0.0.0"]
+    command: ["bexio-receipts", "serve", "--host", "0.0.0.0"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - mock-imap
-      - ollama
+      - mock-bexio
 
   watcher:
     build: .
     volumes:
-      - .:/app
+      - ./src/bexio_receipts:/app/src/bexio_receipts
+      - ./src/bexio_receipts/templates:/app/src/bexio_receipts/templates
+      - ./tests:/app/tests
     environment:
       - BEXIO_API_TOKEN=${BEXIO_API_TOKEN:-test_token}
+      - BEXIO_BASE_URL=http://mock-bexio:8001
       - REVIEW_PASSWORD=${REVIEW_PASSWORD:-admin}
-      - SECRET_KEY=super-secret-key-change-me-in-prod
+      - SECRET_KEY=${SECRET_KEY:-super-secret-key-change-me-in-prod}
       - IMAP_SERVER=mock-imap
       - IMAP_USER=test@example.com
       - IMAP_PASSWORD=password
-      - GLM_OCR_URL=http://ollama:11434
+      - GLM_OCR_URL=http://host.docker.internal:11434
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - GLM_OCR_MODEL=glm-ocr
       - LLM_PROVIDER=ollama
-      - LLM_MODEL=qwen3.5:9b
+      - LLM_MODEL=qwen3.5
       - OCR_ENGINE=glm-ocr
-      - DEFAULT_BOOKING_ACCOUNT_ID=4000
-      - DEFAULT_BANK_ACCOUNT_ID=1020
-    command: ["uv", "run", "bexio-receipts", "watch-email"]
+      - DEFAULT_BOOKING_ACCOUNT_ID=100
+      - DEFAULT_BANK_ACCOUNT_ID=200
+    command: ["bexio-receipts", "watch-email"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - mock-imap
-      - ollama
+      - mock-bexio
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
+  mock-bexio:
+    build: .
     volumes:
-      - ollama_data:/root/.ollama
+      - ./src/bexio_receipts:/app/src/bexio_receipts
+      - ./src/bexio_receipts/templates:/app/src/bexio_receipts/templates
+      - ./tests:/app/tests
+    ports:
+      - "8001:8001"
+    command: ["python", "tests/mock_bexio.py"]
 
   mock-imap:
     image: greenmail/standalone:latest

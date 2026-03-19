@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup Wizard - bexio-receipts</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <script src="https://unpkg.com/htmx.org@2.0.1"></script>
+    <style>
+        .status-badge { padding: 0.2rem 0.5rem; border-radius: 5px; font-weight: bold; }
+        .status-ok { background-color: #2e7d32; color: white; }
+        .status-error { background-color: #c62828; color: white; }
+        .status-warning { background-color: #f9a825; color: black; }
+        .status-checking { background-color: #1565c0; color: white; }
+    </style>
+</head>
+<body>
+    <header class="container">
+        <nav>
+            <ul>
+                <li><strong>bexio-receipts Setup</strong></li>
+            </ul>
+            <ul>
+                <li><a href="/">Dashboard</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main class="container">
+        <h1>System Setup & Health</h1>
+        <p>This wizard helps you verify that all dependencies are correctly configured and reachable.</p>
+
+        <section id="checks">
+            <article>
+                <header><strong>Dependency Checks</strong></header>
+                <table class="striped">
+                    <thead>
+                        <tr>
+                            <th>Component</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Bexio API Connection</td>
+                            <td id="check-bexio"><span class="status-badge status-checking">Pending</span></td>
+                            <td><button class="outline secondary" hx-get="/setup/check/bexio" hx-target="#check-bexio">Re-check</button></td>
+                        </tr>
+                        <tr>
+                            <td>OCR Engine ({{ settings.ocr_engine }})</td>
+                            <td id="check-ocr"><span class="status-badge status-checking">Pending</span></td>
+                            <td><button class="outline secondary" hx-get="/setup/check/ocr" hx-target="#check-ocr">Re-check</button></td>
+                        </tr>
+                        <tr>
+                            <td>LLM Provider ({{ settings.llm_provider }})</td>
+                            <td id="check-llm"><span class="status-badge status-checking">Pending</span></td>
+                            <td><button class="outline secondary" hx-get="/setup/check/llm" hx-target="#check-llm">Re-check</button></td>
+                        </tr>
+                        <tr>
+                            <td>System Dependencies (Poppler)</td>
+                            <td id="check-system"><span class="status-badge status-checking">Pending</span></td>
+                            <td><button class="outline secondary" hx-get="/setup/check/system" hx-target="#check-system">Re-check</button></td>
+                        </tr>
+                        <tr>
+                            <td>Database Status</td>
+                            <td id="check-db"><span class="status-badge status-checking">Pending</span></td>
+                            <td><button class="outline secondary" hx-get="/setup/check/db" hx-target="#check-db">Re-check</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <footer>
+                    <button hx-get="/setup/run-all" hx-target="#checks" hx-swap="none">Run All Checks</button>
+                </footer>
+            </article>
+
+            {% if settings.llm_provider == "ollama" or settings.ocr_engine == "glm-ocr" %}
+            <article>
+                <header><strong>Ollama Maintenance</strong></header>
+                <p>Ensure the required models are downloaded to your local Ollama instance.</p>
+                <div id="pull-status"></div>
+                <div class="grid">
+                    <div>
+                        <button class="outline" 
+                                hx-post="/setup/pull-model" 
+                                hx-vals='{"model": "{{ settings.llm_model }}"}'
+                                hx-target="#pull-status"
+                                hx-confirm="This might take a while depending on your internet speed. Continue?">
+                            Pull LLM Model ({{ settings.llm_model }})
+                        </button>
+                    </div>
+                    {% if settings.ocr_engine == "glm-ocr" %}
+                    <div>
+                        <button class="outline" 
+                                hx-post="/setup/pull-model" 
+                                hx-vals='{"model": "{{ settings.glm_ocr_model }}"}'
+                                hx-target="#pull-status"
+                                hx-confirm="This might take a while depending on your internet speed. Continue?">
+                            Pull OCR Model ({{ settings.glm_ocr_model }})
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+            </article>
+            {% endif %}
+        </section>
+    </main>
+
+    <script>
+        // Trigger all checks by finding the Re-check buttons and clicking them
+        function runAllChecks() {
+            const buttons = document.querySelectorAll('button[hx-get^="/setup/check/"]');
+            buttons.forEach(btn => htmx.trigger(btn, "click"));
+        }
+
+        document.addEventListener('DOMContentLoaded', runAllChecks);
+
+        // Listen for the HX-Trigger: load-checks header (htmx: before the event name)
+        document.body.addEventListener('load-checks', runAllChecks);
+    </script>
+</body>
+</html>
