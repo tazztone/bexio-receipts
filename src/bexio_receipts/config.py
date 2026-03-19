@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     
     # OCR Settings
     ocr_engine: str = "glm-ocr"  # or "paddleocr"
-    ocr_confidence_threshold: float = 0.85
+    ocr_confidence_threshold: float = 0.85 # Note: Only enforced for paddleocr
     glm_ocr_model: str = "glm-ocr"
     glm_ocr_url: str = "http://localhost:11434" # Ollama default
     

@@ -53,20 +53,40 @@ async def process_receipt(file_path: str, settings: Settings, bexio: BexioClient
         logger.warning("Duplicate receipt detected", expense_id=existing_id, path=file_path)
         return {"status": "duplicate", "expense_id": existing_id}
 
-    # 1. OCR
-    logger.info("Running OCR", engine=settings.ocr_engine, path=file_path)
+    # 1. OCR / One-shot Extraction
+    logger.info("Running OCR/Extraction", engine=settings.ocr_engine, path=file_path)
     raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
     
-    if avg_confidence < settings.ocr_confidence_threshold:
+    # Only enforce confidence for PaddleOCR; GLM-OCR is a VLM and uses validation instead
+    if settings.ocr_engine == "paddleocr" and avg_confidence < settings.ocr_confidence_threshold:
         return await send_to_review(file_path, raw_text, [f"Low OCR confidence: {avg_confidence:.1%}"], settings)
     
-    # 2. LLM extraction
-    logger.info("Extracting data via LLM", model=settings.llm_model)
-    try:
-        receipt = await extract_receipt(raw_text, settings)
-    except Exception as e:
-        logger.error("LLM extraction failed", error=str(e))
-        return await send_to_review(file_path, raw_text, [f"LLM extraction failed: {str(e)}"], settings)
+    # 2. Extract structured data
+    receipt = None
+    if settings.ocr_engine == "glm-ocr":
+        try:
+            # GLM-OCR was prompted to return JSON directly
+            # Remove potential markdown formatting blocks
+            json_text = raw_text.strip()
+            if json_text.startswith("```"):
+                # Extract content between ```json and ``` or just ``` and ```
+                import re
+                match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", json_text, re.DOTALL)
+                if match:
+                    json_text = match.group(1)
+            
+            receipt = Receipt.model_validate_json(json_text)
+            logger.info("One-shot GLM extraction successful")
+        except Exception as e:
+            logger.warning("One-shot GLM parsing failed, falling back to Qwen", error=str(e))
+
+    if not receipt:
+        logger.info("Extracting data via LLM", model=settings.llm_model)
+        try:
+            receipt = await extract_receipt(raw_text, settings)
+        except Exception as e:
+            logger.error("LLM extraction failed", error=str(e))
+            return await send_to_review(file_path, raw_text, [f"LLM extraction failed: {str(e)}"], settings)
     
     # 3. Validation
     logger.info("Validating extracted data")
