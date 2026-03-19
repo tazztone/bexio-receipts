@@ -64,12 +64,28 @@ async def run_glm_ocr(file_path: str, settings: Settings) -> tuple[str, float, l
         img_base64 = base64.b64encode(f.read()).decode("utf-8")
 
     async with httpx.AsyncClient(timeout=60.0) as client:
+        prompt = (
+            "Task: Information Extraction from Receipt\n"
+            "Format: Output ONLY valid JSON according to this schema:\n"
+            "{\n"
+            "  \"merchant_name\": string or null,\n"
+            "  \"date\": \"YYYY-MM-DD\" or null,\n"
+            "  \"total_incl_vat\": number or null,\n"
+            "  \"vat_amount\": number or null,\n"
+            "  \"vat_rate_pct\": number or null,\n"
+            "  \"currency\": \"CHF\",\n"
+            "  \"vat_breakdown\": []\n"
+            "}\n"
+            "Instruction: Extract the merchant (e.g. Coop, Migros), the date, and the total amount. "
+            "Swiss VAT rates are 8.1%, 2.6%, 3.8%. "
+            "If a brand name like 'COOP' is visible, use it as merchant_name."
+        )
         payload = {
             "model": settings.glm_ocr_model,
             "messages": [
                 {
                     "role": "user",
-                    "content": "Text Recognition:",
+                    "content": prompt,
                     "images": [img_base64]
                 }
             ],

@@ -11,9 +11,10 @@ async def test_extract_receipt_ollama(test_settings):
     
     # Mocking Agent and result
     mock_result = MagicMock()
-    mock_result.data = Receipt(
+    # Pydantic AI now uses .output instead of .data
+    mock_result.output = Receipt(
         merchant_name="Mock Coop",
-        date=date(2023, 1, 1),
+        transaction_date=date(2023, 1, 1),
         total_incl_vat=10.0
     )
     
