@@ -26,7 +26,7 @@ jobs:
       - name: Run mypy
         run: uv run mypy src/
       - name: Run pytest
-        run: uv run pytest tests/
+        run: uv run pytest tests/ --cov=src --cov-fail-under=85
 
   docker_build:
     runs-on: ubuntu-latest

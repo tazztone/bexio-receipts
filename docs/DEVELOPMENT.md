@@ -12,22 +12,49 @@ uv run bexio-receipts  # Run the CLI
 ```
 
 ### Prerequisites
-- Python 3.12+ (tested up to 3.13)
-- [PaddlePaddle-GPU](https://www.paddlepaddle.org.cn/install/quick?docurl=/install/quick_en.html) (optional, for faster OCR)
-- [libpoppler-cpp-dev](https://poppler.freedesktop.org/) (required for `pdf2image`)
+- **Python 3.12+**
+- **uv**: `curl -LsSf https://astral-sh/uv/install.sh | sh`
+- **System Dependencies (Poppler)**:
+  - **Linux (Debian/Ubuntu)**: `sudo apt-get install libpoppler-cpp-dev`
+  - **macOS**: `brew install poppler`
+  - **Windows**: [Download binaries](https://github.com/oschwartz10612/poppler-windows/releases) and add to PATH.
 
-## 🧪 Testing Strategy
-
-We prioritize **Automated Verification** over manual tests.
-
+### Installation
 ```bash
-uv run pytest tests/            # Run the test suite
-uv run pytest --cov=src tests/  # Run with coverage report
+uv sync --all-extras --dev
+uv run pre-commit install
 ```
 
-### Key Test Patterns
-1. **Mocking HTTP**: We use `respx` to mock bexio and LLM API calls.
-2. **Schema Validation**: Tests in `test_models.py` ensure that normalization logic (like merchant name cleaning) works consistently.
+## Testing Strategy
+
+### Unit & Integration Tests
+We use `pytest`. The suite includes mocks for bexio and LLM providers.
+```bash
+uv run pytest tests/
+```
+
+### Static Analysis
+Before pushing, ensure these pass:
+- **Linting**: `uv run ruff check .`
+- **Formatting**: `uv run ruff format .`
+- **Type Checking**: `uv run mypy src/`
+
+## Internal Best Practices
+
+1. **Type Safety**: All new functions should have type hints.
+2. **Validated Models**: Use `Receipt` (Pydantic) for all data passing.
+3. **Async first**: Keep I/O non-blocking using `httpx.AsyncClient` and `asyncio`.
+4. **Documentation**:
+   - Update `CHANGELOG.md` for every significant change.
+   - Refactor `ARCHITECTURE.md` if the data flow changes.
+   - Note: The `docs/archive/` directory contains historical design notes and is for context only; it is not normative for the current system.
+
+## CI/CD
+Our GitHub Actions workflow enforces:
+- All tests passing.
+- Test coverage > 85%.
+- Static analysis (Ruff/Mypy) passing.
+- Successful Docker build.
 3. **Database Isolation**: Always use the `tmp_path` fixture for SQLite tests to avoid side-effects between runs.
 
 ---
