@@ -1,4 +1,7 @@
+
+
 FROM python:3.12-slim
+
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -9,8 +12,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | bash
-ENV PATH="/root/.local/bin:${PATH}"
+COPY --from=ghcr.io/astral-sh/uv:0.5.1 /uv /uvx /bin/
 
 WORKDIR /app
 
@@ -21,3 +23,4 @@ COPY README.md ./
 
 # Install dependencies
 RUN uv sync --no-dev
+CMD ["uv", "run", "bexio-receipts", "serve"]

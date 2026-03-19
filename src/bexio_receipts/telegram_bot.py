@@ -107,7 +107,8 @@ async def run_bot(settings: Settings):
 
     async with BexioClient(
         token=settings.bexio_api_token, 
-        base_url=settings.bexio_base_url
+        base_url=settings.bexio_base_url,
+        default_vat_rate=settings.default_vat_rate
     ) as bexio:
         await bexio.cache_lookups()
         
