@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.2] - 2024-03-19
+## [Unreleased]
+
+### Added
+- Responsible disclosure policy in `SECURITY.md`.
+- GitHub Issue Templates for bugs and feature requests.
+- Mermaid diagrams in `README.md` and `ARCHITECTURE.md`.
+- Troubleshooting guide and Quick Start in `README.md`.
+
+### Fixed
+- Corrected Ollama model tag for Qwen in `config.py` and documentation.
+
+## [0.1.2] - 2024-05-25
 
 ### Added
 - Comprehensive Static Analysis: Added `mypy` and `ruff` checks to CI and pre-commit.
@@ -27,22 +38,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Build System**: Corrected `uv_build` version range in `pyproject.toml`.
 - **Tests**: Refactored `test_db.py` and `test_models.py` into proper pytest functions.
 
-## [0.1.1] - 2024-05-24
+## [0.1.1] - 2024-03-24
 
 ### Added
 - HTTP Basic Authentication to the server dashboard for secure access.
-- SQLite database migrations for expanded stats features (stores financial values such as total booked and reclaimed VAT amounts).
-- Pipeline now tracks new financial values such as `total_incl_vat` and `vat_amount` per processed receipt.
-- Stats Dashboard now calculates actual total booked amounts, total VAT reclaimed, and displays a list of the top 5 merchants.
+- SQLite database migrations for expanded stats features.
+- Stats Dashboard showing total booked amounts and top merchants.
 - `CHANGELOG.md` file for version tracking.
-- Test coverage for the integration of `pipeline` and `server` logic.
 
 ### Changed
-- `extraction.py` now leverages HTTP timeout handling and proper retry decorators for robustness during LLM extraction.
-- `models.py` uses `field_validator` on `merchant_name` to consistently normalize data to title casing and removes common legal suffixes to avoid duplicates.
-- Database connection defaults to WAL journaling mode with timeout pooling for handling multithreaded operations correctly.
-- `push_to_bexio` server route now correctly infers file types (e.g., pdf or image types) using `mimetypes` instead of hardcoding `image/png`.
+- `extraction.py` now leverages HTTP timeout handling and proper retry decorators.
+- `models.py` normalcy normalization for merchant names.
+- Database connection defaults to WAL journaling mode.
 
 ### Fixed
-- Fixed an issue in `bexio_client.py` where the API caller `user_id` was erroneously used as the `owner_id` for creating contacts. It now fetches the correct main tenant owner from Bexio via `company_profile`.
-- Fixed a bug where a `None` date would cause a `TypeError` crash in `validation.py`.
+- Fixed `owner_id` logic to fetch from `company_profile` instead of `user_id`.
+- Fixed `None` date crash in `validation.py`.
+
+## [0.1.0] - 2024-01-15
+
+### Added
+- Initial release with core ingestion pipeline (Watcher, Email).
+- Basic PaddleOCR integration and OpenAI extraction.
+- Minimal Review Dashboard.
