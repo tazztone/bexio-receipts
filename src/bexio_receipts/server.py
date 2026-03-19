@@ -60,14 +60,16 @@ def verify_credentials(
     credentials: HTTPBasicCredentials = Depends(security),
     settings: Settings = Depends(get_settings),
 ):
-    is_correct_username = secrets.compare_digest(
-        credentials.username.encode("utf8"), settings.review_username.encode("utf8")
-    )
-    is_correct_password = secrets.compare_digest(
-        credentials.password.encode("utf8"), settings.review_password.encode("utf8")
-    )
+    valid_users = settings.review_users or {settings.review_username: settings.review_password}
 
-    if not (is_correct_username and is_correct_password):
+    is_authorized = False
+    for username, password in valid_users.items():
+        if secrets.compare_digest(credentials.username.encode("utf8"), username.encode("utf8")) and \
+           secrets.compare_digest(credentials.password.encode("utf8"), password.encode("utf8")):
+            is_authorized = True
+            break
+
+    if not is_authorized:
         # Apply rate limiting manually on auth failure (brute-force protection)
         from limits import parse
 
@@ -138,7 +140,10 @@ async def healthz(settings: Settings = Depends(get_settings)):
     # Check Bexio
     try:
         async with BexioClient(
-            settings.bexio_api_token, settings.bexio_base_url, settings.default_vat_rate
+            settings.bexio_api_token,
+            settings.bexio_base_url,
+            settings.default_vat_rate,
+            settings.default_payment_terms_days,
         ) as bexio:
             resp = await bexio.client.get("/2.0/company_profile")
             resp.raise_for_status()
@@ -169,6 +174,8 @@ async def dashboard(
     request: Request,
     username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
+    page: int = 1,
+    per_page: int = 50,
 ):
     """List all receipts awaiting review."""
     # Auto-redirect to setup if not configured
@@ -177,8 +184,19 @@ async def dashboard(
 
     review_dir = Path(settings.review_dir)
     review_dir.mkdir(exist_ok=True, parents=True)
+
+    # Sort files by creation time, newest first
+    all_files = sorted(review_dir.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)
+
+    total_reviews = len(all_files)
+    total_pages = max(1, (total_reviews + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+
     reviews = []
-    for p in review_dir.glob("*.json"):
+    for p in all_files[start_idx:end_idx]:
         with open(p) as f:
             data = json.load(f)
             extracted = data.get("extracted", {}) or {}
@@ -204,7 +222,15 @@ async def dashboard(
     return templates.TemplateResponse(
         request,
         "dashboard.html",
-        {"reviews": reviews, "csrf_token": csrf_token, "success_msg": success_msg},
+        {
+            "reviews": reviews,
+            "csrf_token": csrf_token,
+            "success_msg": success_msg,
+            "page": page,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1,
+        },
     )
 
 
@@ -215,6 +241,10 @@ async def get_receipt_thumbnail(
     settings: Settings = Depends(get_settings),
 ):
     """Serve a thumbnail of the original receipt image."""
+    import re
+    if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
+        raise HTTPException(status_code=400, detail="Invalid review ID")
+
     review_dir = Path(settings.review_dir)
     p = review_dir / f"{review_id}.json"
     if not p.exists():
@@ -261,6 +291,10 @@ async def review_receipt(
     settings: Settings = Depends(get_settings),
 ):
     """Show review form for a specific receipt."""
+    import re
+    if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
+        raise HTTPException(status_code=400, detail="Invalid review ID")
+
     review_dir = Path(settings.review_dir)
     review_dir.mkdir(exist_ok=True, parents=True)
     p = review_dir / f"{review_id}.json"
@@ -294,6 +328,10 @@ async def get_receipt_image(
     settings: Settings = Depends(get_settings),
 ):
     """Serve the original receipt image."""
+    import re
+    if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
+        raise HTTPException(status_code=400, detail="Invalid review ID")
+
     review_dir = Path(settings.review_dir)
     review_dir.mkdir(exist_ok=True, parents=True)
     p = review_dir / f"{review_id}.json"
@@ -324,6 +362,10 @@ async def push_to_bexio(
     db: DuplicateDetector = Depends(get_db),
 ):
     """Update receipt data and push to bexio."""
+    import re
+    if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
+        raise HTTPException(status_code=400, detail="Invalid review ID")
+
     if not csrf_token or request.session.get("csrf_token") != csrf_token:
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
@@ -354,20 +396,26 @@ async def push_to_bexio(
 
     try:
         async with BexioClient(
-            settings.bexio_api_token, settings.bexio_base_url, settings.default_vat_rate
+                settings.bexio_api_token,
+                settings.bexio_base_url,
+                settings.default_vat_rate,
+                settings.default_payment_terms_days,
         ) as bexio:
             await bexio.cache_lookups()
             file_uuid = await bexio.upload_file(img_path, filename, mime_type)
 
             # Prefer Bill if merchant exists
             if receipt.merchant_name:
-                booking_account_id = settings.default_booking_account_id
+                    booking_account_id = (
+                        db.get_merchant_account(receipt.merchant_name)
+                        or settings.default_booking_account_id
+                    )
 
-                await bexio.create_purchase_bill(
-                    receipt, file_uuid, booking_account_id=booking_account_id
-                )
-                # Save mapping
-                db.set_merchant_account(receipt.merchant_name, booking_account_id)
+                    await bexio.create_purchase_bill(
+                        receipt, file_uuid, booking_account_id=booking_account_id
+                    )
+                    # Save mapping
+                    db.set_merchant_account(receipt.merchant_name, booking_account_id)
             else:
                 await bexio.create_expense(
                     receipt,
@@ -409,6 +457,10 @@ async def discard_review(
     settings: Settings = Depends(get_settings),
 ):
     """Remove a receipt from the review queue."""
+    import re
+    if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
+        raise HTTPException(status_code=400, detail="Invalid review ID")
+
     if not csrf_token or request.session.get("csrf_token") != csrf_token:
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
@@ -432,9 +484,12 @@ async def bulk_discard_review(
     if not csrf_token or request.session.get("csrf_token") != csrf_token:
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
+    import re
     review_dir = Path(settings.review_dir)
     count = 0
     for review_id in ids:
+        if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
+            continue
         p = review_dir / f"{review_id}.json"
         if p.exists():
             p.unlink()
@@ -464,7 +519,10 @@ async def setup_wizard(
 async def check_bexio_status(settings: Settings = Depends(get_settings)):
     try:
         async with BexioClient(
-            settings.bexio_api_token, settings.bexio_base_url, settings.default_vat_rate
+            settings.bexio_api_token,
+            settings.bexio_base_url,
+            settings.default_vat_rate,
+            settings.default_payment_terms_days,
         ) as bexio:
             resp = await bexio.client.get("/2.0/company_profile")
             resp.raise_for_status()

@@ -64,7 +64,21 @@ async def process_receipt(
     if not file_path_obj.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    # 0. Duplicate Detection
+    # 0. File Type Validation
+    mime_type, _ = mimetypes.guess_type(file_path)
+    allowed_mime_types = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
+    if mime_type not in allowed_mime_types:
+        error_msg = f"Unsupported file type: {mime_type}. Allowed: {', '.join(allowed_mime_types)}"
+        logger.error(error_msg, path=file_path)
+        return await send_to_review(
+            file_path,
+            "",
+            [error_msg],
+            settings,
+            failed_stage="validation"
+        )
+
+    # 0.1 Duplicate Detection
     file_hash = db.get_hash(file_path)
     existing_id = db.is_duplicate(file_hash)
     if existing_id:
@@ -147,7 +161,6 @@ async def process_receipt(
     # 4. Push to bexio
     logger.info("Pushing to bexio")
     try:
-        mime_type, _ = mimetypes.guess_type(file_path)
         mime_type = mime_type or "application/octet-stream"
 
         file_uuid = await bexio.upload_file(file_path, file_path_obj.name, mime_type)
@@ -164,13 +177,18 @@ async def process_receipt(
                 failed_stage="bexio",
             )
 
-        # Prefer Bill (v4) if we have a merchant name, otherwise fall back to simple Expense (v4)
-        if receipt.merchant_name:
-            logger.info("Creating Purchase Bill", merchant=receipt.merchant_name)
+        # Prefer Bill (v4) if we have a merchant name or multiple VAT rates.
+        # Fall back to simple Expense (v4) only if no merchant name and single VAT rate.
+        if receipt.merchant_name or (receipt.vat_breakdown and len(receipt.vat_breakdown) > 1):
+            merchant = receipt.merchant_name or "Unknown Merchant"
+            if not receipt.merchant_name:
+                logger.warning("No merchant name but multiple VAT rates detected. Using Purchase Bill with 'Unknown Merchant'.")
+
+            logger.info("Creating Purchase Bill", merchant=merchant)
 
             # Smart Account Mapping: lookup last used account for this merchant
             booking_account_id = (
-                db.get_merchant_account(receipt.merchant_name)
+                db.get_merchant_account(merchant)
                 or settings.default_booking_account_id
             )
 
@@ -178,8 +196,9 @@ async def process_receipt(
                 receipt, file_uuid, booking_account_id=booking_account_id
             )
 
-            # Save mapping for next time
-            db.set_merchant_account(receipt.merchant_name, booking_account_id)
+            # Save mapping for next time if it was a real merchant
+            if receipt.merchant_name:
+                db.set_merchant_account(receipt.merchant_name, booking_account_id)
         else:
             if not settings.default_bank_account_id:
                 return await send_to_review(
@@ -192,7 +211,7 @@ async def process_receipt(
                     failed_stage="bexio",
                 )
 
-            logger.info("No merchant name, creating simple Expense")
+            logger.info("No merchant name and single VAT, creating simple Expense")
             expense = await bexio.create_expense(
                 receipt,
                 file_uuid,

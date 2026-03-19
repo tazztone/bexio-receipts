@@ -1,7 +1,6 @@
 from __future__ import annotations
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import date
-import re
 
 
 class LineItem(BaseModel):
@@ -43,11 +42,7 @@ class Receipt(BaseModel):
         if v is None:
             return None
 
-        # Strip and Title Case
+        # Strip and Title Case but keep suffixes to avoid aggressive normalization
         v = v.strip().title()
 
-        # Remove common suffixes (case-insensitive because it's already title cased)
-        suffixes = r"\s+(Ag|Gmbh|Ltd\.?|Inc\.?)$"
-        v = re.sub(suffixes, "", v, flags=re.IGNORECASE)
-
-        return v.strip()
+        return v

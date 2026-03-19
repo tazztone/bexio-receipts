@@ -17,16 +17,19 @@ class Settings(BaseSettings):
     llm_provider: str = "ollama"  # or "openai"
     llm_model: str = "qwen3.5:9b"
     ollama_url: str = "http://localhost:11434"
+    openai_api_key: str | None = None
 
     # Default accounts for bexio
     default_booking_account_id: int
     default_bank_account_id: int
     default_vat_rate: float = 8.1
+    default_payment_terms_days: int = 30
 
     # bexio-receipts specific
     inbox_path: str = "./inbox"
     review_username: str = "admin"
-    review_password: str
+    review_password: str = "password"  # keep as fallback default
+    review_users: dict[str, str] = {}  # Multi-user support {"username": "password"}
     secret_key: str
     database_path: str = "processed_receipts.db"
     review_dir: str = "./review_queue"
