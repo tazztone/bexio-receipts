@@ -35,6 +35,7 @@ class BexioClient:
         token: str,
         base_url: str = "https://api.bexio.com",
         default_vat_rate: float = 8.1,
+        default_payment_terms_days: int = 30,
     ):
         self.client = httpx.AsyncClient(
             base_url=base_url,
@@ -42,6 +43,7 @@ class BexioClient:
             timeout=30.0,
         )
         self.default_vat_rate = default_vat_rate
+        self.default_payment_terms_days = default_payment_terms_days
         self._tax_cache: dict[float, int] = {}
         self._account_cache: dict[str, int] = {}
         self._user_id: int | None = None
@@ -223,12 +225,18 @@ class BexioClient:
                 }
             )
 
+        bill_date = receipt.transaction_date or date.today()
+        from datetime import timedelta
+
+        # Determine due date based on payment terms
+        due_date = bill_date + timedelta(days=self.default_payment_terms_days)
+
         payload = {
             "supplier_id": supplier_id,
             "title": receipt.merchant_name or "Receipt",
             "contact_partner_id": supplier_id,
-            "bill_date": (receipt.transaction_date or date.today()).isoformat(),
-            "due_date": (receipt.transaction_date or date.today()).isoformat(),
+            "bill_date": bill_date.isoformat(),
+            "due_date": due_date.isoformat(),
             "amount_man": round(receipt.total_incl_vat, 2),
             "manual_amount": True,
             "currency_code": receipt.currency,

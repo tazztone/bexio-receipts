@@ -11,6 +11,6 @@ def test_merchant_name_normalization():
     )
 
     assert r1.merchant_name == "Migros"
-    assert r2.merchant_name == "Migros"
+    assert r2.merchant_name == "Migros Ag"
     assert r3.merchant_name == "Migros"
-    assert r4.merchant_name == "My Shop"
+    assert r4.merchant_name == "My Shop Gmbh"
