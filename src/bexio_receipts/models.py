@@ -1,5 +1,5 @@
 from __future__ import annotations
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import date
 import re
 
@@ -15,6 +15,8 @@ class VatEntry(BaseModel):
     vat_amount: float = Field(..., description="Actual VAT amount for this rate")
 
 class Receipt(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     merchant_name: str | None = None
     transaction_date: date | None = Field(None, alias="date")
     currency: str = "CHF"
