@@ -5,16 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.3] - 2024-06-20
 
 ### Added
-- Responsible disclosure policy in `SECURITY.md`.
-- GitHub Issue Templates for bugs and feature requests.
-- Mermaid diagrams in `README.md` and `ARCHITECTURE.md`.
-- Troubleshooting guide and Quick Start in `README.md`.
+- **New Documentation Suite**: Added `CONFIGURATION.md`, `TROUBLESHOOTING.md`, `OPERATIONS.md`, and `DECISIONS.md`.
+- **Project Standards**: Added `LICENSE`, `SECURITY.md`, and GitHub Issue Templates.
+- **Visuals**: Integrated Mermaid diagrams and high-level architecture maps.
+
+### Changed
+- **Archive Consolidation**: Migrated strategic takeaways from `docs/archive/` into normative documentation.
+- **Model Standard**: Standardized on `qwen3.5:9b` as the project default.
 
 ### Fixed
-- Corrected Ollama model tag for Qwen in `config.py` and documentation.
+- **Documentation Errors**: Corrected broken `uv` install links and stale model references.
+- **Security**: Added real vulnerability reporting guidelines.
 
 ## [0.1.2] - 2024-05-25
 
@@ -59,5 +63,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Initial release with core ingestion pipeline (Watcher, Email).
-- Basic PaddleOCR integration and OpenAI extraction.
+- Basic PaddleOCR integration and structured extraction.
 - Minimal Review Dashboard.

@@ -13,7 +13,7 @@ uv run bexio-receipts  # Run the CLI
 
 ### Prerequisites
 - **Python 3.12+**
-- **uv**: `curl -LsSf https://astral-sh/uv/install.sh | sh`
+- **uv**: `curl -LsSf https://docs.astral.sh/uv/install.sh | sh`
 - **System Dependencies (Poppler)**:
   - **Linux (Debian/Ubuntu)**: `sudo apt-get install libpoppler-cpp-dev`
   - **macOS**: `brew install poppler`
@@ -52,12 +52,23 @@ Before pushing, ensure these pass:
    - Refactor `ARCHITECTURE.md` if the data flow changes.
    - Note: The `docs/archive/` directory contains historical design notes and is for context only; it is not normative for the current system.
 
+## 🏗️ Design Rationale (Lessons Learned)
+
+These principles were solidified during the 2024 deep audit:
+
+1. **Surface Latent Bugs**: Surface-level functional tests can miss class signature mismatches. **Static Analysis (Mypy)** and high-coverage integration tests are mandatory to catch runtime crashes before they hit production.
+2. **Fail Fast Configuration**: Avoid hardcoded fallbacks for security-sensitive settings (like `secret_key`). Use Pydantic `Settings` to ensure the application fails at startup if the environment is misconfigured.
+3. **Cold Path Protection**: Secondary modules (Telegram, GDrive) can accumulate bitrot. CI must exercise all modules via `mypy` and `ruff` regardless of how frequently they are used in production.
+4. **Deterministic Resource Cleanup**: Always implement context manager support (`with` statements) for I/O resources (DBs, sockets) to ensure they are closed properly, rather than relying on the garbage collector.
+
 ## CI/CD
 Our GitHub Actions workflow enforces:
 - All tests passing.
 - Test coverage > 85%.
 - Static analysis (Ruff/Mypy) passing.
 - Successful Docker build.
+
+3. **Database Isolation**: Always use the `tmp_path` fixture for SQLite tests to avoid side-effects between runs.
 
 ---
 
