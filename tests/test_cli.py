@@ -1,6 +1,5 @@
 import json
-from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, AsyncMock
 import pytest
 from bexio_receipts.cli import main
 import sys
@@ -22,7 +21,7 @@ def test_cli_process_real(tmp_path, test_settings):
     test_settings.bexio_api_token = "valid_token"
     
     with patch("bexio_receipts.cli.Settings", return_value=test_settings):
-        with patch("bexio_receipts.database.DuplicateDetector") as mock_db:
+        with patch("bexio_receipts.database.DuplicateDetector"):
             with patch("bexio_receipts.cli.BexioClient") as mock_client:
                 mock_client_inst = mock_client.return_value.__aenter__.return_value
                 mock_client_inst.cache_lookups = AsyncMock()

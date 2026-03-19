@@ -1,7 +1,6 @@
 import json
 import mimetypes
 import secrets
-import httpx
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Form, Depends, status, Response
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
@@ -311,7 +310,6 @@ async def check_ocr_status(settings: Settings = Depends(get_settings)):
     if settings.ocr_engine == "paddleocr":
         try:
             import paddleocr
-            import paddle
             return HTMLResponse(f'<span class="status-badge status-ok">OK (PaddleOCR {paddleocr.__version__})</span>')
         except ImportError:
             return HTMLResponse('<span class="status-badge status-error">Error: paddleocr or paddlepaddle not installed</span>')
