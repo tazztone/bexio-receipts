@@ -11,7 +11,8 @@ from slowapi.errors import RateLimitExceeded
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Gauge
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-
+import functools
+import os
 import sqlite3
 import structlog
 
@@ -24,10 +25,11 @@ logger = structlog.get_logger(__name__)
 
 app = FastAPI(title="bexio-receipts Review Dashboard")
 
+@functools.lru_cache()
 def get_settings() -> Settings:
     return Settings()
 
-app.add_middleware(SessionMiddleware, secret_key=get_settings().secret_key)
+app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SECRET_KEY", "fallback-secret-for-startup"))
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter

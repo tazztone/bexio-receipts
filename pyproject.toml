@@ -1,7 +1,7 @@
 [project]
 name = "bexio-receipts"
 version = "0.1.1"
-description = "Add your description here"
+description = "An automated pipeline to ingest, OCR, and extract data from receipts directly into bexio."
 readme = "README.md"
 authors = [
     { name = "tazztone", email = "62671577+tazztone@users.noreply.github.com" }
@@ -41,7 +41,7 @@ requires = ["uv_build>=0.9.26,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.pytest.ini_options]
-addopts = "--cov=bexio_receipts --cov-fail-under=70"
+addopts = "--cov=bexio_receipts --cov-fail-under=85"
 
 [dependency-groups]
 dev = [

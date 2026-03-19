@@ -5,7 +5,10 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 logger = structlog.get_logger(__name__)
 
-def is_retryable_exception(exception):
+CONTACT_TYPE_COMPANY = 1
+CONTACT_TYPE_PERSON = 2
+
+def is_retryable_exception(exception: Exception) -> bool:
     """Retries on 429 and 5xx errors from httpx."""
     if isinstance(exception, httpx.HTTPStatusError):
         return exception.response.status_code == 429 or 500 <= exception.response.status_code < 600
@@ -132,7 +135,7 @@ class BexioClient:
             
         # Create
         create_payload = {
-            "contact_type_id": 1, # Company
+            "contact_type_id": CONTACT_TYPE_COMPANY,
             "name_1": name,
             "user_id": self._user_id or 1,
             "owner_id": self._owner_id or 1,
