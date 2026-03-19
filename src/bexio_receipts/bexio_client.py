@@ -32,7 +32,6 @@ class BexioClient:
         self.default_vat_rate = default_vat_rate
         self._tax_cache: dict[float, int] = {}
         self._account_cache: dict[str, int] = {}
-        self.default_vat_rate = default_vat_rate
         self._user_id: int | None = None
         self._owner_id: int | None = None
     

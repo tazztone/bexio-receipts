@@ -35,8 +35,12 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
-def get_db(settings: Settings = Depends(get_settings)) -> DuplicateDetector:
-    return DuplicateDetector(settings.database_path)
+def get_db(settings: Settings = Depends(get_settings)):
+    db = DuplicateDetector(settings.database_path)
+    try:
+        yield db
+    finally:
+        db.close()
 
 # Setup templates and static files
 BASE_DIR = Path(__file__).resolve().parent
@@ -45,7 +49,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 security = HTTPBasic()
 
 def verify_credentials(request: Request, credentials: HTTPBasicCredentials = Depends(security), settings: Settings = Depends(get_settings)):
-    is_correct_username = secrets.compare_digest(credentials.username.encode("utf8"), b"admin")
+    is_correct_username = secrets.compare_digest(credentials.username.encode("utf8"), settings.review_username.encode("utf8"))
     is_correct_password = secrets.compare_digest(credentials.password.encode("utf8"), settings.review_password.encode("utf8"))
 
     if not (is_correct_username and is_correct_password):
@@ -57,7 +61,7 @@ def verify_credentials(request: Request, credentials: HTTPBasicCredentials = Dep
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Basic"},
         )
     return credentials.username
@@ -67,7 +71,7 @@ RECEIPTS_FAILED = Gauge('receipts_failed_total', 'Total number of receipts sent 
 OCR_CONFIDENCE = Gauge('ocr_confidence_avg', 'Average OCR confidence of receipts')
 
 @app.get("/metrics")
-async def metrics(settings: Settings = Depends(get_settings), db: DuplicateDetector = Depends(get_db)):
+async def metrics(username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings), db: DuplicateDetector = Depends(get_db)):
     """Prometheus metrics endpoint."""
 
     # Update metrics from DB/filesystem on the fly
