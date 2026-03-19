@@ -1,8 +1,5 @@
 import json
-import secrets
-from pathlib import Path
 from unittest.mock import MagicMock, patch, AsyncMock
-import pytest
 from fastapi.testclient import TestClient
 from bexio_receipts.server import app, get_settings, get_db
 
