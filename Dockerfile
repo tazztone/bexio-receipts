@@ -1,7 +1,7 @@
-FROM ghcr.io/astral-sh/uv:0.5.x AS uv
+
 
 FROM python:3.12-slim
-COPY --from=uv /uv /uvx /bin/
+
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
-
+COPY --from=ghcr.io/astral-sh/uv:0.5.1 /uv /uvx /bin/
 
 WORKDIR /app
 

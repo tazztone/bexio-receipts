@@ -76,8 +76,8 @@ async def process_file(file_path: str, dry_run: bool, settings: Settings):
         print(f"\nFinal Result:\n{json.dumps(result, indent=2, default=str)}")
 
 def main():
+    from pydantic import ValidationError
     try:
-        from pydantic import ValidationError
         settings = Settings()
     except ValidationError as e:
         print("Configuration error: Missing or invalid settings.")

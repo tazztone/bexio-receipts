@@ -2,6 +2,13 @@
 
 An automated pipeline to ingest, OCR, and extract data from receipts directly into bexio.
 
+
+## Useful Links
+- [bexio API Documentation](https://docs.bexio.com/)
+- [GLM-OCR](https://github.com/zai-org/GLM-OCR)
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [Qwen3.5-9B](https://huggingface.co/Qwen/Qwen3.5-9B)
+
 ## Features
 
 - **Multi-Source Ingestion:**
