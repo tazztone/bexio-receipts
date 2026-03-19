@@ -70,14 +70,23 @@ async def process_file(file_path: str, dry_run: bool, settings: Settings):
     from .database import DuplicateDetector
     db = DuplicateDetector(settings.database_path)
 
-    async with BexioClient(token=settings.bexio_api_token, base_url=settings.bexio_base_url) as client:
+    async with BexioClient(token=settings.bexio_api_token, base_url=settings.bexio_base_url, default_vat_rate=settings.default_vat_rate) as client:
         await client.cache_lookups()
         result = await process_receipt(file_path, settings, client, db)
         print(f"\nFinal Result:\n{json.dumps(result, indent=2, default=str)}")
 
 def main():
     try:
+        from pydantic import ValidationError
         settings = Settings()
+    except ValidationError as e:
+        print("Configuration error: Missing or invalid settings.")
+        for err in e.errors():
+            loc = ".".join(map(str, err.get("loc", [])))
+            msg = err.get("msg", "")
+            print(f"  - {loc}: {msg}")
+        print("\nPlease check your .env file or environment variables.")
+        sys.exit(1)
     except Exception as e:
         print(f"Configuration error: {e}")
         sys.exit(1)

@@ -14,8 +14,15 @@ def is_retryable_exception(exception: Exception) -> bool:
         return exception.response.status_code == 429 or 500 <= exception.response.status_code < 600
     return False
 
+BEXIO_RETRY = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception(is_retryable_exception),
+    reraise=True
+)
+
 class BexioClient:
-    def __init__(self, token: str, base_url: str = "https://api.bexio.com"):
+    def __init__(self, token: str, base_url: str = "https://api.bexio.com", default_vat_rate: float = 8.1):
         self.client = httpx.AsyncClient(
             base_url=base_url,
             headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
@@ -23,15 +30,11 @@ class BexioClient:
         )
         self._tax_cache: dict[float, int] = {}
         self._account_cache: dict[str, int] = {}
+        self.default_vat_rate = default_vat_rate
         self._user_id: int | None = None
         self._owner_id: int | None = None
     
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception(is_retryable_exception),
-        reraise=True
-    )
+    @BEXIO_RETRY
     async def get_profile(self) -> dict:
         """Fetch current user profile to get user_id and owner_id."""
         resp = await self.client.get("/3.0/profile/me")
@@ -50,12 +53,7 @@ class BexioClient:
 
         return profile
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception(is_retryable_exception),
-        reraise=True
-    )
+    @BEXIO_RETRY
     async def fetch_taxes(self):
         """Fetch and cache tax rates."""
         resp = await self.client.get("/3.0/taxes")
@@ -65,12 +63,7 @@ class BexioClient:
             if t.get("value") is not None:
                 self._tax_cache[float(t["value"])] = t["id"]
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception(is_retryable_exception),
-        reraise=True
-    )
+    @BEXIO_RETRY
     async def fetch_accounts(self):
         """Fetch and cache accounts."""
         resp = await self.client.get("/2.0/accounts")
@@ -95,15 +88,10 @@ class BexioClient:
     async def get_tax_id(self, rate: float | None) -> int:
         """Return bexio tax ID for a given rate, fallback to standard (8.1)."""
         if rate is None:
-            return self._tax_cache.get(8.1, 1) # Fallback to standard
-        return self._tax_cache.get(float(rate), self._tax_cache.get(8.1, 1))
+            return self._tax_cache.get(self.default_vat_rate, 1) # Fallback to standard
+        return self._tax_cache.get(float(rate), self._tax_cache.get(self.default_vat_rate, 1))
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception(is_retryable_exception),
-        reraise=True
-    )
+    @BEXIO_RETRY
     async def upload_file(self, file_path: str, filename: str, mime_type: str) -> str:
         """Upload file, returns UUID string."""
         with open(file_path, "rb") as f:
@@ -114,12 +102,7 @@ class BexioClient:
             resp.raise_for_status()
             return resp.json()["id"]  # UUID string
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception(is_retryable_exception),
-        reraise=True
-    )
+    @BEXIO_RETRY
     async def find_or_create_contact(self, name: str) -> int:
         """Search for a contact by name, create if not found."""
         # Search
@@ -144,12 +127,7 @@ class BexioClient:
         resp.raise_for_status()
         return resp.json()["id"]
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception(is_retryable_exception),
-        reraise=True
-    )
+    @BEXIO_RETRY
     async def create_expense(self, receipt: Receipt, file_uuid: str, 
                               booking_account_id: int, bank_account_id: int) -> dict:
         """Create a simple expense (bexio v4)."""
@@ -178,12 +156,7 @@ class BexioClient:
         resp.raise_for_status()
         return resp.json()
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception(is_retryable_exception),
-        reraise=True
-    )
+    @BEXIO_RETRY
     async def create_purchase_bill(self, receipt: Receipt, file_uuid: str,
                                     booking_account_id: int) -> dict:
         """Create a full purchase bill with line items (bexio v4)."""
