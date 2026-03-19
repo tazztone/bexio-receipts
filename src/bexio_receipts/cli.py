@@ -95,7 +95,6 @@ def init(
     """Interactive setup wizard to create .env file."""
     if quickstart:
         non_interactive = True
-        use_defaults = True
 
     console.print(Panel.fit("Welcome to bexio-receipts setup! 🧾🚀", style="bold blue"))
 
@@ -202,7 +201,7 @@ def init(
             from .config import Settings
             # We need to reload settings since we just wrote .env
             os.environ["BEXIO_API_TOKEN"] = token # Ensure it's in env for this process
-            settings = Settings()
+            settings = Settings()  # type: ignore[call-arg]
             
             async def _dry_run():
                 from .ocr import async_run_ocr

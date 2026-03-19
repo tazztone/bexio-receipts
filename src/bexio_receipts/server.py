@@ -15,6 +15,8 @@ import functools
 import sqlite3
 import structlog
 
+from fastapi.staticfiles import StaticFiles
+
 from .config import Settings
 from .bexio_client import BexioClient
 from .models import Receipt
@@ -32,6 +34,11 @@ def get_settings() -> Settings:
 
 app.add_middleware(SessionMiddleware, secret_key=get_settings().secret_key)
 
+# Setup templates and static files
+BASE_DIR = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
@@ -44,10 +51,6 @@ def get_db(settings: Settings = Depends(get_settings)):
     finally:
         db.close()
 
-
-# Setup templates and static files
-BASE_DIR = Path(__file__).resolve().parent
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 security = HTTPBasic()
 
@@ -449,7 +452,12 @@ async def setup_wizard(
     settings: Settings = Depends(get_settings),
 ):
     """Render the setup wizard page."""
-    return templates.TemplateResponse(request, "setup.html", {"settings": settings})
+    if "csrf_token" not in request.session:
+        request.session["csrf_token"] = secrets.token_urlsafe()
+    csrf_token = request.session["csrf_token"]
+    return templates.TemplateResponse(
+        request, "setup.html", {"settings": settings, "csrf_token": csrf_token}
+    )
 
 
 @app.get("/setup/check/bexio")
@@ -596,12 +604,18 @@ async def check_db_status(settings: Settings = Depends(get_settings)):
 
 @app.post("/setup/pull-model")
 async def pull_ollama_model(
-    request: Request, model: str = Form(...), settings: Settings = Depends(get_settings)
+    request: Request,
+    model: str = Form(...),
+    csrf_token: str = Form(...),
+    settings: Settings = Depends(get_settings),
 ):
     """Trigger Ollama model pull."""
+    if not csrf_token or request.session.get("csrf_token") != csrf_token:
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
     url = (
         settings.ollama_url
-        if "ollama_url" in settings.model_fields
+        if "ollama_url" in Settings.model_fields
         else settings.glm_ocr_url
     )
     try:

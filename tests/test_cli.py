@@ -132,8 +132,10 @@ def test_cli_init_quickstart(tmp_path, test_settings):
         mock_fixtures.exists.return_value = True
         
         def path_side_effect(path_str):
-            if str(path_str) == ".env": return mock_env
-            if "fixtures" in str(path_str): return mock_fixtures
+            if str(path_str) == ".env":
+                return mock_env
+            if "fixtures" in str(path_str):
+                return mock_fixtures
             return MagicMock()
 
         mock_path.side_effect = path_side_effect

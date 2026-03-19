@@ -4,13 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Review Receipt</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/pico.min.css">
     <style>
         .split-view {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr;
             gap: 2rem;
             align-items: start;
+        }
+        @media (min-width: 992px) {
+            .split-view {
+                grid-template-columns: 1fr 1fr;
+            }
         }
         .receipt-image {
             width: 100%;
@@ -19,11 +24,22 @@
             border: 1px solid #ccc;
         }
         .error-list {
-            background-color: #fff1f1;
+            background-color: var(--pico-del-background-color);
+            color: var(--pico-del-color);
             padding: 1rem;
-            border-left: 5px solid #ff4444;
+            border-left: 5px solid var(--pico-del-color);
             margin-bottom: 1rem;
         }
+        .status-badge { 
+            padding: 0.1rem 0.4rem; 
+            border-radius: 4px; 
+            font-weight: bold; 
+            font-size: 0.8rem; 
+            display: inline-block;
+        }
+        .status-ok { background-color: var(--pico-ins-background-color); color: var(--pico-ins-color); }
+        .status-error { background-color: var(--pico-del-background-color); color: var(--pico-del-color); }
+        .status-warning { background-color: #f9a825; color: #000; }
     </style>
 </head>
 <body>
@@ -46,22 +62,29 @@
                 <a href="/image/{{ id }}" target="_blank" title="Click to open full size">
                     <img src="/image/{{ id }}" class="receipt-image" alt="Receipt">
                 </a>
-                <p style="text-align: center;"><small>Click image to open full size in new tab</small></p>
+                <p style="text-align: center;"><small>Click image to open full size</small></p>
+
+                <div class="hide-mobile" style="margin-top: 2rem;">
+                    <details open>
+                        <summary>OCR Reference Text</summary>
+                        <pre style="font-size: 0.75rem; background: var(--pico-card-background-color); padding: 1rem; border-radius: 8px; max-height: 300px; overflow-y: auto;">{{ data.ocr_text }}</pre>
+                    </details>
+                </div>
             </div>
 
             <!-- Right: Form -->
             <div>
                 {% if data.ocr_confidence %}
-                <div style="margin-bottom: 1rem; padding: 0.5rem; border-radius: 5px; background: {% if data.ocr_confidence < 0.8 %}#fff3cd{% else %}#d4edda{% endif %};">
-                    <strong>OCR Confidence:</strong> {{ (data.ocr_confidence * 100)|round(1) }}%
-                    {% if data.ocr_confidence < 0.8 %} ⚠️ (Low){% endif %}
+                <div class="status-badge {% if data.ocr_confidence < 0.8 %}status-warning{% else %}status-ok{% endif %}" style="margin-bottom: 1.5rem; width: 100%; padding: 0.75rem; text-align: center; border-radius: 8px;">
+                    <strong>AI Confidence:</strong> {{ (data.ocr_confidence * 100)|round(1) }}%
+                    {% if data.ocr_confidence < 0.8 %} ⚠️ (Review details carefully){% endif %}
                 </div>
                 {% endif %}
 
                 {% if data.errors %}
-                <div class="error-list">
-                    <strong>Errors found:</strong>
-                    <ul>
+                <div class="error-list" style="border-radius: 8px;">
+                    <strong>Warnings:</strong>
+                    <ul style="margin-bottom: 0;">
                     {% for err in data.errors %}
                         <li>{{ err }}</li>
                     {% endfor %}
@@ -69,45 +92,67 @@
                 </div>
                 {% endif %}
 
-                <form action="/push/{{ id }}" method="POST">
-                    <label for="merchant_name">Merchant Name</label>
-                    <input type="text" name="merchant_name" value="{{ receipt.merchant_name or '' }}" required>
+                <article style="padding: 1.5rem; border-radius: 12px; margin-top: 0;">
+                    <form action="/push/{{ id }}" method="POST" onsubmit="document.getElementById('push-btn').ariaBusy = 'true';">
+                        <fieldset>
+                            <label for="merchant_name">Merchant Name
+                                <input type="text" name="merchant_name" value="{{ receipt.merchant_name or '' }}" required placeholder="e.g. Starbucks">
+                            </label>
 
-                    <label for="date">Date (YYYY-MM-DD)</label>
-                    <input type="date" name="date" value="{{ receipt.transaction_date or '' }}" required>
+                            <div class="grid">
+                                <label for="date">Date
+                                    <input type="date" name="date" value="{{ receipt.transaction_date or '' }}" required>
+                                </label>
+                                <label for="total_incl_vat">Total (CHF)
+                                    <input type="number" step="0.01" name="total_incl_vat" value="{{ receipt.total_incl_vat or 0.0 }}" required>
+                                </label>
+                            </div>
 
-                    <label for="total_incl_vat">Total (CHF)</label>
-                    <input type="number" step="0.01" name="total_incl_vat" value="{{ receipt.total_incl_vat or 0.0 }}" required>
+                            <label for="vat_rate_pct">VAT Rate (%)
+                                <select name="vat_rate_pct">
+                                    <option value="8.1" {% if receipt.vat_rate_pct == 8.1 %}selected{% endif %}>8.1% (Standard)</option>
+                                    <option value="2.6" {% if receipt.vat_rate_pct == 2.6 %}selected{% endif %}>2.6% (Reduced)</option>
+                                    <option value="3.8" {% if receipt.vat_rate_pct == 3.8 %}selected{% endif %}>3.8% (Accommodation)</option>
+                                    <option value="0.0" {% if receipt.vat_rate_pct == 0.0 %}selected{% endif %}>0.0% (Exempt)</option>
+                                </select>
+                            </label>
+                        </fieldset>
 
-                    <label for="vat_rate_pct">VAT Rate (%)</label>
-                    <select name="vat_rate_pct">
-                        <option value="8.1" {% if receipt.vat_rate_pct == 8.1 %}selected{% endif %}>8.1% (Standard)</option>
-                        <option value="2.6" {% if receipt.vat_rate_pct == 2.6 %}selected{% endif %}>2.6% (Reduced)</option>
-                        <option value="3.8" {% if receipt.vat_rate_pct == 3.8 %}selected{% endif %}>3.8% (Accommodation)</option>
-                        <option value="0.0" {% if receipt.vat_rate_pct == 0.0 %}selected{% endif %}>0.0% (Exempt)</option>
-                    </select>
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        
+                        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                            <button type="submit" id="push-btn" class="contrast" style="flex: 2;">Push to bexio</button>
+                            <button type="button" class="secondary outline" style="flex: 1;"
+                                    onclick="if(confirm('Are you sure you want to discard this?')) { document.getElementById('discard-form').submit(); }">
+                                Discard
+                            </button>
+                        </div>
+                    </form>
+                </article>
 
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <div class="grid">
-                        <button type="submit">Push to bexio</button>
-                        <button type="button" class="secondary outline" 
-                                onclick="if(confirm('Are you sure you want to discard this?')) { document.getElementById('discard-form').submit(); }">
-                            Discard
-                        </button>
-                    </div>
-                </form>
+                <div class="hide-desktop" style="margin-top: 1rem;">
+                    <details>
+                        <summary>OCR Reference Text</summary>
+                        <pre style="font-size: 0.75rem; background: var(--pico-card-background-color); padding: 1rem; border-radius: 8px;">{{ data.ocr_text }}</pre>
+                    </details>
+                </div>
 
                 <form id="discard-form" action="/discard/{{ id }}" method="POST" style="display: none;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 </form>
-                
-                <hr>
-                <details open>
-                    <summary>Original OCR Text</summary>
-                    <pre style="font-size: 0.8rem; background: #f4f4f4; padding: 1rem;">{{ data.ocr_text }}</pre>
-                </details>
             </div>
         </div>
     </main>
+
+    <style>
+        @media (max-width: 991px) {
+            .hide-desktop { display: block; }
+            .hide-mobile { display: none; }
+        }
+        @media (min-width: 992px) {
+            .hide-desktop { display: none; }
+            .hide-mobile { display: block; }
+        }
+    </style>
 </body>
 </html>

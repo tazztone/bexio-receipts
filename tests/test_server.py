@@ -162,12 +162,16 @@ def test_pull_model_success(test_settings):
     with patch(
         "httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_resp
     ):
-        response = client.post(
-            "/setup/pull-model",
-            data={"model": "test-model"},
-            auth=("admin", "test_password"),
-        )
-        assert "Successfully pulled test-model" in response.text
+        with patch(
+            "bexio_receipts.server.Request.session",
+            property(lambda x: {"csrf_token": "test_token"}),
+        ):
+            response = client.post(
+                "/setup/pull-model",
+                data={"model": "test-model", "csrf_token": "test_token"},
+                auth=("admin", "test_password"),
+            )
+            assert "Successfully pulled test-model" in response.text
     app.dependency_overrides.clear()
 
 

@@ -7,11 +7,16 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <script src="https://unpkg.com/htmx.org@2.0.1"></script>
     <style>
-        .status-badge { padding: 0.2rem 0.5rem; border-radius: 5px; font-weight: bold; }
-        .status-ok { background-color: #2e7d32; color: white; }
-        .status-error { background-color: #c62828; color: white; }
-        .status-warning { background-color: #f9a825; color: black; }
-        .status-checking { background-color: #1565c0; color: white; }
+        .status-badge { 
+            padding: 0.2rem 0.5rem; 
+            border-radius: 5px; 
+            font-weight: bold; 
+            display: inline-block;
+        }
+        .status-ok { background-color: var(--pico-ins-background-color); color: var(--pico-ins-color); }
+        .status-error { background-color: var(--pico-del-background-color); color: var(--pico-del-color); }
+        .status-warning { background-color: #f9a825; color: #000; }
+        .status-checking { background-color: var(--pico-primary-background); color: var(--pico-primary-inverse); }
     </style>
 </head>
 <body>
@@ -86,7 +91,7 @@
                 <footer>
                     <div class="grid">
                         <button hx-get="/setup/run-all" hx-target="#checks" hx-swap="none">Run All Checks</button>
-                        <button class="secondary outline" onclick="copyConfig()">Copy Config (.env)</button>
+                        <button class="secondary outline" onclick="copyConfig(this)">Copy Config (.env)</button>
                     </div>
                 </footer>
             </article>
@@ -115,7 +120,7 @@ DEFAULT_BANK_ACCOUNT_ID={{ settings.default_bank_account_id }}</pre>
                     <div>
                         <button class="outline" 
                                 hx-post="/setup/pull-model" 
-                                hx-vals='{"model": "{{ settings.llm_model }}"}'
+                                hx-vals='{"model": "{{ settings.llm_model }}", "csrf_token": "{{ csrf_token }}"}'
                                 hx-target="#pull-status"
                                 hx-confirm="This might take a while depending on your internet speed. Continue?">
                             Pull LLM Model ({{ settings.llm_model }})
@@ -125,7 +130,7 @@ DEFAULT_BANK_ACCOUNT_ID={{ settings.default_bank_account_id }}</pre>
                     <div>
                         <button class="outline" 
                                 hx-post="/setup/pull-model" 
-                                hx-vals='{"model": "{{ settings.glm_ocr_model }}"}'
+                                hx-vals='{"model": "{{ settings.glm_ocr_model }}", "csrf_token": "{{ csrf_token }}"}'
                                 hx-target="#pull-status"
                                 hx-confirm="This might take a while depending on your internet speed. Continue?">
                             Pull OCR Model ({{ settings.glm_ocr_model }})
