@@ -225,7 +225,7 @@ async def push_to_bexio(
     receipt_data["vat_rate_pct"] = vat_rate_pct
     
     # Re-validate via Pydantic (to ensure date/floats are correct)
-    receipt = Receipt(**receipt_data)
+    receipt = Receipt.model_validate(receipt_data)
     
     # Push to bexio
     img_path = data.get("original_file")

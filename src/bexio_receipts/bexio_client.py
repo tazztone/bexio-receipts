@@ -1,5 +1,6 @@
 import httpx
 import structlog
+from datetime import date
 from .models import Receipt
 from typing import Any
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
