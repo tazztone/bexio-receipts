@@ -6,8 +6,8 @@ Only the latest `main` branch is supported for security updates.
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability within this project, please do NOT open a public issue. Instead, please report it privately.
+If you discover a security vulnerability within this project, please do NOT open a public issue. Instead, please use the **GitHub Private Vulnerability Reporting** feature in the "Security" tab of the repository.
 
-[Describe your preferred disclosure method here, e.g., email to the maintainer or using a platform-specific feature.]
+Alternatively, if private reporting is unavailable, please report it via [GitHub issues as a draft/private mention where possible].
 
 We take security seriously and will investigate all reports promptly.

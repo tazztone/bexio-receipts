@@ -49,10 +49,26 @@ uv run bexio-receipts serve
 - **Typing**: The project uses strict type hints where possible. Use `mypy` to verify.
 - **Complexity**: Keep functions small and modular.
 
+## Documentation
+
+- **Normative Docs**: Always update `docs/` and `README.md` for logic changes.
+- **Archive**: The `docs/archive/` directory is for **historical reference only**. Do not add new planning files there. Instead, create a new **Architecture Decision Record (ADR)** in `docs/DECISIONS.md`.
+
+## Repository Structure
+
+- **`uv.lock`**: We commit the lockfile to ensure reproducible builds across environments. Do not manually edit this file; use `uv lock` or `uv sync` to update it.
+
 ## Testing
 
 This project uses `pytest` and maintains a strict >85% test coverage. 
 ```bash
+# Run all tests
 uv run pytest tests/ --cov=src
+
+# Run a single test
+uv run pytest tests/test_validation.py
+
+# Dry-run validation
+uv run bexio-receipts process my_receipt.png --dry-run
 ```
 Please include tests with any new functionality.

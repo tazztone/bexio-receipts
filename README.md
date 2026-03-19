@@ -3,7 +3,7 @@
 [![CI](https://github.com/tazztone/bexio-receipts/actions/workflows/ci.yml/badge.svg)](https://github.com/tazztone/bexio-receipts/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Coverage](https://img.shields.io/badge/coverage-85%25-green)](.coveragerc)
+[![Coverage](https://img.shields.io/badge/coverage-85%25-green)](https://github.com/tazztone/bexio-receipts/actions)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 An automated pipeline to ingest, OCR, and extract data from receipts directly into bexio.
@@ -182,9 +182,18 @@ uv run bexio-receipts serve
 └── Dockerfile           # Optimized multi-stage build
 ```
 
+- **[docs/index.md](docs/index.md)**: Main documentation portal.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): System flow and engine details.
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): Dev environment setup.
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md): Detailed env var reference.
 - [CHANGELOG.md](CHANGELOG.md): History of changes.
+
+---
+
+## 🚧 Known Limitations
+
+- **Hardware**: local extraction with `qwen3.5:9b` via Ollama requires at least 16GB RAM and is significantly faster with a CUDA-compatible GPU.
+- **Language**: PaddleOCR (default) is optimized for Latin-based languages. Handwritten or non-Latin receipts may require `glm-ocr`.
+- **Merchant Match**: Automatic contact creation in bexio relies on high-confidence merchant name extraction.
 
 ---
 
