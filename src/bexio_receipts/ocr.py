@@ -1,6 +1,7 @@
 import base64
 import httpx
 import logging
+from functools import lru_cache
 from paddleocr import PaddleOCR
 from .config import Settings
 
@@ -11,15 +12,20 @@ logging.getLogger("ppocr").setLevel(logging.ERROR)
 
 logger = structlog.get_logger(__name__)
 
-def run_paddle_ocr(file_path: str) -> tuple[str, float, list[dict]]:
-    """
-    Run OCR on a file using PaddleOCR PP-OCRv5.
-    """
-    ocr = PaddleOCR(
+@lru_cache(maxsize=1)
+def get_paddle_ocr() -> PaddleOCR:
+    """Instantiate and cache the PaddleOCR model to avoid 2-5s loading time per call."""
+    return PaddleOCR(
         use_doc_orientation_classify=True,
         use_doc_unwarping=True,
         use_textline_orientation=True,
     )
+
+def run_paddle_ocr(file_path: str) -> tuple[str, float, list[dict]]:
+    """
+    Run OCR on a file using PaddleOCR PP-OCRv5.
+    """
+    ocr = get_paddle_ocr()
 
     results = ocr.ocr(file_path)
 
@@ -87,21 +93,6 @@ async def run_glm_ocr(file_path: str, settings: Settings) -> tuple[str, float, l
         lines = [{"text": raw_text, "confidence": avg_confidence}]
         
         return raw_text, avg_confidence, lines
-
-def run_ocr(file_path: str, settings: Settings | None = None) -> tuple[str, float, list[dict]]:
-    """
-    Unified entry point for OCR. Note: run_glm_ocr is async.
-    If settings.ocr_engine is "glm-ocr", this function will fail if not awaited or handled.
-    Refactoring this to be more flexible.
-    """
-    # For backward compatibility and simple use in tests
-    engine = settings.ocr_engine if settings else "paddleocr"
-    
-    if engine == "paddleocr":
-        return run_paddle_ocr(file_path)
-    else:
-        # This will be handled in the async pipeline
-        raise ValueError(f"OCR engine {engine} must be run via async_run_ocr")
 
 async def async_run_ocr(file_path: str, settings: Settings) -> tuple[str, float, list[dict]]:
     if settings.ocr_engine == "paddleocr":
