@@ -1,20 +1,33 @@
-import argparse
 import asyncio
-import logging
-import sys
 import json
+import sys
 from pathlib import Path
-import uvicorn
+from typing import Optional
 
 import structlog
+import typer
+from rich.console import Console
+from rich.panel import Panel
+from rich.prompt import Prompt, Confirm
 
 from .bexio_client import BexioClient
 from .pipeline import process_receipt
-from .server import app
 from .config import Settings
 
-def setup_logging(env: str = "development"):
+app = typer.Typer(help="bexio-receipts: Automate receipt ingestion into bexio.", rich_markup_mode="rich")
+watch_app = typer.Typer(help="Ingestion source watchers.")
+mapping_app = typer.Typer(help="Merchant account mapping management.")
+app.add_typer(watch_app, name="watch")
+app.add_typer(mapping_app, name="mapping")
+
+console = Console()
+
+def setup_logging(env: str = "development", quiet: bool = False):
+    import logging
     from typing import Any, List
+    
+    level = logging.WARNING if quiet else logging.INFO
+    
     processors: List[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
@@ -26,189 +39,186 @@ def setup_logging(env: str = "development"):
     if env == "production":
         processors.append(structlog.processors.JSONRenderer())
     else:
-        processors.append(structlog.dev.ConsoleRenderer())
+        processors.append(structlog.dev.ConsoleRenderer(colors=True))
 
     structlog.configure(
         processors=processors,
-        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+        wrapper_class=structlog.make_filtering_bound_logger(level),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
-async def process_file(file_path: str, dry_run: bool, settings: Settings):
-    logger = structlog.get_logger("bexio_receipts.cli")
-    
-    if not Path(file_path).exists():
-        logger.error("File not found", path=file_path)
-        sys.exit(1)
-
-    if dry_run:
-        logger.info("Dry run: OCR and Extraction only.")
-        from .ocr import async_run_ocr
-        from .extraction import extract_receipt
-        from .validation import validate_receipt
-
-        raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
-        print(f"\n--- OCR Confidence: {avg_confidence:.1%} ---")
-        print(f"\n--- Raw OCR Text ---\n{raw_text}\n")
-        
-        receipt = await extract_receipt(raw_text, settings)
-        print(f"\n--- Extracted Data ---\n{receipt.model_dump_json(indent=2)}\n")
-        
-        errors = validate_receipt(receipt, settings)
-        if errors:
-            print("\n--- Validation Errors ---\n" + "\n".join(f"- {e}" for e in errors) + "\n")
-        else:
-            print("\n--- Validation Passed ---")
-        return
-
-    # Real run
-    if not settings.bexio_api_token:
-        logger.error("BEXIO_API_TOKEN is not set.")
-        sys.exit(1)
-
-    from .database import DuplicateDetector
-    db = DuplicateDetector(settings.database_path)
-
-    async with BexioClient(token=settings.bexio_api_token, base_url=settings.bexio_base_url, default_vat_rate=settings.default_vat_rate) as client:
-        await client.cache_lookups()
-        result = await process_receipt(file_path, settings, client, db)
-        print(f"\nFinal Result:\n{json.dumps(result, indent=2, default=str)}")
-
-def main():
+def get_settings() -> Settings:
     from pydantic import ValidationError
     try:
-        settings = Settings()
+        return Settings()
     except ValidationError as e:
-        print("Configuration error: Missing or invalid settings.")
+        console.print("[red]Configuration error: Missing or invalid settings.[/red]")
         for err in e.errors():
             loc = ".".join(map(str, err.get("loc", [])))
             msg = err.get("msg", "")
-            print(f"  - {loc}: {msg}")
-        print("\nPlease check your .env file or environment variables.")
-        sys.exit(1)
-    except Exception as e:
-        from pydantic import ValidationError
-        if isinstance(e, ValidationError):
-            print("Configuration error:")
-            for error in e.errors():
-                loc = ".".join(str(x) for x in error["loc"])
-                print(f"  - {loc}: {error['msg']}")
-        else:
-            print(f"Error: {e}")
-        sys.exit(1)
+            console.print(f"  - [bold]{loc}[/bold]: {msg}")
+        console.print("\n[yellow]Run [bold]bexio-receipts init[/bold] to set up your configuration.[/yellow]")
+        raise typer.Exit(code=1)
 
+@app.command()
+def init():
+    """Interactive setup wizard to create .env file."""
+    console.print(Panel.fit("Welcome to bexio-receipts setup! 🧾🚀", style="bold blue"))
+    
+    env_path = Path(".env")
+    if env_path.exists():
+        if not Confirm.ask("An .env file already exists. Overwrite?"):
+            raise typer.Exit()
+
+    token = Prompt.ask("Enter your Bexio API Token (from bexio Admin -> API Tokens)")
+    ocr_engine = Prompt.ask("OCR Engine", choices=["glm-ocr", "paddleocr"], default="glm-ocr")
+    llm_provider = Prompt.ask("LLM Provider", choices=["ollama", "openai"], default="ollama")
+    
+    config = [
+        f"BEXIO_API_TOKEN={token}",
+        "BEXIO_BASE_URL=https://api.bexio.com",
+        f"OCR_ENGINE={ocr_engine}",
+        f"LLM_PROVIDER={llm_provider}",
+    ]
+    
+    if ocr_engine == "glm-ocr":
+        config.append("GLM_OCR_URL=http://localhost:11434")
+        config.append("GLM_OCR_MODEL=glm-ocr")
+    
+    if llm_provider == "ollama":
+        config.append("OLLAMA_URL=http://localhost:11434")
+        config.append("LLM_MODEL=qwen3.5:9b")
+    
+    config.append("DEFAULT_BOOKING_ACCOUNT_ID=630")
+    config.append("DEFAULT_BANK_ACCOUNT_ID=1")
+    config.append("SECRET_KEY=" + Prompt.ask("Secret Key (for dashboard sessions)", default="change-me-in-production"))
+    
+    with open(env_path, "w") as f:
+        f.write("\n".join(config) + "\n")
+    
+    console.print("[green]Successfully created .env file![/green]")
+
+@app.command()
+def process(
+    file: Path = typer.Argument(..., help="Path to the receipt file", exists=True),
+    dry_run: bool = typer.Option(False, "--dry-run", help="OCR and extraction only"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimize log output")
+):
+    """Process a single receipt file."""
+    settings = get_settings()
+    setup_logging(settings.env, quiet=quiet)
+    
+    async def _run():
+        if dry_run:
+            from .ocr import async_run_ocr
+            from .extraction import extract_receipt
+            from .validation import validate_receipt
+
+            raw_text, avg_confidence, _ = await async_run_ocr(str(file), settings)
+            console.print(f"\n[bold]OCR Confidence:[/bold] {avg_confidence:.1%}")
+            console.print(f"\n[bold]Raw OCR Text:[/bold]\n{raw_text}\n")
+            
+            receipt = await extract_receipt(raw_text, settings)
+            console.print(f"\n[bold]Extracted Data:[/bold]\n{receipt.model_dump_json(indent=2)}\n")
+            
+            errors = validate_receipt(receipt, settings)
+            if errors:
+                console.print("\n[bold red]Validation Errors:[/bold red]\n" + "\n".join(f"- {e}" for e in errors))
+            else:
+                console.print("\n[bold green]Validation Passed[/bold green]")
+            return
+
+        from .database import DuplicateDetector
+        db = DuplicateDetector(settings.database_path)
+
+        async with BexioClient(token=settings.bexio_api_token, base_url=settings.bexio_base_url, default_vat_rate=settings.default_vat_rate) as client:
+            await client.cache_lookups()
+            result = await process_receipt(str(file), settings, client, db)
+            console.print(f"\n[bold]Final Result:[/bold]\n{json.dumps(result, indent=2, default=str)}")
+
+    asyncio.run(_run())
+
+@app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", help="Host to bind to"),
+    port: int = typer.Option(8000, help="Port to bind to")
+):
+    """Start the review dashboard server."""
+    import uvicorn
+    from .server import app as fastapi_app
+    settings = get_settings()
     setup_logging(settings.env)
-    parser = argparse.ArgumentParser(description="bexio-receipts: Automate receipt ingestion into bexio.")
-    subparsers = parser.add_subparsers(dest="command", help="Sub-commands")
+    uvicorn.run(fastapi_app, host=host, port=port)
 
-    # Process command
-    process_parser = subparsers.add_parser("process", help="Process a single receipt file")
-    process_parser.add_argument("file", help="Path to the receipt file")
-    process_parser.add_argument("--dry-run", action="store_true", help="OCR and extraction only")
+@watch_app.command("folder")
+def watch_folder(
+    path: Optional[Path] = typer.Option(None, help="Path to monitor")
+):
+    """Monitor a folder for new receipts."""
+    settings = get_settings()
+    setup_logging(settings.env)
+    from .watcher import watch_folder as _watch
+    asyncio.run(_watch(str(path or settings.inbox_path), settings))
 
-    # Mappings command
-    export_parser = subparsers.add_parser("export-mappings", help="Export merchant account mappings to a JSON file")
-    export_parser.add_argument("file", help="Path to the output JSON file")
+@watch_app.command("email")
+def watch_email():
+    """Monitor an email inbox for new receipts."""
+    settings = get_settings()
+    setup_logging(settings.env)
+    from .email_ingest import watch_email as _watch
+    asyncio.run(_watch(settings))
 
-    import_parser = subparsers.add_parser("import-mappings", help="Import merchant account mappings from a JSON file")
-    import_parser.add_argument("file", help="Path to the input JSON file")
+@watch_app.command("telegram")
+def watch_telegram():
+    """Monitor Telegram for new receipts."""
+    settings = get_settings()
+    setup_logging(settings.env)
+    from .telegram_bot import run_bot
+    asyncio.run(run_bot(settings))
 
-    # Reprocess command
-    reprocess_parser = subparsers.add_parser("reprocess", help="Re-process a receipt from the review queue")
-    reprocess_parser.add_argument("review_file", help="Path to the review JSON file")
-    reprocess_parser.add_argument("--dry-run", action="store_true", help="OCR and extraction only")
+@watch_app.command("gdrive")
+def watch_gdrive(
+    folder_id: Optional[str] = typer.Option(None, help="Override Google Drive folder ID")
+):
+    """Monitor Google Drive for new receipts."""
+    settings = get_settings()
+    setup_logging(settings.env)
+    from .gdrive_ingest import watch_gdrive as _watch
+    asyncio.run(_watch(settings, folder_id))
 
-    # Serve command
-    serve_parser = subparsers.add_parser("serve", help="Start the review dashboard server")
-    serve_parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    serve_parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+@app.command()
+def gdrive_auth():
+    """Run interactive Google Drive OAuth2 authentication."""
+    settings = get_settings()
+    from .gdrive_ingest import run_gdrive_auth
+    run_gdrive_auth(settings)
 
-    # Watch-folder command
-    watch_parser = subparsers.add_parser("watch-folder", help="Monitor a folder for new receipts")
-    watch_parser.add_argument("--path", default=settings.inbox_path if settings else "./inbox", help=f"Path to monitor (default: {settings.inbox_path if settings else './inbox'})")
+@mapping_app.command("export")
+def export_mappings(file: Path = typer.Argument(..., help="Path to the output JSON file")):
+    """Export merchant account mappings to a JSON file."""
+    settings = get_settings()
+    from .database import DuplicateDetector
+    db = DuplicateDetector(settings.database_path)
+    mappings = db.get_all_merchant_accounts()
+    with open(file, "w") as f:
+        json.dump(mappings, f, indent=2)
+    console.print(f"Exported {len(mappings)} mappings to {file}")
 
-    # Watch-email command
-    subparsers.add_parser("watch-email", help="Monitor an email inbox for new receipts")
+@mapping_app.command("import")
+def import_mappings(file: Path = typer.Argument(..., help="Path to the input JSON file", exists=True)):
+    """Import merchant account mappings from a JSON file."""
+    settings = get_settings()
+    from .database import DuplicateDetector
+    db = DuplicateDetector(settings.database_path)
+    with open(file) as f:
+        mappings = json.load(f)
+    db.import_merchant_accounts(mappings)
+    console.print(f"Imported {len(mappings)} mappings from {file}")
 
-    # Watch-telegram command
-    subparsers.add_parser("watch-telegram", help="Monitor Telegram for new receipts")
-
-    # Watch-gdrive command
-    gdrive_parser = subparsers.add_parser("watch-gdrive", help="Monitor Google Drive for new receipts")
-    gdrive_parser.add_argument("--folder-id", help="Override Google Drive folder ID")
-
-    # Gdrive-auth command
-    subparsers.add_parser("gdrive-auth", help="Run interactive Google Drive OAuth2 authentication")
-
-    args = parser.parse_args()
-
-    if args.command == "process":
-        try:
-            asyncio.run(process_file(args.file, args.dry_run, settings))
-        except KeyboardInterrupt:
-            pass
-    elif args.command == "reprocess":
-        try:
-            review_file = Path(args.review_file)
-            if not review_file.exists():
-                print(f"Review file {args.review_file} not found.")
-                sys.exit(1)
-            with open(review_file) as f:
-                data = json.load(f)
-            orig_file = data.get("original_file")
-            if not orig_file or not Path(orig_file).exists():
-                print(f"Original file {orig_file} not found.")
-                sys.exit(1)
-            asyncio.run(process_file(orig_file, args.dry_run, settings))
-        except KeyboardInterrupt:
-            pass
-    elif args.command == "export-mappings":
-        from .database import DuplicateDetector
-        db = DuplicateDetector(settings.database_path)
-        mappings = db.get_all_merchant_accounts()
-        with open(args.file, "w") as f:
-            json.dump(mappings, f, indent=2)
-        print(f"Exported {len(mappings)} mappings to {args.file}")
-    elif args.command == "import-mappings":
-        from .database import DuplicateDetector
-        db = DuplicateDetector(settings.database_path)
-        with open(args.file) as f:
-            mappings = json.load(f)
-        db.import_merchant_accounts(mappings)
-        print(f"Imported {len(mappings)} mappings from {args.file}")
-    elif args.command == "serve":
-        uvicorn.run(app, host=args.host, port=args.port)
-    elif args.command == "watch-folder":
-        from .watcher import watch_folder
-        try:
-            asyncio.run(watch_folder(args.path, settings))
-        except KeyboardInterrupt:
-            pass
-    elif args.command == "watch-email":
-        from .email_ingest import watch_email
-        try:
-            asyncio.run(watch_email(settings))
-        except KeyboardInterrupt:
-            pass
-    elif args.command == "watch-telegram":
-        from .telegram_bot import run_bot
-        try:
-            asyncio.run(run_bot(settings))
-        except KeyboardInterrupt:
-            pass
-    elif args.command == "watch-gdrive":
-        from .gdrive_ingest import watch_gdrive
-        try:
-            asyncio.run(watch_gdrive(settings, args.folder_id))
-        except KeyboardInterrupt:
-            pass
-    elif args.command == "gdrive-auth":
-        from .gdrive_ingest import run_gdrive_auth
-        run_gdrive_auth(settings)
-    else:
-        parser.print_help()
+def main():
+    app()
 
 if __name__ == "__main__":
     main()

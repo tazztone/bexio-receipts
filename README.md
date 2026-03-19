@@ -98,38 +98,39 @@ graph TD
 
 ### Installation
 
-> **Note on Dependencies:** The default installation includes `paddlepaddle` and `paddleocr`, which are large dependencies (~500MB+ installed). For a lightweight alternative or cleaner isolation, a Docker-only deployment path is highly recommended.
-
 ```bash
 git clone https://github.com/tazztone/bexio-receipts.git && cd bexio-receipts
 uv sync
 
-# Pull Ollama models
+# Interactive Setup (Recommended)
+uv run bexio-receipts init
+
+# Or manually pull Ollama models
 ollama pull glm-ocr        # for OCR
 ollama pull qwen3.5:9b     # for extraction
 ```
 
 ### Docker
 
-The project includes an optimized multi-stage `Dockerfile` with build caching.
+The project includes an optimized multi-stage `Dockerfile`.
 
 ```bash
 docker compose up -d
 ```
 The dashboard will be available at `http://localhost:8000`.
 
-### Configuration
-
-Copy `.env.example` to `.env` and fill in your credentials. Key variables include:
-- `BEXIO_API_TOKEN`: Your API token.
-- `OCR_ENGINE`: `paddleocr` or `glm-ocr`.
-- `LLM_MODEL`: e.g., `qwen3.5:9b`.
-
 ---
 
 ## 🚀 Usage
 
 ### CLI
+
+The CLI is powered by [Typer](https://typer.tiangolo.com/) and provides grouped commands.
+
+**Interactive Setup:**
+```bash
+uv run bexio-receipts init
+```
 
 **Process a single receipt:**
 ```bash
@@ -141,12 +142,33 @@ uv run bexio-receipts process path/to/receipt.png
 uv run bexio-receipts process path/to/receipt.png --dry-run
 ```
 
+**Watchers:**
+```bash
+uv run bexio-receipts watch folder --path ./my-inbox
+uv run bexio-receipts watch telegram
+uv run bexio-receipts watch email
+uv run bexio-receipts watch gdrive
+```
+
+**Mappings:**
+```bash
+uv run bexio-receipts mapping export mappings.json
+uv run bexio-receipts mapping import mappings.json
+```
+
 ### Review Dashboard
 
 Start the web interface to manage files that fail validation:
 ```bash
 uv run bexio-receipts serve
 ```
+
+The new dashboard includes:
+- **Receipt Thumbnails**: Quick visual identification in the queue.
+- **Date Column**: Sort and track receipts by transaction date.
+- **Bulk Actions**: Discard multiple invalid receipts at once.
+- **OCR Confidence**: See how confident the system was in its extraction.
+- **Zoomable Previews**: Click any receipt to see the full-size image.
 
 ---
 

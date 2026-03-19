@@ -30,6 +30,12 @@
         <p>This wizard helps you verify that all dependencies are correctly configured and reachable.</p>
 
         <section id="checks">
+            <div id="status-summary" style="margin-bottom: 2rem; display: none;">
+                <article>
+                    <div id="status-summary-content"></div>
+                </article>
+            </div>
+
             <article>
                 <header><strong>Dependency Checks</strong></header>
                 <table class="striped">
@@ -108,8 +114,52 @@
     <script>
         // Trigger all checks by finding the Re-check buttons and clicking them
         function runAllChecks() {
+            const summaryDiv = document.getElementById('status-summary');
+            summaryDiv.style.display = 'none';
             const buttons = document.querySelectorAll('button[hx-get^="/setup/check/"]');
             buttons.forEach(btn => htmx.trigger(btn, "click"));
+            
+            // Wait for all HTMX requests to finish before updating summary
+            let finishedCount = 0;
+            const totalCount = buttons.length;
+            
+            const checkFinished = () => {
+                finishedCount++;
+                if (finishedCount === totalCount) {
+                    updateSummary();
+                }
+            };
+
+            document.addEventListener('htmx:afterRequest', function listener(event) {
+                if (event.detail.elt.tagName === 'BUTTON' && event.detail.elt.hasAttribute('hx-get')) {
+                    checkFinished();
+                }
+            });
+        }
+
+        function updateSummary() {
+            const statuses = document.querySelectorAll('.status-badge');
+            let errors = 0;
+            let warnings = 0;
+            let ok = 0;
+
+            statuses.forEach(status => {
+                if (status.classList.contains('status-error')) errors++;
+                else if (status.classList.contains('status-warning')) warnings++;
+                else if (status.classList.contains('status-ok')) ok++;
+            });
+
+            const summaryDiv = document.getElementById('status-summary');
+            const summaryContent = document.getElementById('status-summary-content');
+            
+            summaryDiv.style.display = 'block';
+            if (errors > 0) {
+                summaryContent.innerHTML = `<h3 style="color: #c62828; margin: 0;">⚠️ ${errors} critical issues found.</h3><p style="margin: 0;">Please fix the errors below to continue.</p>`;
+            } else if (warnings > 0) {
+                summaryContent.innerHTML = `<h3 style="color: #f9a825; margin: 0;">💡 Ready with warnings.</h3><p style="margin: 0;">System is functional, but ${warnings} minor issues were detected.</p>`;
+            } else if (ok === statuses.length) {
+                summaryContent.innerHTML = `<h3 style="color: #2e7d32; margin: 0;">✅ Ready to go!</h3><p style="margin: 0;">All dependencies are correctly configured.</p>`;
+            }
         }
 
         document.addEventListener('DOMContentLoaded', runAllChecks);
