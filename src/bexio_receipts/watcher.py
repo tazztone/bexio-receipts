@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler, FileCreatedEvent
+from watchdog.events import FileSystemEventHandler, FileCreatedEvent, DirCreatedEvent
 
 import structlog
 
@@ -24,11 +24,15 @@ class ReceiptHandler(FileSystemEventHandler):
         self.processing: set[Path] = set()
         self.db = DuplicateDetector(settings.database_path)
         
-    def on_created(self, event: FileCreatedEvent):
+    def on_created(self, event: FileCreatedEvent | DirCreatedEvent):
         if event.is_directory:
             return
             
-        file_path = Path(event.src_path)
+        src_path = event.src_path
+        if isinstance(src_path, bytes):
+            src_path = src_path.decode()
+            
+        file_path = Path(src_path)
         # Check if it's an image or PDF
         if file_path.suffix.lower() not in [".png", ".jpg", ".jpeg", ".pdf"]:
             logger.debug("Ignoring non-receipt file", path=str(file_path))

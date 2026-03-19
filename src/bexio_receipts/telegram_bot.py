@@ -29,45 +29,56 @@ class ReceiptBot:
         return user_id in self.allowed_users
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_id = update.effective_user.id
-        if not self._is_allowed(user_id):
-            await update.message.reply_text(f"Access denied. Your user ID: {user_id}")
+        user_id = update.effective_user.id if update.effective_user else 0  # type: ignore
+        if not update.message or not self._is_allowed(user_id):
+            if update.message:
+                await update.message.reply_text(f"Access denied. Your user ID: {user_id}")  # type: ignore
             return
-        await update.message.reply_text(
-            "Welcome to bexio-receipts bot! 🧾🚀\n"
-            "Send me a photo or a PDF of a receipt, and I'll process it for you."
-        )
+            
+            await update.message.reply_text(  # type: ignore
+                "Welcome to bexio-receipts bot! 🧾🚀\n"
+                "Send me a photo or a PDF of a receipt, and I'll process it for you."
+            )
 
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        msg = update.message
+        if not update.effective_user or not msg or not msg.document:
+            return
+            
         user_id = update.effective_user.id
         if not self._is_allowed(user_id):
             return
 
-        doc = update.message.document
+        doc = msg.document
         if doc.mime_type not in ["image/png", "image/jpeg", "application/pdf"]:
-            await update.message.reply_text("Unsupported file type. Please send PNG, JPG, or PDF.")
+            await msg.reply_text("Unsupported file type. Please send PNG, JPG, or PDF.")
             return
 
         file = await context.bot.get_file(doc.file_id)
-        file_path = self.download_dir / doc.file_name
+        filename = doc.file_name or f"document_{doc.file_id}"
+        file_path = self.download_dir / filename
         await file.download_to_drive(str(file_path))
 
-        await self._trigger_processing(update.message, file_path)
+        await self._trigger_processing(msg, file_path)
 
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        msg = update.message
+        if not update.effective_user or not msg or not msg.photo:
+            return
+            
         user_id = update.effective_user.id
         if not self._is_allowed(user_id):
             return
 
         # Photo comes in different sizes, take the largest one
-        photo = update.message.photo[-1]
+        photo = msg.photo[-1]
         file = await context.bot.get_file(photo.file_id)
         
         # Save as png/jpg based on what telegram provides (usually jpg)
         file_path = self.download_dir / f"receipt_{photo.file_id}.jpg"
         await file.download_to_drive(str(file_path))
 
-        await self._trigger_processing(update.message, file_path)
+        await self._trigger_processing(msg, file_path)
 
     async def _trigger_processing(self, message: Message, file_path: Path):
         status_msg = await message.reply_text("Processing receipt... 🔄")
@@ -122,13 +133,17 @@ async def run_bot(settings: Settings):
         logger.info("Starting Telegram bot ingestion")
         await application.initialize()
         await application.start()
-        await application.updater.start_polling()
+        
+        updater = application.updater
+        if updater:
+            await updater.start_polling()
         
         # Keep the bot running
         try:
             while True:
                 await asyncio.sleep(1)
         except asyncio.CancelledError:
-            await application.updater.stop()
+            if updater:
+                await updater.stop()
             await application.stop()
             await application.shutdown()

@@ -2,10 +2,24 @@ import sqlite3
 import hashlib
 from datetime import datetime
 
+def adapt_datetime(dt: datetime) -> str:
+    return dt.isoformat()
+
+def convert_datetime(s: bytes) -> datetime:
+    return datetime.fromisoformat(s.decode())
+
+sqlite3.register_adapter(datetime, adapt_datetime)
+sqlite3.register_converter("TIMESTAMP", convert_datetime)
+
 class DuplicateDetector:
     def __init__(self, db_path: str = "processed_receipts.db"):
         self.db_path = db_path
-        self._conn = sqlite3.connect(self.db_path, timeout=10.0, check_same_thread=False)
+        self._conn = sqlite3.connect(
+            self.db_path, 
+            timeout=10.0, 
+            check_same_thread=False,
+            detect_types=sqlite3.PARSE_DECLTYPES
+        )
         self._init_db()
 
     def _init_db(self):
@@ -49,6 +63,12 @@ class DuplicateDetector:
             )
         """)
         self._conn.commit()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def close(self):
         """Close the database connection."""

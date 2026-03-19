@@ -28,6 +28,7 @@ class BexioClient:
             headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
             timeout=30.0,
         )
+        self.default_vat_rate = default_vat_rate
         self._tax_cache: dict[float, int] = {}
         self._account_cache: dict[str, int] = {}
         self.default_vat_rate = default_vat_rate
@@ -86,7 +87,7 @@ class BexioClient:
         await self.fetch_accounts()
     
     async def get_tax_id(self, rate: float | None) -> int:
-        """Return bexio tax ID for a given rate, fallback to standard (8.1)."""
+        """Return bexio tax ID for a given rate, fallback to standard default."""
         if rate is None:
             return self._tax_cache.get(self.default_vat_rate, 1) # Fallback to standard
         return self._tax_cache.get(float(rate), self._tax_cache.get(self.default_vat_rate, 1))

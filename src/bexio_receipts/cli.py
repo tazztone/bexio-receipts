@@ -14,7 +14,8 @@ from .server import app
 from .config import Settings
 
 def setup_logging(env: str = "development"):
-    processors = [
+    from typing import Any, List
+    processors: List[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.StackInfoRenderer(),
@@ -88,7 +89,14 @@ def main():
         print("\nPlease check your .env file or environment variables.")
         sys.exit(1)
     except Exception as e:
-        print(f"Configuration error: {e}")
+        from pydantic import ValidationError
+        if isinstance(e, ValidationError):
+            print("Configuration error:")
+            for error in e.errors():
+                loc = ".".join(str(x) for x in error["loc"])
+                print(f"  - {loc}: {error['msg']}")
+        else:
+            print(f"Error: {e}")
         sys.exit(1)
 
     setup_logging(settings.env)
@@ -114,7 +122,7 @@ def main():
 
     # Serve command
     serve_parser = subparsers.add_parser("serve", help="Start the review dashboard server")
-    serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
+    serve_parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     serve_parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
 
     # Watch-folder command

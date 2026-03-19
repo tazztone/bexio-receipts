@@ -44,6 +44,9 @@ class EmailIngestor:
 
     async def process_email(self, msg_id: str):
         """Download attachments from an email and process them."""
+        if self.imap_client is None:
+            return
+            
         obj = await self.imap_client.fetch(msg_id, "RFC822")
         raw_email = obj.lines[1]
         msg = email.message_from_bytes(raw_email)
@@ -65,7 +68,9 @@ class EmailIngestor:
                     logger.info("Downloading attachment", filename=filename)
                     
                     with open(filepath, "wb") as f:
-                        f.write(part.get_payload(decode=True))
+                        payload = part.get_payload(decode=True)
+                        if isinstance(payload, bytes):
+                            f.write(payload)
                     
                     # Process the file
                     await self._process_file(filepath)
