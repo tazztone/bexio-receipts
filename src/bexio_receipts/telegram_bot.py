@@ -3,7 +3,13 @@ from pathlib import Path
 
 import structlog
 from telegram import Update, Message
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    MessageHandler,
+    filters,
+    CommandHandler,
+)
 
 from .pipeline import process_receipt
 from .config import Settings
@@ -11,6 +17,7 @@ from .bexio_client import BexioClient
 from .database import DuplicateDetector
 
 logger = structlog.get_logger(__name__)
+
 
 class ReceiptBot:
     def __init__(self, settings: Settings, bexio: BexioClient):
@@ -32,9 +39,11 @@ class ReceiptBot:
         user_id = update.effective_user.id if update.effective_user else 0  # type: ignore
         if not update.message or not self._is_allowed(user_id):
             if update.message:
-                await update.message.reply_text(f"Access denied. Your user ID: {user_id}")  # type: ignore
+                await update.message.reply_text(
+                    f"Access denied. Your user ID: {user_id}"
+                )  # type: ignore
             return
-            
+
         await update.message.reply_text(  # type: ignore
             "Welcome to bexio-receipts bot! 🧾🚀\n"
             "Send me a photo or a PDF of a receipt, and I'll process it for you.\n\n"
@@ -45,7 +54,11 @@ class ReceiptBot:
         )
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not update.message or not update.effective_user or not self._is_allowed(update.effective_user.id):
+        if (
+            not update.message
+            or not update.effective_user
+            or not self._is_allowed(update.effective_user.id)
+        ):
             return
         await update.message.reply_text(
             "bexio-receipts Bot Help:\n\n"
@@ -57,9 +70,13 @@ class ReceiptBot:
         )
 
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not update.message or not update.effective_user or not self._is_allowed(update.effective_user.id):
+        if (
+            not update.message
+            or not update.effective_user
+            or not self._is_allowed(update.effective_user.id)
+        ):
             return
-        
+
         # Simple health check
         status_msg = "System Status:\n"
         try:
@@ -70,15 +87,15 @@ class ReceiptBot:
                 status_msg += f"❌ Bexio API: Error {resp.status_code}\n"
         except Exception as e:
             status_msg += f"❌ Bexio API: {str(e)}\n"
-            
-        status_msg += f"✅ Database: Online"
+
+        status_msg += "✅ Database: Online"
         await update.message.reply_text(status_msg)
 
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = update.message
         if not update.effective_user or not msg or not msg.document:
             return
-            
+
         user_id = update.effective_user.id
         if not self._is_allowed(user_id):
             return
@@ -99,7 +116,7 @@ class ReceiptBot:
         msg = update.message
         if not update.effective_user or not msg or not msg.photo:
             return
-            
+
         user_id = update.effective_user.id
         if not self._is_allowed(user_id):
             return
@@ -107,7 +124,7 @@ class ReceiptBot:
         # Photo comes in different sizes, take the largest one
         photo = msg.photo[-1]
         file = await context.bot.get_file(photo.file_id)
-        
+
         # Save as png/jpg based on what telegram provides (usually jpg)
         file_path = self.download_dir / f"receipt_{photo.file_id}.jpg"
         await file.download_to_drive(str(file_path))
@@ -116,10 +133,12 @@ class ReceiptBot:
 
     async def _trigger_processing(self, message: Message, file_path: Path):
         status_msg = await message.reply_text("Processing receipt... 🔄")
-        
+
         try:
-            result = await process_receipt(str(file_path), self.settings, self.bexio, self.db)
-            
+            result = await process_receipt(
+                str(file_path), self.settings, self.bexio, self.db
+            )
+
             status = result.get("status")
             if status == "booked":
                 expense_id = result.get("expense_id")
@@ -131,17 +150,19 @@ class ReceiptBot:
                     f"Total: {total} CHF"
                 )
             elif status == "review":
-                review_id = result.get("review_file")
                 msg = "⚠️ Sent to review. Validation errors found.\nVisit the dashboard to approve."
                 await status_msg.edit_text(msg)
             elif status == "duplicate":
-                await status_msg.edit_text(f"ℹ️ Duplicate detected. Already booked with ID: {result.get('expense_id')}")
+                await status_msg.edit_text(
+                    f"ℹ️ Duplicate detected. Already booked with ID: {result.get('expense_id')}"
+                )
             else:
                 await status_msg.edit_text(f"❌ Processing failed: {status}")
-                
+
         except Exception as e:
             logger.error("Telegram processing error", error=str(e))
             await status_msg.edit_text(f"❌ Error during processing: {str(e)}")
+
 
 async def run_bot(settings: Settings):
     """Starts the Telegram bot."""
@@ -150,29 +171,31 @@ async def run_bot(settings: Settings):
         return
 
     async with BexioClient(
-        token=settings.bexio_api_token, 
+        token=settings.bexio_api_token,
         base_url=settings.bexio_base_url,
-        default_vat_rate=settings.default_vat_rate
+        default_vat_rate=settings.default_vat_rate,
     ) as bexio:
         await bexio.cache_lookups()
-        
+
         bot = ReceiptBot(settings, bexio)
         application = ApplicationBuilder().token(settings.telegram_bot_token).build()
-        
+
         application.add_handler(CommandHandler("start", bot.start))
         application.add_handler(CommandHandler("help", bot.help_command))
         application.add_handler(CommandHandler("status", bot.status_command))
         application.add_handler(MessageHandler(filters.PHOTO, bot.handle_photo))
-        application.add_handler(MessageHandler(filters.Document.ALL, bot.handle_document))
-        
+        application.add_handler(
+            MessageHandler(filters.Document.ALL, bot.handle_document)
+        )
+
         logger.info("Starting Telegram bot ingestion")
         await application.initialize()
         await application.start()
-        
+
         updater = application.updater
         if updater:
             await updater.start_polling()
-        
+
         # Keep the bot running
         try:
             while True:

@@ -12,10 +12,12 @@ logging.getLogger("ppocr").setLevel(logging.ERROR)
 
 logger = structlog.get_logger(__name__)
 
+
 @lru_cache(maxsize=1)
 def get_paddle_ocr() -> PaddleOCR:
     """Instantiate and cache the PaddleOCR model to avoid 2-5s loading time per call."""
     return PaddleOCR()
+
 
 def run_paddle_ocr(file_path: str) -> tuple[str, float, list[dict]]:
     """
@@ -41,7 +43,9 @@ def run_paddle_ocr(file_path: str) -> tuple[str, float, list[dict]]:
 
                 # Filter out near-blank pages (less than 10 characters) from confidence average
                 if page_text_len >= 10:
-                    page_avg = sum(item["confidence"] for item in page_lines) / len(page_lines)
+                    page_avg = sum(item["confidence"] for item in page_lines) / len(
+                        page_lines
+                    )
                     page_confidences.append(page_avg)
 
                 lines.extend(page_lines)
@@ -52,11 +56,16 @@ def run_paddle_ocr(file_path: str) -> tuple[str, float, list[dict]]:
         avg_confidence = sum(page_confidences) / len(page_confidences)
     else:
         # Fallback if all pages were near-blank or no results
-        avg_confidence = sum(line["confidence"] for line in lines) / len(lines) if lines else 0.0
-    
+        avg_confidence = (
+            sum(line["confidence"] for line in lines) / len(lines) if lines else 0.0
+        )
+
     return raw_text, avg_confidence, lines
 
-async def run_glm_ocr(file_path: str, settings: Settings) -> tuple[str, float, list[dict]]:
+
+async def run_glm_ocr(
+    file_path: str, settings: Settings
+) -> tuple[str, float, list[dict]]:
     """
     Run OCR on a file using GLM-OCR via Ollama.
     """
@@ -68,13 +77,13 @@ async def run_glm_ocr(file_path: str, settings: Settings) -> tuple[str, float, l
             "Task: Information Extraction from Receipt\n"
             "Format: Output ONLY valid JSON according to this schema:\n"
             "{\n"
-            "  \"merchant_name\": string or null,\n"
-            "  \"date\": \"YYYY-MM-DD\" or null,\n"
-            "  \"total_incl_vat\": number or null,\n"
-            "  \"vat_amount\": number or null,\n"
-            "  \"vat_rate_pct\": number or null,\n"
-            "  \"currency\": \"CHF\",\n"
-            "  \"vat_breakdown\": []\n"
+            '  "merchant_name": string or null,\n'
+            '  "date": "YYYY-MM-DD" or null,\n'
+            '  "total_incl_vat": number or null,\n'
+            '  "vat_amount": number or null,\n'
+            '  "vat_rate_pct": number or null,\n'
+            '  "currency": "CHF",\n'
+            '  "vat_breakdown": []\n'
             "}\n"
             "Instruction: Extract the merchant (e.g. Coop, Migros), the date, and the total amount. "
             "Swiss VAT rates are 8.1%, 2.6%, 3.8%. "
@@ -82,35 +91,33 @@ async def run_glm_ocr(file_path: str, settings: Settings) -> tuple[str, float, l
         )
         payload = {
             "model": settings.glm_ocr_model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt,
-                    "images": [img_base64]
-                }
-            ],
-            "stream": False
+            "messages": [{"role": "user", "content": prompt, "images": [img_base64]}],
+            "stream": False,
         }
-        
+
         resp = await client.post(f"{settings.glm_ocr_url}/api/chat", json=payload)
         resp.raise_for_status()
         data = resp.json()
-        
+
         raw_text = data["message"]["content"]
         # GLM-OCR via Ollama chat API doesn't easily provide confidence per word/line
         # Using 0.90 as a default.
-        avg_confidence = 0.90 
-        
+        avg_confidence = 0.90
+
         # We don't have per-line detail here like PaddleOCR
         lines = [{"text": raw_text, "confidence": avg_confidence}]
-        
+
         return raw_text, avg_confidence, lines
 
-async def async_run_ocr(file_path: str, settings: Settings) -> tuple[str, float, list[dict]]:
+
+async def async_run_ocr(
+    file_path: str, settings: Settings
+) -> tuple[str, float, list[dict]]:
     if settings.ocr_engine == "paddleocr":
         # PaddleOCR is sync, wrap in thread to not block loop
         import asyncio
         from functools import partial
+
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, partial(run_paddle_ocr, file_path))
     elif settings.ocr_engine == "glm-ocr":

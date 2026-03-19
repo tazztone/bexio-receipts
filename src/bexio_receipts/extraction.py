@@ -10,10 +10,11 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
-    reraise=True
+    reraise=True,
 )
 async def extract_receipt(raw_text: str, settings: Settings) -> Receipt:
     """

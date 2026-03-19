@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from bexio_receipts.ocr import async_run_ocr, run_paddle_ocr
 
+
 @patch("bexio_receipts.ocr.PaddleOCR")
 def test_run_paddle_ocr(mock_paddle):
     # Mocking PaddleOCR's ocr method
@@ -9,7 +10,7 @@ def test_run_paddle_ocr(mock_paddle):
     mock_ocr_instance.ocr.return_value = [
         [
             [[[0, 0], [10, 0], [10, 10], [0, 10]], ("COOP", 0.99)],
-            [[[0, 20], [10, 20], [10, 30], [0, 30]], ("Total 10.80", 0.95)]
+            [[[0, 20], [10, 20], [10, 30], [0, 30]], ("Total 10.80", 0.95)],
         ]
     ]
 
@@ -20,6 +21,7 @@ def test_run_paddle_ocr(mock_paddle):
     assert avg_confidence == (0.99 + 0.95) / 2
     assert len(lines) == 2
 
+
 @pytest.mark.asyncio
 async def test_async_run_ocr_paddle(test_settings):
     test_settings.ocr_engine = "paddleocr"
@@ -29,10 +31,11 @@ async def test_async_run_ocr_paddle(test_settings):
         assert raw_text == "Paddle Text"
         mock_paddle.assert_called_once()
 
+
 @pytest.mark.asyncio
 async def test_async_run_ocr_glm(test_settings):
     test_settings.ocr_engine = "glm-ocr"
-    
+
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"message": {"content": "GLM Text"}}
     mock_resp.raise_for_status = MagicMock()

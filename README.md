@@ -16,13 +16,14 @@ An automated pipeline to ingest, OCR, and extract data from receipts directly in
 ```bash
 # Clone and start everything
 git clone https://github.com/tazztone/bexio-receipts.git && cd bexio-receipts
-cp .env.example .env  # Edit this with your bexio token
+uv run bexio-receipts init  # Follow the prompts to set up your .env
 docker compose up -d
 ```
 
 ### Local (uv)
 ```bash
 uv sync
+uv run bexio-receipts init  # Interactive setup wizard
 uv run bexio-receipts process path/to/receipt.png --dry-run
 ```
 

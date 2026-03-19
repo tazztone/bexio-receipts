@@ -3,6 +3,7 @@ from httpx import AsyncClient, ASGITransport
 import base64
 from bexio_receipts.server import app, get_settings
 
+
 @pytest.mark.asyncio
 async def test_csrf_protection(test_settings, tmp_path):
     import json
@@ -20,9 +21,13 @@ async def test_csrf_protection(test_settings, tmp_path):
     auth = base64.b64encode(f"admin:{test_settings.review_password}".encode()).decode()
     headers = {"Authorization": f"Basic {auth}"}
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         # POST without valid csrf_token
-        response = await ac.post("/discard/123", data={"csrf_token": "wrong"}, headers=headers)
+        response = await ac.post(
+            "/discard/123", data={"csrf_token": "wrong"}, headers=headers
+        )
         assert response.status_code == 403
 
         # Normal GET will set cookie
