@@ -6,7 +6,7 @@ services:
     environment:
       - BEXIO_API_TOKEN=${BEXIO_API_TOKEN:-test_token}
       - REVIEW_PASSWORD=${REVIEW_PASSWORD:-admin}
-      - SECRET_KEY=super-secret-key-change-me-in-prod
+      - SECRET_KEY=${SECRET_KEY}
       - IMAP_SERVER=mock-imap
       - IMAP_USER=test@example.com
       - IMAP_PASSWORD=password
