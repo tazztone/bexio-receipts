@@ -10,22 +10,24 @@ An automated pipeline to ingest, OCR, and extract data from receipts directly in
 
 ---
 
-## ⚡ Quick Start
+## 🚀 Quick Start
 
-### Docker (Recommended)
+Get up and running in minutes with the interactive setup wizard:
+
 ```bash
-# Clone and start everything
-git clone https://github.com/tazztone/bexio-receipts.git && cd bexio-receipts
-uv run bexio-receipts init  # Follow the prompts to set up your .env
-docker compose up -d
+uv run bexio-receipts init --quickstart
 ```
 
-### Local (uv)
-```bash
-uv sync
-uv run bexio-receipts init  # Interactive setup wizard
-uv run bexio-receipts process path/to/receipt.png --dry-run
-```
+The `--quickstart` flag will:
+1.  **Validate** your Bexio token and display your company name.
+2.  **Configure** default local models (Qwen 3.5 & GLM-OCR).
+3.  **Process** a bundled demo receipt to verify your local LLM/OCR stack immediately.
+
+### What you'll see first
+1.  **Interactive Setup:** Run `init` to connect your Bexio account.
+2.  **System Health:** Start the dashboard (`serve`) and visit `/setup` to ensure your hardware is ready.
+3.  **First Ingestion:** Drop a receipt in `inbox/` or send it to your Telegram bot.
+4.  **Review Queue:** Visit the dashboard to triage any receipts with low confidence or validation errors.
 
 ---
 

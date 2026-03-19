@@ -78,18 +78,20 @@ class ReceiptBot:
             return
 
         # Simple health check
-        status_msg = "System Status:\n"
+        status_msg = "🧾 *bexio-receipts System Status*\n\n"
         try:
-            resp = await self.bexio.client.get("/2.0/company_profile")
-            if resp.status_code == 200:
-                status_msg += "✅ Bexio API: Connected\n"
-            else:
-                status_msg += f"❌ Bexio API: Error {resp.status_code}\n"
+            profile = await self.bexio.get_profile()
+            company = profile.get("company_name") or profile.get("name", "Unknown")
+            status_msg += f"🏢 *Company:* {company}\n"
+            status_msg += "✅ *Bexio API:* Connected\n"
         except Exception as e:
-            status_msg += f"❌ Bexio API: {str(e)}\n"
+            status_msg += f"❌ *Bexio API:* Error ({str(e)})\n"
 
-        status_msg += "✅ Database: Online"
-        await update.message.reply_text(status_msg)
+        status_msg += f"🔍 *OCR Engine:* `{self.settings.ocr_engine}`\n"
+        status_msg += f"🧠 *LLM Provider:* `{self.settings.llm_provider}`\n"
+        status_msg += "🗄️ *Database:* Online\n"
+        
+        await update.message.reply_text(status_msg, parse_mode="Markdown")
 
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = update.message

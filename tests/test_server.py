@@ -83,6 +83,13 @@ def test_setup_checks(test_settings):
         response = client.get("/setup/check/ocr", auth=("admin", "test_password"))
         assert "OK (Model glm-ocr loaded)" in response.text
 
+    # OCR Check Error with Copy button
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=Exception("Ollama Error")):
+        response = client.get("/setup/check/ocr", auth=("admin", "test_password"))
+        assert "Error connecting to Ollama" in response.text
+        assert "Copy" in response.text
+        assert "ollama serve" in response.text
+
     # LLM Check (Ollama)
     test_settings.llm_provider = "ollama"
     test_settings.llm_model = "qwen3.5"
@@ -96,10 +103,45 @@ def test_setup_checks(test_settings):
         response = client.get("/setup/check/system", auth=("admin", "test_password"))
         assert "OK (/usr/bin/pdftoppm)" in response.text
 
+    # System Check Error with Copy button
+    with patch("shutil.which", return_value=None):
+        response = client.get("/setup/check/system", auth=("admin", "test_password"))
+        assert "Error: Poppler not found" in response.text
+        assert "Copy" in response.text
+        assert "sudo apt install poppler-utils" in response.text
+
     # DB Check
     with patch("sqlite3.connect"):
         response = client.get("/setup/check/db", auth=("admin", "test_password"))
         assert "OK" in response.text
+
+    app.dependency_overrides.clear()
+
+
+def test_bulk_discard_review(test_settings, tmp_path):
+    app.dependency_overrides[get_settings] = lambda: test_settings
+    review_dir = tmp_path / "review"
+    review_dir.mkdir()
+    test_settings.review_dir = str(review_dir)
+
+    review_file1 = review_dir / "test1.json"
+    review_file1.write_text("{}")
+    review_file2 = review_dir / "test2.json"
+    review_file2.write_text("{}")
+
+    with patch(
+        "bexio_receipts.server.Request.session",
+        property(lambda x: {"csrf_token": "test_token"}),
+    ):
+        response = client.post(
+            "/bulk-discard",
+            data={"csrf_token": "test_token", "ids": ["test1", "test2"]},
+            auth=("admin", "test_password"),
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert not review_file1.exists()
+        assert not review_file2.exists()
 
     app.dependency_overrides.clear()
 

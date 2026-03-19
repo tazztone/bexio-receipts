@@ -20,6 +20,12 @@
         </nav>
     </header>
     <main class="container">
+        {% if success_msg %}
+        <article class="status-ok" style="background-color: #dcedc8; color: #33691e; border: none; padding: 1rem; margin-bottom: 1rem;">
+            {{ success_msg }}
+        </article>
+        {% endif %}
+
         <h1>Review Queue</h1>
         
         {% if not reviews %}
@@ -28,16 +34,34 @@
             <p>No receipts awaiting review! Here's how to get started:</p>
             <ul>
                 <li>✅ <strong>System Connected:</strong> Your Bexio integration is active.</li>
-                <li>📁 <strong>Drop Files:</strong> Place receipts in your inbox folder to process them.</li>
-                <li>🤖 <strong>Telegram:</strong> Send photos to your bot to ingest from mobile.</li>
+                <li>📁 <strong>Drop Files:</strong> Place receipts in <code>inbox/</code> to process them.</li>
+                <li>🤖 <strong>Telegram:</strong> <a href="/setup" style="text-decoration: underline;">Verify bot status</a> then send photos to ingest from mobile.</li>
             </ul>
+            <p><strong>Quick Actions:</strong></p>
+            <div class="grid">
+                <div>
+                    <code>uv run bexio-receipts watch telegram</code>
+                    <br><small>Run this to start your Telegram bot.</small>
+                </div>
+            </div>
             <footer>
-                <a href="/setup" role="button">Check System Health</a>
+                <a href="/setup" role="button">Open Setup Page</a>
                 <a href="/stats" role="button" class="secondary outline">View Statistics</a>
             </footer>
         </article>
         {% else %}
+        
+        <div style="margin-bottom: 1rem; font-size: 0.85rem; display: flex; gap: 1.5rem; flex-wrap: wrap; opacity: 0.8;">
+            <span><strong>Stage:</strong> OCR ▪ Extraction ▪ Validation ▪ Upload</span>
+            <span><strong>Confidence:</strong> 
+                <span class="status-badge status-ok">🟢 >90%</span>
+                <span class="status-badge status-warning">🟡 >70%</span>
+                <span class="status-badge status-error">🔴 <70%</span>
+            </span>
+        </div>
+
         <form id="bulk-form" method="POST">
+
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <table class="striped">
                 <thead>
