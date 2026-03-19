@@ -46,6 +46,7 @@ async def extract_receipt(raw_text: str, settings: Settings) -> Receipt:
                 "Extract receipt data from OCR text. "
                 "Swiss VAT rates are: 8.1% (standard), 2.6% (reduced), 3.8% (accommodation). "
                 "Return null for fields not found. "
+                "Use the 'transaction_date' field for the date shown on the receipt. "
                 "CRITICAL: If the OCR output is sparse (e.g. just a brand and total), "
                 "treat the first line as the 'merchant_name' and prioritize 'total_incl_vat'. "
                 "Swiss receipts often use 'CHF' as currency. "

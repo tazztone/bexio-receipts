@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     bexio_base_url: str = "https://api.bexio.com"
     
     # OCR Settings
-    ocr_engine: str = "paddleocr"  # or "glm-ocr"
+    ocr_engine: str = "glm-ocr"  # or "paddleocr"
     ocr_confidence_threshold: float = 0.85
     glm_ocr_model: str = "glm-ocr"
     glm_ocr_url: str = "http://localhost:11434" # Ollama default
@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     
     # bexio-receipts specific
     inbox_path: str = "./inbox"
+    review_username: str = "admin"
     review_password: str
     secret_key: str
     database_path: str = "processed_receipts.db"
