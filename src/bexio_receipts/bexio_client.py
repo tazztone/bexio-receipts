@@ -140,6 +140,9 @@ class BexioClient:
                 breakdown=receipt.vat_breakdown
             )
 
+        if receipt.total_incl_vat is None:
+            raise ValueError("Total amount is required to create a bexio record")
+
         payload: dict[str, Any] = {
             "title": receipt.merchant_name,
             "paid_on": (receipt.transaction_date or date.today()).isoformat(),
@@ -162,6 +165,9 @@ class BexioClient:
     async def create_purchase_bill(self, receipt: Receipt, file_uuid: str,
                                     booking_account_id: int) -> dict:
         """Create a full purchase bill with line items (bexio v4)."""
+        if receipt.total_incl_vat is None:
+            raise ValueError("Total amount is required to create a bexio record")
+            
         if not receipt.merchant_name:
             raise ValueError("Merchant name is required to create a purchase bill")
         supplier_id = await self.find_or_create_contact(receipt.merchant_name)
