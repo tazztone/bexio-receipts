@@ -21,6 +21,7 @@ async def send_to_review(
     settings: Settings,
     receipt: Receipt | None = None,
     ocr_confidence: float | None = None,
+    failed_stage: str = "unknown",
 ) -> dict:
     """Save problematic receipts to a review directory."""
     try:
@@ -32,6 +33,7 @@ async def send_to_review(
             "original_file": str(file_path),
             "ocr_text": raw_text,
             "ocr_confidence": ocr_confidence,
+            "failed_stage": failed_stage,
             "errors": errors,
             "extracted": receipt.model_dump(mode="json") if receipt else None,
         }
@@ -86,6 +88,7 @@ async def process_receipt(
             [f"Low OCR confidence: {avg_confidence:.1%}"],
             settings,
             ocr_confidence=avg_confidence,
+            failed_stage="ocr",
         )
 
     # 2. Extract structured data
@@ -124,6 +127,7 @@ async def process_receipt(
                 [f"LLM extraction failed: {str(e)}"],
                 settings,
                 ocr_confidence=avg_confidence,
+                failed_stage="extraction",
             )
 
     # 3. Validation
@@ -137,6 +141,7 @@ async def process_receipt(
             settings,
             receipt,
             ocr_confidence=avg_confidence,
+            failed_stage="validation",
         )
 
     # 4. Push to bexio
@@ -156,6 +161,7 @@ async def process_receipt(
                 settings,
                 receipt,
                 ocr_confidence=avg_confidence,
+                failed_stage="bexio",
             )
 
         # Prefer Bill (v4) if we have a merchant name, otherwise fall back to simple Expense (v4)
@@ -183,6 +189,7 @@ async def process_receipt(
                     settings,
                     receipt,
                     ocr_confidence=avg_confidence,
+                    failed_stage="bexio",
                 )
 
             logger.info("No merchant name, creating simple Expense")
@@ -221,4 +228,5 @@ async def process_receipt(
             settings,
             receipt,
             ocr_confidence=avg_confidence,
+            failed_stage="bexio",
         )

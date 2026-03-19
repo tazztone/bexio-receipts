@@ -3,7 +3,7 @@
 [![CI](https://github.com/tazztone/bexio-receipts/actions/workflows/ci.yml/badge.svg)](https://github.com/tazztone/bexio-receipts/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Coverage](https://img.shields.io/badge/coverage-85%25-green)](https://github.com/tazztone/bexio-receipts/actions)
+[![Coverage](https://img.shields.io/badge/coverage-86%25-green)](https://github.com/tazztone/bexio-receipts/actions)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 An automated pipeline to ingest, OCR, and extract data from receipts directly into bexio.

@@ -23,7 +23,19 @@
         <h1>Review Queue</h1>
         
         {% if not reviews %}
-        <p>No receipts awaiting review! 🎉</p>
+        <article>
+            <header><strong>Welcome! 🎉</strong></header>
+            <p>No receipts awaiting review! Here's how to get started:</p>
+            <ul>
+                <li>✅ <strong>System Connected:</strong> Your Bexio integration is active.</li>
+                <li>📁 <strong>Drop Files:</strong> Place receipts in your inbox folder to process them.</li>
+                <li>🤖 <strong>Telegram:</strong> Send photos to your bot to ingest from mobile.</li>
+            </ul>
+            <footer>
+                <a href="/setup" role="button">Check System Health</a>
+                <a href="/stats" role="button" class="secondary outline">View Statistics</a>
+            </footer>
+        </article>
         {% else %}
         <form id="bulk-form" method="POST">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -35,6 +47,8 @@
                         <th>Merchant</th>
                         <th>Date</th>
                         <th>Total</th>
+                        <th>Confidence</th>
+                        <th>Stage</th>
                         <th>Errors</th>
                         <th>Action</th>
                     </tr>
@@ -43,14 +57,27 @@
                     {% for review in reviews %}
                     <tr>
                         <td><input type="checkbox" name="ids" value="{{ review.id }}"></td>
-                        <td><img src="/thumbnail/{{ review.id }}" style="max-height: 50px; cursor: pointer;" onclick="window.location.href='/review/{{ review.id }}'"></td>
+                        <td><img src="/thumbnail/{{ review.id }}" style="max-height: 50px; cursor: pointer; border-radius: 4px;" onclick="window.location.href='/review/{{ review.id }}'"></td>
                         <td>{{ review.merchant }}</td>
                         <td>{{ review.date }}</td>
                         <td>{{ review.total }} CHF</td>
                         <td>
+                            {% if review.ocr_confidence %}
+                                {% set conf = (review.ocr_confidence * 100)|round|int %}
+                                <span class="status-badge {% if conf > 90 %}status-ok{% elif conf > 70 %}status-warning{% else %}status-error{% endif %}">
+                                    {{ conf }}%
+                                </span>
+                            {% else %}
+                                <span class="status-badge status-checking">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="status-badge status-checking" style="text-transform: capitalize;">{{ review.failed_stage }}</span>
+                        </td>
+                        <td>
                             <small>
                             {% for err in review.errors %}
-                            <span style="color: red;" title="{{ err }}">• {{ err[:20] }}{% if err|length > 20 %}...{% endif %}</span><br>
+                            <abbr title="{{ err }}" style="color: red; text-decoration: none; cursor: help;">• {{ err[:20] }}{% if err|length > 20 %}...{% endif %}</abbr><br>
                             {% endfor %}
                             </small>
                         </td>
@@ -70,6 +97,14 @@
         </form>
         {% endif %}
     </main>
+
+    <style>
+        .status-badge { padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: bold; font-size: 0.8rem; }
+        .status-ok { background-color: #2e7d32; color: white; }
+        .status-error { background-color: #c62828; color: white; }
+        .status-warning { background-color: #f9a825; color: black; }
+        .status-checking { background-color: #1565c0; color: white; }
+    </style>
 
     <script>
         function toggleAll(source) {

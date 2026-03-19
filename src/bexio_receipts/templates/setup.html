@@ -75,8 +75,26 @@
                     </tbody>
                 </table>
                 <footer>
-                    <button hx-get="/setup/run-all" hx-target="#checks" hx-swap="none">Run All Checks</button>
+                    <div class="grid">
+                        <button hx-get="/setup/run-all" hx-target="#checks" hx-swap="none">Run All Checks</button>
+                        <button class="secondary outline" onclick="copyConfig()">Copy Config (.env)</button>
+                    </div>
                 </footer>
+            </article>
+
+            <article>
+                <header><strong>Resolved Configuration</strong></header>
+                <pre id="config-text" style="background: #111; color: #eee; padding: 1rem; border-radius: 8px; font-size: 0.8rem;">BEXIO_API_TOKEN={{ settings.bexio_api_token }}
+BEXIO_BASE_URL={{ settings.bexio_base_url }}
+OCR_ENGINE={{ settings.ocr_engine }}
+LLM_PROVIDER={{ settings.llm_provider }}
+LLM_MODEL={{ settings.llm_model }}
+GLM_OCR_MODEL={{ settings.glm_ocr_model }}
+GLM_OCR_URL={{ settings.glm_ocr_url }}
+OLLAMA_URL={{ settings.ollama_url }}
+DATABASE_PATH={{ settings.database_path }}
+DEFAULT_BOOKING_ACCOUNT_ID={{ settings.default_booking_account_id }}
+DEFAULT_BANK_ACCOUNT_ID={{ settings.default_bank_account_id }}</pre>
             </article>
 
             {% if settings.llm_provider == "ollama" or settings.ocr_engine == "glm-ocr" %}
@@ -112,6 +130,13 @@
     </main>
 
     <script>
+        function copyConfig() {
+            const configText = document.getElementById('config-text').innerText;
+            navigator.clipboard.writeText(configText).then(() => {
+                alert('Configuration copied to clipboard!');
+            });
+        }
+
         // Trigger all checks by finding the Re-check buttons and clicking them
         function runAllChecks() {
             const summaryDiv = document.getElementById('status-summary');
@@ -130,11 +155,14 @@
                 }
             };
 
-            document.addEventListener('htmx:afterRequest', function listener(event) {
+            const htmxListener = function(event) {
                 if (event.detail.elt.tagName === 'BUTTON' && event.detail.elt.hasAttribute('hx-get')) {
                     checkFinished();
                 }
-            });
+            };
+
+            // Use { once: true } to avoid duplicate listeners on repeated clicks
+            document.addEventListener('htmx:afterRequest', htmxListener, { once: true });
         }
 
         function updateSummary() {
