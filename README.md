@@ -38,8 +38,8 @@ The `--quickstart` flag will:
 - [Usage](#-usage)
 - [Ingestion Sources](#-ingestion-sources)
 - [Operations Guide](docs/OPERATIONS.md)
-- [Troubleshooting](#-troubleshooting)
-- [Development](#-development)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Development](docs/DEVELOPMENT.md)
 - [License](#-license)
 
 ---
@@ -231,9 +231,10 @@ Configure `IMAP_SERVER`, `IMAP_USER`, and `IMAP_PASSWORD`. The bot will poll for
 └── Dockerfile           # Optimized multi-stage build
 ```
 
-- **[docs/index.md](docs/index.md)**: Main documentation portal.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): System flow and engine details.
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**: System flow and engine details.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md): Detailed env var reference.
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): Development setup and best practices.
+- [docs/OPERATIONS.md](docs/OPERATIONS.md): Production setup and maintenance tasks.
 - [CHANGELOG.md](CHANGELOG.md): History of changes.
 
 ---
