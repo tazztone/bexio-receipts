@@ -275,6 +275,7 @@ def process(
             token=settings.bexio_api_token,
             base_url=settings.bexio_base_url,
             default_vat_rate=settings.default_vat_rate,
+            default_payment_terms_days=settings.default_payment_terms_days,
         ) as client:
             with console.status("[bold blue]Connecting to Bexio..."):
                 await client.cache_lookups()
@@ -347,6 +348,7 @@ def reprocess(
             token=settings.bexio_api_token,
             base_url=settings.bexio_base_url,
             default_vat_rate=settings.default_vat_rate,
+            default_payment_terms_days=settings.default_payment_terms_days,
         ) as client:
             with console.status("[bold blue]Connecting to Bexio..."):
                 await client.cache_lookups()

@@ -90,7 +90,11 @@ def validate_receipt(r: Receipt, settings: Settings) -> list[str]:
                 f"VAT breakdown sum ({total_base + total_vat}) ≠ total incl. VAT ({r.total_incl_vat})"
             )
 
-    # 7. Line items cross-check
+    # 7. Currency check
+    if r.currency != "CHF":
+        errors.append(f"Currency {r.currency} is not CHF. Check conversion rate before approving.")
+
+    # 8. Line items cross-check
     if r.line_items:
         items_total = sum(i.total for i in r.line_items)
         if (

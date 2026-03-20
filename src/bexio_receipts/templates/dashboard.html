@@ -121,6 +121,20 @@
                 <button type="submit" formaction="/bulk-discard" class="secondary outline" onclick="return confirm('Discard all selected?')">Discard Selected</button>
             </div>
         </form>
+
+        {% if total_pages > 1 %}
+        <nav aria-label="Pagination" style="margin-top: 2rem;">
+            <ul style="display: flex; list-style: none; gap: 0.5rem; justify-content: center; padding: 0;">
+                {% if has_prev %}
+                <li><a href="?page={{ page - 1 }}" role="button" class="outline secondary" style="padding: 0.4rem 0.8rem;">&laquo; Prev</a></li>
+                {% endif %}
+                <li style="display: flex; align-items: center; padding: 0 1rem; color: var(--pico-muted-color);">Page {{ page }} of {{ total_pages }}</li>
+                {% if has_next %}
+                <li><a href="?page={{ page + 1 }}" role="button" class="outline secondary" style="padding: 0.4rem 0.8rem;">Next &raquo;</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
         {% endif %}
     </main>
 
