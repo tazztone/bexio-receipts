@@ -1,5 +1,4 @@
 import pytest
-import json
 import base64
 from httpx import AsyncClient, ASGITransport
 from bexio_receipts.server import app, get_settings, get_db

@@ -1,3 +1,7 @@
+"""
+Core ingestion logic for the receipt processing pipeline.
+Orchestrates OCR, extraction, and validation steps.
+"""
 import json
 import mimetypes
 from pathlib import Path

@@ -2,6 +2,18 @@
 
 This document tracks significant technical decisions and the context behind them.
 
+## ADR Format
+When adding a new ADR, use the following format:
+```markdown
+## [ADR-XXX] Title
+- **Status**: Proposed / Decided / Superseded
+- **Context**: Describe the problem or situation.
+- **Decision**: Clearly state the chosen approach.
+- **Rationale**: Explain the reasoning, trade-offs, and benefits.
+```
+
+---
+
 ## [ADR-001] Use Pydantic AI instead of raw OpenAI SDK
 - **Status**: Decided (March 2024)
 - **Context**: The initial plan was to use OpenAI's `chat.completions.parse`.

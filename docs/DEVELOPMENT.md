@@ -33,6 +33,11 @@ We use `pytest`. The suite includes mocks for bexio and LLM providers.
 uv run pytest tests/
 ```
 
+### Best Practices for Testing
+1. **Mocking**: Use the `mock_bexio` fixture to avoid real API calls.
+2. **Deterministic Inputs**: Use fixtures in `tests/fixtures/` for consistent OCR results in tests.
+3. **Database Isolation**: Always use the `tmp_path` fixture for SQLite tests to avoid side-effects between runs.
+
 ### Static Analysis
 Before pushing, ensure these pass:
 - **Linting**: `uv run ruff check .`
@@ -67,8 +72,6 @@ Our GitHub Actions workflow enforces:
 - Test coverage > 85%.
 - Static analysis (Ruff/Mypy) passing.
 - Successful Docker build.
-
-3. **Database Isolation**: Always use the `tmp_path` fixture for SQLite tests to avoid side-effects between runs.
 
 ---
 

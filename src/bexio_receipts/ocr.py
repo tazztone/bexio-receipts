@@ -1,3 +1,7 @@
+"""
+Unified OCR layer supporting multiple engines (PaddleOCR, GLM-4-V).
+Responsible for extracting raw text from images and PDFs.
+"""
 import base64
 import httpx
 import logging

@@ -1,3 +1,7 @@
+"""
+Configuration management using Pydantic Settings.
+Loads and validates environment variables and configuration files.
+"""
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

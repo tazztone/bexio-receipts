@@ -4,7 +4,6 @@ import base64
 from httpx import AsyncClient, ASGITransport
 from bexio_receipts.server import app, get_settings, get_db
 from unittest.mock import MagicMock, patch, AsyncMock
-from pathlib import Path
 
 @pytest.mark.asyncio
 async def test_bulk_discard(test_settings, tmp_path):

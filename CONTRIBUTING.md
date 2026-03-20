@@ -9,7 +9,7 @@ First off, thank you for considering contributing to bexio-receipts! It's people
 3.  **Code Contributions**:
     *   Fork the repository.
     *   Create a new branch (`git checkout -b feature/your-feature`).
-    *   Ensure all tests pass and coverage is >85%.
+    *   Ensure all tests pass and coverage is at least **85%**.
     *   Ensure code is formatted and linted properly.
     *   Commit your changes with a descriptive message.
     *   Push to your branch and create a Pull Request.
@@ -52,7 +52,8 @@ uv run bexio-receipts serve
 ## Documentation
 
 - **Normative Docs**: Always update `docs/` and `README.md` for logic changes.
-- **Archive**: The `docs/archive/` directory is for **historical reference only**. Do not add new planning files there. Instead, create a new **Architecture Decision Record (ADR)** in `docs/DECISIONS.md`.
+- **Archive**: The `docs/archive/` directory is for **historical reference only**. Do not add new planning files there.
+- **ADRs**: Instead, create a new **Architecture Decision Record (ADR)** in `docs/DECISIONS.md`. See [docs/DECISIONS.md](docs/DECISIONS.md) for the preferred format.
 
 ## Repository Structure
 
@@ -60,7 +61,7 @@ uv run bexio-receipts serve
 
 ## Testing
 
-This project uses `pytest` and maintains a strict >85% test coverage. 
+This project uses `pytest` and maintains a strict **minimum 85%** test coverage. 
 ```bash
 # Run all tests
 uv run pytest tests/ --cov=src

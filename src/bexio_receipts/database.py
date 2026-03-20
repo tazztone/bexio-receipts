@@ -1,3 +1,7 @@
+"""
+SQLite database interface and deduplication logic.
+Manages persistent storage for receipts and processing state.
+"""
 import sqlite3
 import hashlib
 from datetime import datetime

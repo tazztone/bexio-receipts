@@ -1,3 +1,7 @@
+"""
+Folder filesystem monitoring for new receipt files.
+Triggers the ingestion pipeline when new files are detected.
+"""
 import asyncio
 import os
 from pathlib import Path

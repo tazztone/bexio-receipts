@@ -1,3 +1,7 @@
+"""
+Validation logic for Swiss VAT and business rules.
+Ensures extracted receipt data complies with accounting requirements.
+"""
 from datetime import date, timedelta
 from .models import Receipt
 

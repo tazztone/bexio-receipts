@@ -1,3 +1,7 @@
+"""
+Pydantic data models for the bexio-receipts project.
+Defines the structure of receipt data and internal state.
+"""
 from __future__ import annotations
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import date

@@ -1,3 +1,7 @@
+"""
+Telegram bot interface for receipt submission.
+Allows users to upload receipts directly via Telegram.
+"""
 import asyncio
 from pathlib import Path
 

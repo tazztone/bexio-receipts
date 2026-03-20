@@ -1,3 +1,7 @@
+"""
+Typer-based CLI entrypoint for bexio-receipts.
+Provides command-line interface for managing the system.
+"""
 import asyncio
 import json
 from pathlib import Path

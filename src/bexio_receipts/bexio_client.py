@@ -1,3 +1,7 @@
+"""
+Client for interacting with the bexio API using httpx.
+Handles authentication and resource management in bexio.
+"""
 import httpx
 import structlog
 from datetime import date

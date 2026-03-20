@@ -37,6 +37,7 @@ The `--quickstart` flag will:
 - [Setup](#-setup)
 - [Usage](#-usage)
 - [Ingestion Sources](#-ingestion-sources)
+- [Operations Guide](docs/OPERATIONS.md)
 - [Troubleshooting](#-troubleshooting)
 - [Development](#-development)
 - [License](#-license)
@@ -51,8 +52,8 @@ The `--quickstart` flag will:
   - **Telegram Bot:** Send photos or PDFs directly to the bot for processing.
   - **Google Drive:** Polls a specific Drive folder for new receipts.
 - **Multi-Engine OCR:**
-  - **PaddleOCR (Default):** High-performance PP-OCRv5 with orientation and unwarping support.
-  - **GLM-OCR:** A lightweight (0.9B) multimodal LLM for high-accuracy text and table recognition (via Ollama).
+  - **GLM-OCR (Default):** A lightweight (0.9B) multimodal LLM for high-accuracy text and table recognition (via Ollama).
+  - **PaddleOCR:** High-performance PP-OCRv5 with orientation and unwarping support.
 - **Intelligent Extraction:** Uses **Pydantic AI** with local LLMs (e.g., Qwen2.5) to parse OCR text into structured data.
 - **Swiss Business Rules:** Built-in validation for Swiss VAT rates (8.1%, 2.6%, 3.8%) and 5-rappen rounding tolerance.
 - **bexio Integration:** Automatic file upload and expense creation via the bexio API (v3/v4).
@@ -105,6 +106,9 @@ graph TD
 git clone https://github.com/tazztone/bexio-receipts.git && cd bexio-receipts
 uv sync
 
+# Copy example environment
+cp .env.example .env
+
 # Interactive Setup (Recommended)
 uv run bexio-receipts init
 
@@ -144,6 +148,7 @@ uv run bexio-receipts process path/to/receipt.png
 ```bash
 uv run bexio-receipts process path/to/receipt.png --dry-run
 ```
+*Note: Dry-run performs OCR and LLM extraction but does NOT write to the database or upload to bexio.*
 
 **Watchers:**
 ```bash
@@ -177,7 +182,18 @@ The new dashboard includes:
 
 ## 📥 Ingestion Sources
 
-### Google Drive Setup
+### Folder Watcher
+Simply drop files into the configured `INBOX_PATH` (default: `./inbox`).
+
+### Email (IMAP)
+Configure `IMAP_SERVER`, `IMAP_USER`, and `IMAP_PASSWORD`. The bot will poll for new unread emails with attachments.
+
+### Telegram
+1. Create a bot via [@BotFather](https://t.me/botfather).
+2. Set `TELEGRAM_BOT_TOKEN` and your numeric ID in `TELEGRAM_ALLOWED_USERS`.
+3. Run `uv run bexio-receipts watch telegram`.
+
+### Google Drive
 - **Service Account (Recommended):** Share your Drive folder with the SA email.
 - **User Account (OAuth2):** Run `uv run bexio-receipts gdrive-auth` to generate `token.json`.
 
@@ -197,11 +213,19 @@ The new dashboard includes:
 ```text
 .
 ├── src/bexio_receipts/
-│   ├── ocr.py           # Unified OCR layer
-│   ├── extraction.py    # LLM structured extraction
+│   ├── ocr.py           # Unified OCR layer (Paddle/GLM)
+│   ├── extraction.py    # LLM structured extraction (Pydantic AI)
 │   ├── validation.py    # Swiss VAT & business rules
-│   ├── server.py        # Dashboard backend
-│   └── bexio_client.py   # API interactions
+│   ├── server.py        # Dashboard backend (FastAPI + HTMX)
+│   ├── bexio_client.py  # bexio API interactions (httpx)
+│   ├── pipeline.py      # Core ingestion logic
+│   ├── database.py      # SQLite & deduplication
+│   ├── watcher.py       # Folder filesystem monitoring
+│   ├── telegram_bot.py  # Telegram bot interface
+│   ├── gdrive_ingest.py # Google Drive polling
+│   ├── email_ingest.py  # IMAP email attachment polling
+│   ├── config.py        # Pydantic Settings
+│   └── models.py        # Pydantic data models
 ├── docs/                # Extended documentation
 ├── tests/               # Pytest suite
 └── Dockerfile           # Optimized multi-stage build

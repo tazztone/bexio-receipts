@@ -6,7 +6,7 @@
 **Symptoms**: `httpx.ConnectError` or 500 errors during extraction.
 **Fix**: 
 - Ensure Ollama is running: `ollama list`.
-- Verify `OLLAMA_HOST` matches `LLM_URL` in your `.env`.
+- Verify `OLLAMA_URL` in your `.env`.
 - If running in Docker, use `host.docker.internal` or the actual IP of the host machine.
 
 ### 2. `PaddleOCR: libpoppler-cpp-dev not found`
@@ -24,6 +24,24 @@
 ### 4. `Total/Subtotal Mismatch`
 **Symptoms**: Receipt appears in the Review Dashboard with a "Total mismatch" error.
 **Fix**: This is often due to the LLM misidentifying columns or Swiss VAT rounding (5-rappen). Correct the values in the dashboard and hit "Apply & Push".
+
+### 5. `Malformed JSON / Extraction Failed`
+**Symptoms**: Logs show `JSONDecodeError` or "LLM failed to return structured data".
+**Fix**: 
+- The LLM might be "hallucinating" or struggling with complex receipt layouts.
+- Try switching to a more capable model (e.g., `qwen3.5:9b` or `openai`).
+- Ensure the receipt image is clear and the OCR text is legible.
+
+### 6. `Merchant Match Failure`
+**Symptoms**: Extracted merchant name is correct, but it doesn't match an existing contact in bexio.
+**Fix**: 
+- If the merchant is new, bexio-receipts will attempt to create a contact.
+- If it fails, manually create the contact in bexio and then update the mapping in the dashboard.
+
+### 7. `Handwritten or Non-Latin Receipts`
+**Symptoms**: `paddleocr` (default) fails to recognize text.
+**Fix**: 
+- Switch to `OCR_ENGINE=glm-ocr` in your `.env`. GLM-OCR is a multimodal model that performs significantly better on handwritten and complex documents.
 
 ## Ingestion Specific Issues
 
