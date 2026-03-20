@@ -47,26 +47,27 @@ class DuplicateDetector:
             )
         """)
 
-            # Migration for existing databases
-            try:
-                conn.execute(
-                    "ALTER TABLE processed_receipts ADD COLUMN total_incl_vat REAL"
-                )
-                conn.execute(
-                    "ALTER TABLE processed_receipts ADD COLUMN merchant_name TEXT"
-                )
-                conn.execute(
-                    "ALTER TABLE processed_receipts ADD COLUMN vat_amount REAL"
-                )
-            except sqlite3.OperationalError:
-                pass  # Columns already exist
+                # Migration for existing databases
+                try:
+                    conn.execute(
+                        "ALTER TABLE processed_receipts ADD COLUMN total_incl_vat REAL"
+                    )
+                    conn.execute(
+                        "ALTER TABLE processed_receipts ADD COLUMN merchant_name TEXT"
+                    )
+                    conn.execute(
+                        "ALTER TABLE processed_receipts ADD COLUMN vat_amount REAL"
+                    )
+                except sqlite3.OperationalError:
+                    # Column already exists
+                    pass
 
-            try:
-                conn.execute(
-                    "ALTER TABLE processed_receipts ADD COLUMN ocr_confidence REAL"
-                )
-            except sqlite3.OperationalError:
-                pass
+                try:
+                    conn.execute(
+                        "ALTER TABLE processed_receipts ADD COLUMN ocr_confidence REAL"
+                    )
+                except sqlite3.OperationalError:
+                    pass
 
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS merchant_accounts (

@@ -1,6 +1,8 @@
 import json
 import mimetypes
+import re
 import secrets
+import bcrypt
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Form, Depends, status, Response
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
@@ -60,12 +62,17 @@ def verify_credentials(
     credentials: HTTPBasicCredentials = Depends(security),
     settings: Settings = Depends(get_settings),
 ):
-    valid_users = settings.review_users or {settings.review_username: settings.review_password}
+    valid_users = settings.review_users or {
+        settings.review_username: settings.review_password
+    }
 
     is_authorized = False
-    for username, password in valid_users.items():
-        if secrets.compare_digest(credentials.username.encode("utf8"), username.encode("utf8")) and \
-           secrets.compare_digest(credentials.password.encode("utf8"), password.encode("utf8")):
+    for username, password_hash in valid_users.items():
+        if secrets.compare_digest(
+            credentials.username.encode("utf8"), username.encode("utf8")
+        ) and bcrypt.checkpw(
+            credentials.password.encode("utf8"), password_hash.encode("utf8")
+        ):
             is_authorized = True
             break
 
@@ -241,7 +248,6 @@ async def get_receipt_thumbnail(
     settings: Settings = Depends(get_settings),
 ):
     """Serve a thumbnail of the original receipt image."""
-    import re
     if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
         raise HTTPException(status_code=400, detail="Invalid review ID")
 
@@ -256,6 +262,15 @@ async def get_receipt_thumbnail(
 
     if not img_path or not Path(img_path).exists():
         raise HTTPException(status_code=404, detail="Image file not found")
+
+    # Canonicalization check
+    img_path_obj = Path(img_path).resolve()
+    allowed_roots = [
+        Path(settings.inbox_path).resolve(),
+        Path(settings.review_dir).resolve(),
+    ]
+    if not any(img_path_obj.is_relative_to(root) for root in allowed_roots):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Simple thumbnail generation using Pillow
     from PIL import Image
@@ -328,7 +343,6 @@ async def get_receipt_image(
     settings: Settings = Depends(get_settings),
 ):
     """Serve the original receipt image."""
-    import re
     if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
         raise HTTPException(status_code=400, detail="Invalid review ID")
 
@@ -344,6 +358,15 @@ async def get_receipt_image(
 
     if not img_path or not Path(img_path).exists():
         raise HTTPException(status_code=404, detail="Image file not found")
+
+    # Canonicalization check
+    img_path_obj = Path(img_path).resolve()
+    allowed_roots = [
+        Path(settings.inbox_path).resolve(),
+        Path(settings.review_dir).resolve(),
+    ]
+    if not any(img_path_obj.is_relative_to(root) for root in allowed_roots):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     return FileResponse(img_path)
 
@@ -516,7 +539,9 @@ async def setup_wizard(
 
 
 @app.get("/setup/check/bexio")
-async def check_bexio_status(settings: Settings = Depends(get_settings)):
+async def check_bexio_status(
+    username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)
+):
     try:
         async with BexioClient(
             settings.bexio_api_token,
@@ -538,7 +563,9 @@ async def check_bexio_status(settings: Settings = Depends(get_settings)):
 
 
 @app.get("/setup/check/ocr")
-async def check_ocr_status(settings: Settings = Depends(get_settings)):
+async def check_ocr_status(
+    username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)
+):
     if settings.ocr_engine == "paddleocr":
         try:
             import paddleocr
@@ -584,7 +611,9 @@ async def check_ocr_status(settings: Settings = Depends(get_settings)):
 
 
 @app.get("/setup/check/llm")
-async def check_llm_status(settings: Settings = Depends(get_settings)):
+async def check_llm_status(
+    username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)
+):
     if settings.llm_provider == "ollama":
         try:
             import httpx
@@ -629,7 +658,7 @@ async def check_llm_status(settings: Settings = Depends(get_settings)):
 
 
 @app.get("/setup/check/system")
-async def check_system_status():
+async def check_system_status(username: str = Depends(verify_credentials)):
     import shutil
 
     pdftoppm = shutil.which("pdftoppm")
@@ -646,7 +675,9 @@ async def check_system_status():
 
 
 @app.get("/setup/check/db")
-async def check_db_status(settings: Settings = Depends(get_settings)):
+async def check_db_status(
+    username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)
+):
     try:
         db_path = Path(settings.database_path)
         with sqlite3.connect(db_path, timeout=5.0) as conn:
@@ -665,11 +696,15 @@ async def pull_ollama_model(
     request: Request,
     model: str = Form(...),
     csrf_token: str = Form(...),
+    username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
 ):
     """Trigger Ollama model pull."""
     if not csrf_token or request.session.get("csrf_token") != csrf_token:
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    if not re.match(r"^[a-zA-Z0-9._:-]+$", model):
+        raise HTTPException(status_code=400, detail="Invalid model name")
 
     url = (
         settings.ollama_url
@@ -696,7 +731,7 @@ async def pull_ollama_model(
 
 
 @app.get("/setup/run-all")
-async def run_all_checks():
+async def run_all_checks(username: str = Depends(verify_credentials)):
     """Hacky way to trigger all checks via HTMX by returning a trigger header."""
     # This tells HTMX to trigger these events on the client side
     return Response(headers={"HX-Trigger": "load-checks"})

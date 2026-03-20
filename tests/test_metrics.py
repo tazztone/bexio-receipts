@@ -8,7 +8,7 @@ async def test_metrics(test_settings):
     # Override settings to use test credentials
     app.dependency_overrides[get_settings] = lambda: test_settings
 
-    auth = ("admin", test_settings.review_password)
+    auth = ("admin", "test_password")
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as ac:

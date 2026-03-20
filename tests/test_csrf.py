@@ -18,7 +18,7 @@ async def test_csrf_protection(test_settings, tmp_path):
     with open(review_dir / "123.json", "w") as f:
         json.dump({"original_file": "test.png"}, f)
 
-    auth = base64.b64encode(f"admin:{test_settings.review_password}".encode()).decode()
+    auth = base64.b64encode(b"admin:test_password").decode()
     headers = {"Authorization": f"Basic {auth}"}
 
     async with AsyncClient(

@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # bexio-receipts specific
     inbox_path: str = "./inbox"
     review_username: str = "admin"
-    review_password: str = "password"  # keep as fallback default
+    review_password: str
     review_users: dict[str, str] = {}  # Multi-user support {"username": "password"}
     secret_key: str
     database_path: str = "processed_receipts.db"
@@ -56,6 +56,30 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
+
+    @model_validator(mode="after")
+    def validate_passwords(self):
+        if self.env != "development" and self.review_password == "password":
+            raise ValueError(
+                "review_password must be changed from 'password' in non-development environments"
+            )
+
+        # Hash passwords if they are not already hashed
+        import bcrypt
+
+        def hash_pwd(pwd: str) -> str:
+            if pwd.startswith("$2b$") or pwd.startswith("$2a$"):
+                return pwd
+            return bcrypt.hashpw(pwd.encode(), bcrypt.gensalt()).decode()
+
+        self.review_password = hash_pwd(self.review_password)
+
+        hashed_users = {}
+        for user, pwd in self.review_users.items():
+            hashed_users[user] = hash_pwd(pwd)
+        self.review_users = hashed_users
+
+        return self
 
     @model_validator(mode="after")
     def check_telegram_allowed_users(self):
