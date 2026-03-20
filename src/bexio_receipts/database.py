@@ -2,6 +2,7 @@ import sqlite3
 import hashlib
 from datetime import datetime
 from contextlib import closing
+from typing import Any
 
 
 def adapt_datetime(dt: datetime) -> str:
@@ -191,6 +192,50 @@ class DuplicateDetector:
                     "INSERT OR IGNORE INTO gdrive_seen_files (file_id, seen_at) VALUES (?, ?)",
                     (file_id, datetime.now()),
                 )
+
+    def get_processed_receipts(
+        self, limit: int = 50, offset: int = 0, search: str | None = None
+    ) -> list[dict]:
+        """Fetch list of processed receipts for the browser."""
+        with closing(self._get_conn()) as conn:
+            query = """
+                SELECT file_hash, file_path, processed_at, bexio_id, total_incl_vat, merchant_name, vat_amount, ocr_confidence
+                FROM processed_receipts
+            """
+            params: list[Any] = []
+            if search:
+                query += " WHERE merchant_name LIKE ? OR file_path LIKE ?"
+                params.extend([f"%{search}%", f"%{search}%"])
+
+            query += " ORDER BY processed_at DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+
+            cursor = conn.execute(query, params)
+            rows = cursor.fetchall()
+            return [
+                {
+                    "file_hash": row[0],
+                    "file_path": row[1],
+                    "processed_at": row[2],
+                    "bexio_id": row[3],
+                    "total": row[4],
+                    "merchant": row[5],
+                    "vat": row[6],
+                    "confidence": row[7],
+                }
+                for row in rows
+            ]
+
+    def get_total_processed_count(self, search: str | None = None) -> int:
+        """Get total count of processed receipts for pagination."""
+        with closing(self._get_conn()) as conn:
+            query = "SELECT COUNT(*) FROM processed_receipts"
+            params: list[Any] = []
+            if search:
+                query += " WHERE merchant_name LIKE ? OR file_path LIKE ?"
+                params.extend([f"%{search}%", f"%{search}%"])
+
+            return conn.execute(query, params).fetchone()[0]
 
     def get_stats(self) -> dict:
         """Fetch processing statistics."""

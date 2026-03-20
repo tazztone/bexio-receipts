@@ -87,6 +87,13 @@ class BexioClient:
                 self._tax_cache[float(t["value"])] = t["id"]
 
     @BEXIO_RETRY
+    async def get_accounts(self) -> list[dict]:
+        """Fetch all accounts."""
+        resp = await self.client.get("/2.0/accounts")
+        resp.raise_for_status()
+        return resp.json()
+
+    @BEXIO_RETRY
     async def fetch_accounts(self):
         """Fetch and cache accounts."""
         resp = await self.client.get("/2.0/accounts")

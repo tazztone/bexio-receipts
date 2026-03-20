@@ -272,6 +272,7 @@ def test_push_to_bexio_success(test_settings, tmp_path):
             "merchant_name": "Updated Merchant",
             "date": "2023-01-01",
             "total_incl_vat": 15.50,
+            "booking_account_id": 100,
             "csrf_token": "test_token",
         }
 

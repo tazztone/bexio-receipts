@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processed Receipts - History</title>
+    <link rel="stylesheet" href="/static/pico.min.css">
+    <style>
+        .status-badge { 
+            padding: 0.1rem 0.6rem; 
+            border-radius: 4px; 
+            font-weight: 700; 
+            font-size: 0.8rem; 
+            display: inline-block;
+        }
+        .status-ok { background-color: var(--pico-ins-background-color); color: var(--pico-ins-color); }
+        .status-error { background-color: var(--pico-del-background-color); color: var(--pico-del-color); }
+        .status-warning { background-color: #f9a825; color: #000; }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <header class="container">
+        <nav>
+            <ul>
+                <li><strong>bexio-receipts</strong></li>
+            </ul>
+            <ul>
+                <li><a href="/">Queue</a></li>
+                <li><a href="/history"><strong>History</strong></a></li>
+                <li><a href="/stats">Stats</a></li>
+                <li><a href="/setup">Setup</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="container">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h1 style="margin-bottom: 0;">Processed Receipts</h1>
+                <p style="opacity: 0.7; margin-bottom: 0;">Showing {{ total_count }} total entries in the archive.</p>
+            </div>
+            
+            <form method="GET" action="/history" style="margin-bottom: 0; display: flex; gap: 0.5rem; align-items: center;">
+                <input type="search" name="search" placeholder="Search merchant..." value="{{ search or '' }}" style="margin-bottom: 0; min-width: 250px;">
+                <button type="submit" class="secondary" style="margin-bottom: 0; padding: 0.5rem 1rem;">Search</button>
+            </form>
+        </div>
+
+        {% if not receipts %}
+        <article style="text-align: center; padding: 3rem;">
+            <p>No processed receipts found matching your criteria.</p>
+            <a href="/history" class="outline">Clear Search</a>
+        </article>
+        {% else %}
+        <div style="overflow-x: auto;">
+            <table class="striped" style="--pico-spacing: 1rem;">
+                <thead>
+                    <tr>
+                        <th>Merchant</th>
+                        <th>Processed Date</th>
+                        <th>Amount</th>
+                        <th style="text-align: center;">Confidence</th>
+                        <th>Bexio ID</th>
+                        <th style="text-align: right;">File</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in receipts %}
+                    <tr>
+                        <td>
+                            <strong style="color: var(--pico-heading-color);">{{ r.merchant or "Unknown" }}</strong>
+                        </td>
+                        <td style="font-size: 0.9rem; opacity: 0.8;">
+                            {{ r.processed_at.strftime('%Y-%m-%d %H:%M') if r.processed_at else 'N/A' }}
+                        </td>
+                        <td>
+                            <strong style="color: var(--pico-primary-color);">{{ r.total or '0.00' }} CHF</strong>
+                            {% if r.vat %}
+                            <div style="font-size: 0.7rem; opacity: 0.7;">VAT: {{ r.vat }}</div>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% if r.confidence %}
+                                {% set conf = (r.confidence * 100)|round|int %}
+                                <span class="status-badge {% if conf > 90 %}status-ok{% elif conf > 70 %}status-warning{% else %}status-error{% endif %}">
+                                    {{ conf }}%
+                                </span>
+                            {% else %}
+                                <span style="opacity: 0.5;">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <code style="font-size: 0.75rem;">{{ r.bexio_id }}</code>
+                        </td>
+                        <td style="text-align: right; font-size: 0.8rem; opacity: 0.6;">
+                            {{ r.file_path.split('/')[-1] if r.file_path else 'N/A' }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="/history?page={{ page - 1 }}{% if search %}&search={{ search }}{% endif %}" role="button" class="outline secondary">Previous</a>
+            {% endif %}
+            
+            <span>Page {{ page }} of {{ total_pages }}</span>
+            
+            {% if page < total_pages %}
+            <a href="/history?page={{ page + 1 }}{% if search %}&search={{ search }}{% endif %}" role="button" class="outline secondary">Next</a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endif %}
+    </main>
+</body>
+</html>

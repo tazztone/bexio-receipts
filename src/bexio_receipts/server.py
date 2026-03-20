@@ -183,6 +183,7 @@ async def dashboard(
     settings: Settings = Depends(get_settings),
     page: int = 1,
     per_page: int = 50,
+    search: str | None = None,
 ):
     """List all receipts awaiting review."""
     # Auto-redirect to setup if not configured
@@ -193,34 +194,41 @@ async def dashboard(
     review_dir.mkdir(exist_ok=True, parents=True)
 
     # Sort files by creation time, newest first
-    all_files = sorted(
+    all_files_list = sorted(
         review_dir.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True
     )
 
-    total_reviews = len(all_files)
-    total_pages = max(1, (total_reviews + per_page - 1) // per_page)
-    page = max(1, min(page, total_pages))
-
-    start_idx = (page - 1) * per_page
-    end_idx = start_idx + per_page
-
-    reviews = []
-    for p in all_files[start_idx:end_idx]:
+    reviews_data = []
+    for p in all_files_list:
         with open(p) as f:
             data = json.load(f)
             extracted = data.get("extracted", {}) or {}
-            reviews.append(
+            merchant = extracted.get("merchant_name", "Unknown")
+
+            if search and search.lower() not in merchant.lower():
+                continue
+
+            reviews_data.append(
                 {
                     "id": p.stem,
                     "file": data.get("original_file"),
                     "errors": data.get("errors", []),
-                    "merchant": extracted.get("merchant_name", "Unknown"),
+                    "merchant": merchant,
                     "total": extracted.get("total_incl_vat", 0.0),
                     "date": extracted.get("transaction_date", "Unknown"),
                     "ocr_confidence": data.get("ocr_confidence"),
                     "failed_stage": data.get("failed_stage", "unknown"),
                 }
             )
+
+    total_reviews = len(reviews_data)
+    total_pages = max(1, (total_reviews + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+
+    reviews_page = reviews_data[start_idx:end_idx]
 
     if "csrf_token" not in request.session:
         request.session["csrf_token"] = secrets.token_urlsafe()
@@ -232,13 +240,14 @@ async def dashboard(
         request,
         "dashboard.html",
         {
-            "reviews": reviews,
+            "reviews": reviews_page,
             "csrf_token": csrf_token,
             "success_msg": success_msg,
             "page": page,
             "total_pages": total_pages,
             "has_next": page < total_pages,
             "has_prev": page > 1,
+            "search": search,
         },
     )
 
@@ -289,6 +298,136 @@ async def get_receipt_thumbnail(
         return FileResponse(img_path)  # Fallback to original image
 
 
+@app.post("/bulk-action")
+async def bulk_action(
+    request: Request,
+    ids: list[str] = Form(...),
+    action: str = Form(...),
+    csrf_token: str = Form(...),
+    username: str = Depends(verify_credentials),
+    settings: Settings = Depends(get_settings),
+    db: DuplicateDetector = Depends(get_db),
+):
+    """Process or discard multiple receipts."""
+    if not csrf_token or request.session.get("csrf_token") != csrf_token:
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    review_dir = Path(settings.review_dir)
+    success_count = 0
+    error_count = 0
+
+    if action == "discard":
+        for review_id in ids:
+            p = review_dir / f"{review_id}.json"
+            if p.exists():
+                p.unlink()
+                success_count += 1
+        request.session["success_msg"] = f"🗑️ Discarded {success_count} receipts."
+
+    elif action == "process":
+        async with BexioClient(
+            settings.bexio_api_token,
+            settings.bexio_base_url,
+            settings.default_vat_rate,
+            settings.default_payment_terms_days,
+        ) as bexio:
+            await bexio.cache_lookups()
+
+            for review_id in ids:
+                p = review_dir / f"{review_id}.json"
+                if not p.exists():
+                    continue
+
+                try:
+                    with open(p) as f:
+                        data = json.load(f)
+
+                    extracted = data.get("extracted", {})
+                    receipt = Receipt.model_validate(extracted)
+                    img_path = data.get("original_file")
+                    filename = Path(img_path).name
+                    mime_type, _ = mimetypes.guess_type(img_path)
+                    mime_type = mime_type or "application/octet-stream"
+
+                    file_uuid = await bexio.upload_file(img_path, filename, mime_type)
+
+                    # Use merchant-specific account or default
+                    booking_account_id = None
+                    if receipt.merchant_name:
+                        booking_account_id = db.get_merchant_account(
+                            receipt.merchant_name
+                        )
+
+                    if not booking_account_id:
+                        booking_account_id = settings.default_booking_account_id
+
+                    if receipt.merchant_name:
+                        await bexio.create_purchase_bill(
+                            receipt, file_uuid, booking_account_id=booking_account_id
+                        )
+                    else:
+                        await bexio.create_expense(
+                            receipt,
+                            file_uuid,
+                            booking_account_id=booking_account_id,
+                            bank_account_id=settings.default_bank_account_id,
+                        )
+
+                    p.unlink()
+
+                    file_hash = db.get_hash(img_path)
+                    db.mark_processed(
+                        file_hash,
+                        img_path,
+                        str(file_uuid),
+                        total_incl_vat=receipt.total_incl_vat,
+                        merchant_name=receipt.merchant_name,
+                        vat_amount=receipt.vat_amount,
+                    )
+                    success_count += 1
+                except Exception as e:
+                    logger.error(
+                        "Bulk process failed for item", id=review_id, error=str(e)
+                    )
+                    error_count += 1
+
+        msg = f"✅ Processed {success_count} receipts."
+        if error_count > 0:
+            msg += f" (⚠️ {error_count} failed)"
+        request.session["success_msg"] = msg
+
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/history", response_class=HTMLResponse)
+async def get_history(
+    request: Request,
+    page: int = 1,
+    search: str | None = None,
+    username: str = Depends(verify_credentials),
+    settings: Settings = Depends(get_settings),
+    db: DuplicateDetector = Depends(get_db),
+):
+    """Browse history of processed receipts."""
+    limit = 25
+    offset = (page - 1) * limit
+    receipts = db.get_processed_receipts(limit=limit, offset=offset, search=search)
+    total_count = db.get_total_processed_count(search=search)
+    total_pages = (total_count + limit - 1) // limit
+
+    return templates.TemplateResponse(
+        request,
+        "history.html",
+        {
+            "receipts": receipts,
+            "page": page,
+            "total_pages": total_pages,
+            "search": search,
+            "total_count": total_count,
+        },
+    )
+
+
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_view(
     request: Request,
@@ -322,6 +461,25 @@ async def review_receipt(
     with open(p) as f:
         data = json.load(f)
 
+    # Fetch accounts for the dropdown
+    async with BexioClient(
+        settings.bexio_api_token,
+        settings.bexio_base_url,
+        settings.default_vat_rate,
+        settings.default_payment_terms_days,
+    ) as bexio:
+        accounts = await bexio.get_accounts()
+
+    # Get the default account for this merchant if known
+    db = DuplicateDetector(settings.database_path)
+    merchant_name = data.get("extracted", {}).get("merchant_name")
+    default_account_id = None
+    if merchant_name:
+        default_account_id = db.get_merchant_account(merchant_name)
+
+    if not default_account_id:
+        default_account_id = settings.default_booking_account_id
+
     if "csrf_token" not in request.session:
         request.session["csrf_token"] = secrets.token_urlsafe()
 
@@ -334,6 +492,8 @@ async def review_receipt(
             "id": review_id,
             "data": data,
             "receipt": data.get("extracted", {}),
+            "accounts": accounts,
+            "default_account_id": default_account_id,
             "csrf_token": csrf_token,
         },
     )
@@ -382,6 +542,7 @@ async def push_to_bexio(
     date: str = Form(...),
     total_incl_vat: float = Form(...),
     vat_rate_pct: float | None = Form(None),
+    booking_account_id: int = Form(...),
     csrf_token: str = Form(...),
     username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
@@ -433,11 +594,6 @@ async def push_to_bexio(
 
             # Prefer Bill if merchant exists
             if receipt.merchant_name:
-                booking_account_id = (
-                    db.get_merchant_account(receipt.merchant_name)
-                    or settings.default_booking_account_id
-                )
-
                 await bexio.create_purchase_bill(
                     receipt, file_uuid, booking_account_id=booking_account_id
                 )
@@ -447,7 +603,7 @@ async def push_to_bexio(
                 await bexio.create_expense(
                     receipt,
                     file_uuid,
-                    booking_account_id=settings.default_booking_account_id,
+                    booking_account_id=booking_account_id,
                     bank_account_id=settings.default_bank_account_id,
                 )
 

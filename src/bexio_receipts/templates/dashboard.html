@@ -13,9 +13,10 @@
                 <li><strong>bexio-receipts</strong></li>
             </ul>
             <ul>
-                <li><a href="/">Dashboard</a></li>
-                <li><a href="/setup">Setup</a></li>
+                <li><a href="/"><strong>Queue</strong></a></li>
+                <li><a href="/history">History</a></li>
                 <li><a href="/stats">Stats</a></li>
+                <li><a href="/setup">Setup</a></li>
             </ul>
         </nav>
     </header>
@@ -30,97 +31,128 @@
         
         {% if not reviews %}
         <article>
-            <header><strong>Welcome! 🎉</strong></header>
-            <p>No receipts awaiting review! Here's how to get started:</p>
+            <header><strong>Ready for your first receipt? 📂</strong></header>
+            <p>Your receipt processing system is active and waiting. Here's how to get started:</p>
             <ul>
-                <li>✅ <strong>System Connected:</strong> Your Bexio integration is active.</li>
-                <li>📁 <strong>Drop Files:</strong> Place receipts in <code>inbox/</code> to process them.</li>
-                <li>🤖 <strong>Telegram:</strong> <a href="/setup" style="text-decoration: underline;">Verify bot status</a> then send photos to ingest from mobile.</li>
+                <li>📥 <strong>Drop Files:</strong> Place any receipt image or PDF in the <code>inbox/</code> folder.</li>
+                <li>📱 <strong>Telegram:</strong> Send a photo to your bot for instant mobile ingestion.</li>
+                <li>🔍 <strong>Auto-Process:</strong> Our AI will extract the merchant, date, and total automatically.</li>
             </ul>
-            <p><strong>Quick Actions:</strong></p>
-            <div class="grid">
-                <div>
-                    <code>uv run bexio-receipts watch telegram</code>
-                    <br><small>Run this to start your Telegram bot.</small>
+            <p><strong>System Status:</strong></p>
+            <div class="grid" style="margin-top: 1rem;">
+                <div style="background: var(--pico-card-sectioning-background-color); padding: 1rem; border-radius: 8px; border: 1px solid var(--pico-muted-border-color);">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--pico-ins-color);">
+                        <span style="width: 10px; height: 10px; background: currentColor; border-radius: 50%;"></span>
+                        <strong>Folder Watcher</strong>
+                    </div>
+                    <small style="opacity: 0.8;">Monitoring <code>inbox/</code> for new files.</small>
+                </div>
+                <div style="background: var(--pico-card-sectioning-background-color); padding: 1rem; border-radius: 8px; border: 1px solid var(--pico-muted-border-color);">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--pico-ins-color);">
+                        <span style="width: 10px; height: 10px; background: currentColor; border-radius: 50%;"></span>
+                        <strong>Telegram Bot</strong>
+                    </div>
+                    <small style="opacity: 0.8;"><a href="/setup" style="text-decoration: underline;">Verify status</a> to enable mobile uploads.</small>
                 </div>
             </div>
             <footer>
-                <a href="/setup" role="button">Open Setup Page</a>
+                <a href="/setup" role="button" class="outline">Open Setup Wizard</a>
                 <a href="/stats" role="button" class="secondary outline">View Statistics</a>
             </footer>
         </article>
         {% else %}
         
-        <div style="margin-bottom: 1rem; font-size: 0.85rem; display: flex; gap: 1.5rem; flex-wrap: wrap;">
-            <span><strong>Stage:</strong> OCR ▪ Extraction ▪ Validation ▪ Upload</span>
-            <span><strong>Confidence:</strong> 
-                <span class="status-badge status-ok">🟢 >90%</span>
-                <span class="status-badge status-warning">🟡 >70%</span>
-                <span class="status-badge status-error">🔴 <70%</span>
-            </span>
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <button type="button" class="secondary outline" style="margin-bottom: 0; padding: 0.5rem 1rem;" 
+                        onclick="if(confirm('Discard selected items?')) { document.getElementById('bulk-action-type').value='discard'; document.getElementById('bulk-form').submit(); }">
+                    Bulk Discard
+                </button>
+                <button type="button" class="primary" style="margin-bottom: 0; padding: 0.5rem 1rem;"
+                        onclick="if(confirm('Process and upload selected items? (Uses AI defaults)')) { document.getElementById('bulk-action-type').value='process'; document.getElementById('bulk-form').submit(); }">
+                    Bulk Process
+                </button>
+            </div>
+            
+            <form method="GET" action="/" style="margin-bottom: 0; display: flex; gap: 0.5rem; align-items: center;">
+                <input type="search" name="search" placeholder="Search merchant..." value="{{ search or '' }}" style="margin-bottom: 0; min-width: 250px;">
+                <button type="submit" class="secondary" style="margin-bottom: 0; padding: 0.5rem 1rem;">Search</button>
+            </form>
         </div>
 
-        <form id="bulk-form" method="POST">
+        <form id="bulk-form" method="POST" action="/bulk-action">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="action" id="bulk-action-type" value="process">
             
             <div style="overflow-x: auto;">
-                <table class="striped">
+                <table class="striped" style="--pico-spacing: 1.25rem;">
                     <thead>
                         <tr>
-                            <th style="width: 100px;">
-                                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0; cursor: pointer;">
-                                    <input type="checkbox" id="select-all" onclick="toggleAll(this)" style="margin-bottom: 0; width: 1.25rem; height: 1.25rem;">
-                                    <small>Select All</small>
+                            <th style="width: 110px;">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0; cursor: pointer; font-weight: 600;">
+                                    <input type="checkbox" id="select-all" onclick="toggleAll(this)" style="margin-bottom: 0; width: 1.35rem; height: 1.35rem;">
+                                    <span>All</span>
                                 </label>
                             </th>
                             <th>Preview</th>
                             <th>Merchant</th>
                             <th>Date</th>
                             <th>Total</th>
-                            <th style="text-align: center;">Status</th>
-                            <th>Action</th>
+                            <th style="text-align: center;">
+                                Status
+                                <div style="font-size: 0.65rem; font-weight: normal; margin-top: 0.2rem; white-space: nowrap; opacity: 0.7;">
+                                    🔴<70% ▪ 🟡<90% ▪ 🟢>90%
+                                </div>
+                            </th>
+                            <th style="text-align: right;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for review in reviews %}
-                        <tr>
+                        <tr style="transition: background-color 0.2s ease;" onmouseover="this.style.backgroundColor='var(--pico-table-row-stripped-background-color)'" onmouseout="this.style.backgroundColor='transparent'">
                             <td>
-                                <input type="checkbox" name="ids" value="{{ review.id }}" style="width: 1.25rem; height: 1.25rem; cursor: pointer;">
+                                <input type="checkbox" name="ids" value="{{ review.id }}" style="width: 1.35rem; height: 1.35rem; cursor: pointer;">
                             </td>
                             <td>
                                 <a href="/review/{{ review.id }}" title="Review receipt">
                                     <img src="/thumbnail/{{ review.id }}" 
                                          loading="lazy"
-                                         style="max-height: 50px; border-radius: 4px; display: block;" 
+                                         style="max-height: 55px; border-radius: 6px; display: block; border: 1px solid var(--pico-muted-border-color);" 
                                          alt="Receipt thumbnail for {{ review.merchant }}">
                                 </a>
                             </td>
                             <td>
-                                <strong style="font-size: 1.1rem; color: var(--pico-heading-color);">{{ review.merchant }}</strong>
+                                <strong style="font-size: 1.15rem; color: var(--pico-heading-color);">{{ review.merchant }}</strong>
                                 {% if review.errors %}
                                 <span style="cursor: help; margin-left: 0.5rem; color: var(--pico-del-color);" 
                                       title="{% for err in review.errors %}{{ err }}{% if not loop.last %}\n{% endif %}{% endfor %}">
                                     ⚠️
                                 </span>
                                 {% endif %}
+                                <div class="hide-desktop" style="font-size: 0.8rem; opacity: 0.8;">{{ review.date }}</div>
                             </td>
-                            <td class="hide-mobile">{{ review.date }}</td>
-                            <td><strong style="color: var(--pico-primary-color); white-space: nowrap;">{{ review.total }} CHF</strong></td>
+                            <td class="hide-mobile" style="opacity: 0.9;">{{ review.date }}</td>
+                            <td><strong style="color: var(--pico-primary-color); white-space: nowrap; font-size: 1.1rem;">{{ review.total }} CHF</strong></td>
                             <td style="text-align: center;">
-                                <div style="display: flex; flex-direction: column; align-items: center; gap: 0.2rem;">
+                                <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem;">
                                     {% if review.ocr_confidence %}
                                         {% set conf = (review.ocr_confidence * 100)|round|int %}
-                                        <span class="status-badge {% if conf > 90 %}status-ok{% elif conf > 70 %}status-warning{% else %}status-error{% endif %}">
+                                        <span class="status-badge {% if conf > 90 %}status-ok{% elif conf > 70 %}status-warning{% else %}status-error{% endif %}"
+                                              style="font-weight: 700; border-radius: 4px; padding: 0.1rem 0.6rem;">
                                             {{ conf }}%
                                         </span>
                                     {% else %}
-                                        <span class="status-badge status-checking">N/A</span>
+                                        <span class="status-badge status-checking" style="border-radius: 4px; padding: 0.1rem 0.6rem;">N/A</span>
                                     {% endif %}
-                                    <small style="text-transform: capitalize; opacity: 0.9; font-size: 0.75rem; font-weight: 500;">{{ review.failed_stage }}</small>
+                                    <small style="text-transform: capitalize; opacity: 0.9; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em;">{{ review.failed_stage }}</small>
                                 </div>
                             </td>
-                            <td>
-                                <a href="/review/{{ review.id }}" role="button" class="outline" style="padding: 0.5rem 1rem; font-size: 0.9rem; min-height: 44px; display: inline-flex; align-items: center;">Review</a>
+                            <td style="text-align: right;">
+                                <a href="/review/{{ review.id }}" role="button" 
+                                   class="{% if loop.first %}primary{% else %}outline{% endif %}" 
+                                   style="padding: 0.6rem 1.25rem; font-size: 0.9rem; min-height: 44px; display: inline-flex; align-items: center; font-weight: 600;">
+                                   Review
+                                </a>
                             </td>
                         </tr>
                         {% endfor %}
