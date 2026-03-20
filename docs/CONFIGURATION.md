@@ -11,6 +11,7 @@ This command will guide you through the most important settings and automaticall
 
 ## Core API Settings
 
+- **`ENV`**: Set to `production` to enable strict security checks (e.g., rejecting weak default passwords). Defaults to `development`.
 - **`BEXIO_API_TOKEN`**: Your bexio Personal Access Token. Create this in bexio under *Settings > All Settings > Apps & API > API Keys*.
 - **`BEXIO_BASE_URL`**: Defaults to `https://api.bexio.com`.
 - **`DEFAULT_BOOKING_ACCOUNT_ID`**: (Required) Default bexio account ID for new expenses (e.g., `630`).
@@ -44,6 +45,8 @@ The system supports two OCR engines and multiple LLM providers.
 | `OLLAMA_URL` | URL for the Ollama instance | `http://localhost:11434` |
 | `OPENAI_API_KEY` | Your OpenAI API key (if using `openai`) | `None` |
 
+> 💡 **Note**: `GLM_OCR_URL` and `OLLAMA_URL` are separate. This allows you to run the heavy OCR model on one host (e.g., with a GPU) and the extraction LLM on another (e.g., a standard CPU host).
+
 ## Ingestion Sources
 
 Each ingestion source has its own configuration block.
@@ -75,10 +78,10 @@ Each ingestion source has its own configuration block.
 
 ## Security & Dashboard
 
-> ⚠️ **Warning**: The default `REVIEW_USERNAME` and `REVIEW_PASSWORD` are both set to `admin`. **Change these immediately** if your dashboard is accessible over a network.
+> ⚠️ **Warning**: The default `REVIEW_USERNAME` and `REVIEW_PASSWORD` are both set to `admin`. **Change these immediately** if your dashboard is accessible over a network. If `ENV=production`, the application will refuse to start if the password is still set to the string `password`.
 
 - **`SECRET_KEY`**: A secure random string used for session security. Change this in production.
 - **`REVIEW_USERNAME`**: Username for accessing the Review Dashboard. Defaults to `admin`.
 - **`REVIEW_PASSWORD`**: Password for accessing the Review Dashboard. Defaults to `admin`.
-- **`REVIEW_USERS`**: Multi-user support JSON string `{"username": "password"}`.
+- **`REVIEW_USERS`**: Multi-user support JSON string `{"username": "password"}`. If set, this overrides the single user/password settings.
 - **`REVIEW_DIR`**: Where files waiting for manual approval are stored. Defaults to `./review_queue`.

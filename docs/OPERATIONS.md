@@ -65,6 +65,11 @@ Receipts with low OCR confidence or validation errors stop in the **Review Dashb
 ### Database Maintenance
 The SQLite database (`processed_receipts.db`) grows slowly. No active maintenance is required, but a weekly backup is recommended.
 
+To perform a safe backup (even while the app is running):
+```bash
+sqlite3 processed_receipts.db ".backup backup_$(date +%Y%m%d).db"
+```
+
 ## Disaster Recovery
 
 ### "My Pipeline is Stuck"

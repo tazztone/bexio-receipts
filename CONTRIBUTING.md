@@ -62,9 +62,13 @@ uv run bexio-receipts serve
 ## Testing
 
 This project uses `pytest` and maintains a strict **minimum 85%** test coverage. 
+
+> 💡 **Note**: The coverage badge in `README.md` is static. Please update it manually if your changes significantly improve the coverage.
+
 ```bash
 # Run all tests
 uv run pytest tests/ --cov=src
+...
 
 # Run a single test
 uv run pytest tests/test_validation.py

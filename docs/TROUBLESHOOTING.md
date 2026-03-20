@@ -21,24 +21,30 @@
 - Your PAT (Personal Access Token) is expired or invalid.
 - Ensure the token has `expense_show`, `expense_create`, and `file_show` permissions.
 
-### 4. `Total/Subtotal Mismatch`
+### 4. `Security: Password rejected`
+**Symptoms**: Application fails to start with `ValueError: review_password must be changed...`.
+**Fix**: 
+- If `ENV=production`, the validator ensures you have changed the default password.
+- **Note**: The validator specifically checks for the literal string `password`. You should always set a strong, unique password regardless of whether the validator catches it.
+
+### 5. `Total/Subtotal Mismatch`
 **Symptoms**: Receipt appears in the Review Dashboard with a "Total mismatch" error.
 **Fix**: This is often due to the LLM misidentifying columns or Swiss VAT rounding (5-rappen). Correct the values in the dashboard and hit "Apply & Push".
 
-### 5. `Malformed JSON / Extraction Failed`
+### 6. `Malformed JSON / Extraction Failed`
 **Symptoms**: Logs show `JSONDecodeError` or "LLM failed to return structured data".
 **Fix**: 
 - The LLM might be "hallucinating" or struggling with complex receipt layouts.
 - Try switching to a more capable model (e.g., `qwen3.5:9b` or `openai`).
 - Ensure the receipt image is clear and the OCR text is legible.
 
-### 6. `Merchant Match Failure`
+### 7. `Merchant Match Failure`
 **Symptoms**: Extracted merchant name is correct, but it doesn't match an existing contact in bexio.
 **Fix**: 
 - If the merchant is new, bexio-receipts will attempt to create a contact.
 - If it fails, manually create the contact in bexio and then update the mapping in the dashboard.
 
-### 7. `Handwritten or Non-Latin Receipts`
+### 8. `Handwritten or Non-Latin Receipts`
 **Symptoms**: `paddleocr` (default) fails to recognize text.
 **Fix**: 
 - Switch to `OCR_ENGINE=glm-ocr` in your `.env`. GLM-OCR is a multimodal model that performs significantly better on handwritten and complex documents.

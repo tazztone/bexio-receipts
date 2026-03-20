@@ -46,10 +46,12 @@ graph TD
 ### 2. OCR Layer (`ocr.py`)
 - **PaddleOCR**: Local engine, fast and robust for standard Latin text.
 - **GLM-OCR**: Multimodal LLM (via Ollama) for more complex layouts or handwritten notes.
+- **Resilience**: The GLM-OCR path is designed to be tolerant of markdown-wrapped JSON output. The pipeline automatically strips markdown code fences (e.g., ` ```json `) before parsing the extracted data.
 
 ### 3. Extraction Layer (`extraction.py`)
-- **Pydantic AI**: Orchestrates the LLM prompt. It enforces a strict schema using the `Receipt` model.
+- **Pydantic AI**: Orchestrates the LLM prompt. It enforces a strict schema using the `Receipt` model. The core system prompt is located within `src/bexio_receipts/extraction.py`.
 - **Model Intelligence**: Extracts structured data into Pydantic models. This layer handles merchant identification, date/currency parsing, and Swiss VAT rate detection.
+- **Contract**: Note that the `Receipt` model uses an alias for the transaction date. While the internal field is `transaction_date`, the JSON source must provide the key `date`.
 
 ### 4. Database Layer (`database.py`)
 A SQLite-backed persistence layer that handles:
