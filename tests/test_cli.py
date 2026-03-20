@@ -117,7 +117,14 @@ def test_cli_init_quickstart(tmp_path, test_settings):
     sample_img = fixtures_dir / "sample_receipt.png"
     sample_img.write_text("fake image")
 
-    with patch("bexio_receipts.cli.Path", side_effect=lambda x: tmp_path / x if isinstance(x, str) and not x.startswith("/") else tmp_path / x):
+    with patch(
+        "bexio_receipts.cli.Path",
+        side_effect=lambda x: (
+            tmp_path / x
+            if isinstance(x, str) and not x.startswith("/")
+            else tmp_path / x
+        ),
+    ):
         # We need to be careful with Path patching
         pass
 
@@ -126,11 +133,11 @@ def test_cli_init_quickstart(tmp_path, test_settings):
         # Mock .env path
         mock_env = MagicMock()
         mock_env.exists.return_value = False
-        
+
         # Mock fixtures path
         mock_fixtures = MagicMock()
         mock_fixtures.exists.return_value = True
-        
+
         def path_side_effect(path_str):
             if str(path_str) == ".env":
                 return mock_env
@@ -139,18 +146,28 @@ def test_cli_init_quickstart(tmp_path, test_settings):
             return MagicMock()
 
         mock_path.side_effect = path_side_effect
-        
+
         with patch("shutil.copy"):
-            with patch("bexio_receipts.ocr.async_run_ocr", new_callable=AsyncMock) as mock_ocr:
+            with patch(
+                "bexio_receipts.ocr.async_run_ocr", new_callable=AsyncMock
+            ) as mock_ocr:
                 mock_ocr.return_value = ("raw", 0.9, {})
-                with patch("bexio_receipts.extraction.extract_receipt", new_callable=AsyncMock) as mock_ext:
+                with patch(
+                    "bexio_receipts.extraction.extract_receipt", new_callable=AsyncMock
+                ) as mock_ext:
                     from bexio_receipts.models import Receipt
-                    mock_ext.return_value = Receipt(merchant_name="Test", total_incl_vat=10.0)
-                    
-                    with patch("bexio_receipts.cli.Settings", return_value=test_settings):
+
+                    mock_ext.return_value = Receipt(
+                        merchant_name="Test", total_incl_vat=10.0
+                    )
+
+                    with patch(
+                        "bexio_receipts.cli.Settings", return_value=test_settings
+                    ):
                         result = runner.invoke(app, ["init", "--quickstart"])
                         assert result.exit_code == 0
                         assert "Quickstart complete" in result.stdout
+
 
 def test_cli_file_not_found(test_settings):
     with patch("bexio_receipts.cli.Settings", return_value=test_settings):

@@ -193,7 +193,9 @@ async def dashboard(
     review_dir.mkdir(exist_ok=True, parents=True)
 
     # Sort files by creation time, newest first
-    all_files = sorted(review_dir.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)
+    all_files = sorted(
+        review_dir.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True
+    )
 
     total_reviews = len(all_files)
     total_pages = max(1, (total_reviews + per_page - 1) // per_page)
@@ -307,6 +309,7 @@ async def review_receipt(
 ):
     """Show review form for a specific receipt."""
     import re
+
     if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
         raise HTTPException(status_code=400, detail="Invalid review ID")
 
@@ -386,6 +389,7 @@ async def push_to_bexio(
 ):
     """Update receipt data and push to bexio."""
     import re
+
     if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
         raise HTTPException(status_code=400, detail="Invalid review ID")
 
@@ -419,26 +423,26 @@ async def push_to_bexio(
 
     try:
         async with BexioClient(
-                settings.bexio_api_token,
-                settings.bexio_base_url,
-                settings.default_vat_rate,
-                settings.default_payment_terms_days,
+            settings.bexio_api_token,
+            settings.bexio_base_url,
+            settings.default_vat_rate,
+            settings.default_payment_terms_days,
         ) as bexio:
             await bexio.cache_lookups()
             file_uuid = await bexio.upload_file(img_path, filename, mime_type)
 
             # Prefer Bill if merchant exists
             if receipt.merchant_name:
-                    booking_account_id = (
-                        db.get_merchant_account(receipt.merchant_name)
-                        or settings.default_booking_account_id
-                    )
+                booking_account_id = (
+                    db.get_merchant_account(receipt.merchant_name)
+                    or settings.default_booking_account_id
+                )
 
-                    await bexio.create_purchase_bill(
-                        receipt, file_uuid, booking_account_id=booking_account_id
-                    )
-                    # Save mapping
-                    db.set_merchant_account(receipt.merchant_name, booking_account_id)
+                await bexio.create_purchase_bill(
+                    receipt, file_uuid, booking_account_id=booking_account_id
+                )
+                # Save mapping
+                db.set_merchant_account(receipt.merchant_name, booking_account_id)
             else:
                 await bexio.create_expense(
                     receipt,
@@ -450,7 +454,9 @@ async def push_to_bexio(
         # If successful, delete from review queue
         p.unlink()
 
-        request.session["success_msg"] = f"✅ Successfully booked receipt from {receipt.merchant_name}."
+        request.session["success_msg"] = (
+            f"✅ Successfully booked receipt from {receipt.merchant_name}."
+        )
 
         # Mark as processed in the database with financial stats
         file_hash = db.get_hash(img_path)
@@ -481,6 +487,7 @@ async def discard_review(
 ):
     """Remove a receipt from the review queue."""
     import re
+
     if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
         raise HTTPException(status_code=400, detail="Invalid review ID")
 
@@ -508,6 +515,7 @@ async def bulk_discard_review(
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
     import re
+
     review_dir = Path(settings.review_dir)
     count = 0
     for review_id in ids:
@@ -517,7 +525,7 @@ async def bulk_discard_review(
         if p.exists():
             p.unlink()
             count += 1
-    
+
     if count > 0:
         request.session["success_msg"] = f"🗑️ Discarded {count} receipts."
     return RedirectResponse(url="/", status_code=303)
@@ -540,7 +548,8 @@ async def setup_wizard(
 
 @app.get("/setup/check/bexio")
 async def check_bexio_status(
-    username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)
+    username: str = Depends(verify_credentials),
+    settings: Settings = Depends(get_settings),
 ):
     try:
         async with BexioClient(
@@ -564,7 +573,8 @@ async def check_bexio_status(
 
 @app.get("/setup/check/ocr")
 async def check_ocr_status(
-    username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)
+    username: str = Depends(verify_credentials),
+    settings: Settings = Depends(get_settings),
 ):
     if settings.ocr_engine == "paddleocr":
         try:
@@ -576,7 +586,7 @@ async def check_ocr_status(
         except ImportError:
             return HTMLResponse(
                 '<span class="status-badge status-error">Error: paddleocr not installed. <br>'
-                '<small>Run: <code>uv add paddleocr paddlepaddle</code> '
+                "<small>Run: <code>uv add paddleocr paddlepaddle</code> "
                 '<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'uv add paddleocr paddlepaddle\')">Copy</button></small></span>'
             )
     elif settings.ocr_engine == "glm-ocr":
@@ -598,13 +608,13 @@ async def check_ocr_status(
                 else:
                     return HTMLResponse(
                         f'<span class="status-badge status-warning">Warning: Model {settings.glm_ocr_model} not found. <br>'
-                        f'<small>Run: <code>ollama pull {settings.glm_ocr_model}</code> '
+                        f"<small>Run: <code>ollama pull {settings.glm_ocr_model}</code> "
                         f'<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama pull {settings.glm_ocr_model}\')">Copy</button></small></span>'
                     )
         except Exception as e:
             return HTMLResponse(
                 f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}. <br>'
-                '<small>Run: <code>ollama serve</code> '
+                "<small>Run: <code>ollama serve</code> "
                 '<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama serve\')">Copy</button></small></span>'
             )
     return HTMLResponse('<span class="status-badge status-error">Unknown Engine</span>')
@@ -612,7 +622,8 @@ async def check_ocr_status(
 
 @app.get("/setup/check/llm")
 async def check_llm_status(
-    username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)
+    username: str = Depends(verify_credentials),
+    settings: Settings = Depends(get_settings),
 ):
     if settings.llm_provider == "ollama":
         try:
@@ -632,13 +643,13 @@ async def check_llm_status(
                 else:
                     return HTMLResponse(
                         f'<span class="status-badge status-warning">Warning: Model {settings.llm_model} not found. <br>'
-                        f'<small>Run: <code>ollama pull {settings.llm_model}</code> '
+                        f"<small>Run: <code>ollama pull {settings.llm_model}</code> "
                         f'<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama pull {settings.llm_model}\')">Copy</button></small></span>'
                     )
         except Exception as e:
             return HTMLResponse(
                 f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}. <br>'
-                '<small>Run: <code>ollama serve</code> '
+                "<small>Run: <code>ollama serve</code> "
                 '<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama serve\')">Copy</button></small></span>'
             )
     elif settings.llm_provider == "openai":
@@ -669,14 +680,15 @@ async def check_system_status(username: str = Depends(verify_credentials)):
     else:
         return HTMLResponse(
             '<span class="status-badge status-error">Error: Poppler not found. <br>'
-            '<small>Run: <code>sudo apt install poppler-utils</code> '
+            "<small>Run: <code>sudo apt install poppler-utils</code> "
             '<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'sudo apt install poppler-utils\')">Copy</button></small></span>'
         )
 
 
 @app.get("/setup/check/db")
 async def check_db_status(
-    username: str = Depends(verify_credentials), settings: Settings = Depends(get_settings)
+    username: str = Depends(verify_credentials),
+    settings: Settings = Depends(get_settings),
 ):
     try:
         db_path = Path(settings.database_path)

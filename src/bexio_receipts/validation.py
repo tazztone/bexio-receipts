@@ -92,7 +92,9 @@ def validate_receipt(r: Receipt, settings: Settings) -> list[str]:
 
     # 7. Currency check
     if r.currency != "CHF":
-        errors.append(f"Currency {r.currency} is not CHF. Check conversion rate before approving.")
+        errors.append(
+            f"Currency {r.currency} is not CHF. Check conversion rate before approving."
+        )
 
     # 8. Line items cross-check
     if r.line_items:

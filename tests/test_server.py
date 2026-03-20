@@ -84,7 +84,11 @@ def test_setup_checks(test_settings):
         assert "OK (Model glm-ocr loaded)" in response.text
 
     # OCR Check Error with Copy button
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=Exception("Ollama Error")):
+    with patch(
+        "httpx.AsyncClient.get",
+        new_callable=AsyncMock,
+        side_effect=Exception("Ollama Error"),
+    ):
         response = client.get("/setup/check/ocr", auth=("admin", "test_password"))
         assert "Error connecting to Ollama" in response.text
         assert "Copy" in response.text

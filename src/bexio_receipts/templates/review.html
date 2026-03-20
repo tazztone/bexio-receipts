@@ -60,14 +60,29 @@
             <!-- Left: Image -->
             <div>
                 <a href="/image/{{ id }}" target="_blank" title="Click to open full size">
-                    <img src="/image/{{ id }}" class="receipt-image" alt="Receipt">
+                    <img src="/image/{{ id }}" 
+                         loading="lazy"
+                         class="receipt-image" 
+                         alt="Receipt from {{ receipt.merchant_name or 'Unknown Merchant' }} on {{ receipt.transaction_date or 'Unknown Date' }}">
                 </a>
                 <p style="text-align: center;"><small>Click image to open full size</small></p>
 
                 <div class="hide-mobile" style="margin-top: 2rem;">
                     <details open>
                         <summary>OCR Reference Text</summary>
-                        <pre style="font-size: 0.75rem; background: var(--pico-card-background-color); padding: 1rem; border-radius: 8px; max-height: 300px; overflow-y: auto;">{{ data.ocr_text }}</pre>
+                        <pre style="font-size: 0.75rem; background: var(--pico-pre-background-color); padding: 1rem; border-radius: 8px; max-height: 300px; overflow-y: auto;">{{ data.ocr_text }}</pre>
+                    </details>
+
+                    <details style="margin-top: 1rem;">
+                        <summary>Raw Extraction (JSON)</summary>
+                        <div style="position: relative;">
+                            <button class="outline secondary" 
+                                    style="position: absolute; right: 0.5rem; top: 0.5rem; padding: 0.2rem 0.5rem; font-size: 0.6rem; min-height: 32px;"
+                                    onclick="navigator.clipboard.writeText(document.getElementById('raw-json').textContent); this.textContent='Copied!'; setTimeout(() => this.textContent='Copy', 2000)">
+                                Copy
+                            </button>
+                            <pre id="raw-json" style="font-size: 0.75rem; background: var(--pico-pre-background-color); padding: 1rem; border-radius: 8px; max-height: 300px; overflow-y: auto;">{{ (data.extracted or {}) | tojson(indent=2) }}</pre>
+                        </div>
                     </details>
                 </div>
             </div>
@@ -133,7 +148,11 @@
                 <div class="hide-desktop" style="margin-top: 1rem;">
                     <details>
                         <summary>OCR Reference Text</summary>
-                        <pre style="font-size: 0.75rem; background: var(--pico-card-background-color); padding: 1rem; border-radius: 8px;">{{ data.ocr_text }}</pre>
+                        <pre style="font-size: 0.75rem; background: var(--pico-pre-background-color); padding: 1rem; border-radius: 8px;">{{ data.ocr_text }}</pre>
+                    </details>
+                    <details style="margin-top: 1rem;">
+                        <summary>Raw Extraction (JSON)</summary>
+                        <pre style="font-size: 0.75rem; background: var(--pico-pre-background-color); padding: 1rem; border-radius: 8px; max-height: 300px; overflow-y: auto;">{{ (data.extracted or {}) | tojson(indent=2) }}</pre>
                     </details>
                 </div>
 

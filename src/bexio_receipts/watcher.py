@@ -3,7 +3,13 @@ import os
 from pathlib import Path
 
 from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler, FileCreatedEvent, DirCreatedEvent
+from watchdog.events import (
+    FileSystemEventHandler,
+    FileCreatedEvent,
+    DirCreatedEvent,
+    FileModifiedEvent,
+    DirModifiedEvent,
+)
 
 import structlog
 
@@ -30,8 +36,14 @@ class ReceiptHandler(FileSystemEventHandler):
     def on_created(self, event: FileCreatedEvent | DirCreatedEvent):
         if event.is_directory:
             return
+        self._trigger_processing(event.src_path)
 
-        src_path = event.src_path
+    def on_modified(self, event: FileModifiedEvent | DirModifiedEvent):
+        if event.is_directory:
+            return
+        self._trigger_processing(event.src_path)
+
+    def _trigger_processing(self, src_path):
         if isinstance(src_path, bytes):
             src_path = src_path.decode()
 
@@ -44,7 +56,9 @@ class ReceiptHandler(FileSystemEventHandler):
         if file_path in self.processing:
             return
 
-        logger.info("New file detected, scheduling processing", path=str(file_path))
+        logger.info(
+            "File activity detected, scheduling processing", path=str(file_path)
+        )
         self.processing.add(file_path)
 
         # Schedule the async processing on the main loop
@@ -109,7 +123,7 @@ async def watch_folder(path: str, settings: Settings):
         loop = asyncio.get_running_loop()
         event_handler = ReceiptHandler(loop, settings, bexio)
         observer = Observer()
-        observer.schedule(event_handler, str(path_obj), recursive=False)
+        observer.schedule(event_handler, str(path_obj), recursive=True)
         observer.start()
 
         try:

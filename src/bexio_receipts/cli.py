@@ -110,7 +110,7 @@ def init(
         ocr_engine = os.getenv("OCR_ENGINE", "glm-ocr")
         llm_provider = os.getenv("LLM_PROVIDER", "ollama")
         secret_key = os.getenv("SECRET_KEY", "change-me-in-production")
-        
+
         console.print("\n[bold]Using assumed configuration:[/bold]")
         console.print(f"  - OCR: [cyan]{ocr_engine}[/cyan]")
         console.print(f"  - LLM: [cyan]{llm_provider}[/cyan]")
@@ -187,8 +187,11 @@ def init(
     console.print("[green]Successfully created .env file![/green]")
 
     if quickstart:
-        console.print("\n[bold blue]🚀 Quickstart: Processing demo receipt...[/bold blue]")
+        console.print(
+            "\n[bold blue]🚀 Quickstart: Processing demo receipt...[/bold blue]"
+        )
         import shutil
+
         inbox_path = Path("inbox")
         inbox_path.mkdir(exist_ok=True)
         demo_receipt = Path("tests/fixtures/sample_receipt.png")
@@ -196,32 +199,43 @@ def init(
             target = inbox_path / "demo_receipt.png"
             shutil.copy(demo_receipt, target)
             console.print(f"  - Copied demo receipt to [cyan]{target}[/cyan]")
-            
+
             # Run dry-run process
             from .config import Settings
+
             # We need to reload settings since we just wrote .env
-            os.environ["BEXIO_API_TOKEN"] = token # Ensure it's in env for this process
+            os.environ["BEXIO_API_TOKEN"] = token  # Ensure it's in env for this process
             settings = Settings()  # type: ignore[call-arg]
-            
+
             async def _dry_run():
                 from .ocr import async_run_ocr
                 from .extraction import extract_receipt
+
                 with console.status("[bold green]Running demo OCR..."):
                     raw_text, conf, _ = await async_run_ocr(str(target), settings)
                 console.print(f"  - OCR Confidence: [bold]{conf:.1%}[/bold]")
                 with console.status("[bold blue]Extracting demo data..."):
                     receipt = await extract_receipt(raw_text, settings)
-                console.print(f"  - Detected Merchant: [bold]{receipt.merchant_name}[/bold]")
-                console.print(f"  - Detected Total: [bold]{receipt.total_incl_vat} {receipt.currency}[/bold]")
-            
+                console.print(
+                    f"  - Detected Merchant: [bold]{receipt.merchant_name}[/bold]"
+                )
+                console.print(
+                    f"  - Detected Total: [bold]{receipt.total_incl_vat} {receipt.currency}[/bold]"
+                )
+
             asyncio.run(_dry_run())
             console.print("\n[bold green]✨ Quickstart complete![/bold green]")
             console.print("Next steps:")
-            console.print("  1. Run [bold]uv run bexio-receipts serve[/bold] to start the dashboard")
-            console.print("  2. Open [link=http://localhost:8000/setup]http://localhost:8000/setup[/link] to verify health")
+            console.print(
+                "  1. Run [bold]uv run bexio-receipts serve[/bold] to start the dashboard"
+            )
+            console.print(
+                "  2. Open [link=http://localhost:8000/setup]http://localhost:8000/setup[/link] to verify health"
+            )
         else:
-            console.print("[yellow]Warning: Demo receipt fixture not found. Skipping demo process.[/yellow]")
-
+            console.print(
+                "[yellow]Warning: Demo receipt fixture not found. Skipping demo process.[/yellow]"
+            )
 
 
 @app.command()

@@ -71,11 +71,7 @@ async def process_receipt(
         error_msg = f"Unsupported file type: {mime_type}. Allowed: {', '.join(allowed_mime_types)}"
         logger.error(error_msg, path=file_path)
         return await send_to_review(
-            file_path,
-            "",
-            [error_msg],
-            settings,
-            failed_stage="validation"
+            file_path, "", [error_msg], settings, failed_stage="validation"
         )
 
     # 0.1 Duplicate Detection
@@ -179,17 +175,20 @@ async def process_receipt(
 
         # Prefer Bill (v4) if we have a merchant name or multiple VAT rates.
         # Fall back to simple Expense (v4) only if no merchant name and single VAT rate.
-        if receipt.merchant_name or (receipt.vat_breakdown and len(receipt.vat_breakdown) > 1):
+        if receipt.merchant_name or (
+            receipt.vat_breakdown and len(receipt.vat_breakdown) > 1
+        ):
             merchant = receipt.merchant_name or "Unknown Merchant"
             if not receipt.merchant_name:
-                logger.warning("No merchant name but multiple VAT rates detected. Using Purchase Bill with 'Unknown Merchant'.")
+                logger.warning(
+                    "No merchant name but multiple VAT rates detected. Using Purchase Bill with 'Unknown Merchant'."
+                )
 
             logger.info("Creating Purchase Bill", merchant=merchant)
 
             # Smart Account Mapping: lookup last used account for this merchant
             booking_account_id = (
-                db.get_merchant_account(merchant)
-                or settings.default_booking_account_id
+                db.get_merchant_account(merchant) or settings.default_booking_account_id
             )
 
             expense = await bexio.create_purchase_bill(

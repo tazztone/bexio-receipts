@@ -27,11 +27,11 @@ async def test_rate_limit(test_settings):
         # Actually, let's just use a fresh "bad" auth to avoid interference
         bad_auth_2 = base64.b64encode(b"admin:bad2").decode()
         bad_headers_2 = {"Authorization": f"Basic {bad_auth_2}"}
-        
+
         responses = []
         for i in range(10):
             responses.append(await ac.get("/", headers=bad_headers_2))
-        
+
         assert any(r.status_code == 429 for r in responses)
 
         # Test success isn't rate limited

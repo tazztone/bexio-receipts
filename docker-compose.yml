@@ -5,6 +5,9 @@ services:
       - ./src/bexio_receipts:/app/src/bexio_receipts
       - ./src/bexio_receipts/templates:/app/src/bexio_receipts/templates
       - ./tests:/app/tests
+      - ./inbox:/app/inbox
+      - ./review_queue:/app/review_queue
+      - ./processed_receipts.db:/app/processed_receipts.db
     environment:
       - BEXIO_API_TOKEN=${BEXIO_API_TOKEN:-test_token}
       - BEXIO_BASE_URL=http://mock-bexio:8001
@@ -36,6 +39,9 @@ services:
       - ./src/bexio_receipts:/app/src/bexio_receipts
       - ./src/bexio_receipts/templates:/app/src/bexio_receipts/templates
       - ./tests:/app/tests
+      - ./inbox:/app/inbox
+      - ./review_queue:/app/review_queue
+      - ./processed_receipts.db:/app/processed_receipts.db
     environment:
       - BEXIO_API_TOKEN=${BEXIO_API_TOKEN:-test_token}
       - BEXIO_BASE_URL=http://mock-bexio:8001
@@ -52,7 +58,7 @@ services:
       - OCR_ENGINE=glm-ocr
       - DEFAULT_BOOKING_ACCOUNT_ID=100
       - DEFAULT_BANK_ACCOUNT_ID=200
-    command: ["bexio-receipts", "watch-email"]
+    command: ["bexio-receipts", "watch", "folder"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

@@ -104,7 +104,8 @@ class DuplicateDetector:
         """Check if hash exists in DB, returns bexio_id if found."""
         with closing(self._get_conn()) as conn:
             cursor = conn.execute(
-                "SELECT bexio_id FROM processed_receipts WHERE file_hash = ?", (file_hash,)
+                "SELECT bexio_id FROM processed_receipts WHERE file_hash = ?",
+                (file_hash,),
             )
             row = cursor.fetchone()
             return row[0] if row else None
@@ -194,9 +195,9 @@ class DuplicateDetector:
     def get_stats(self) -> dict:
         """Fetch processing statistics."""
         with closing(self._get_conn()) as conn:
-            count = conn.execute(
-                "SELECT COUNT(*) FROM processed_receipts"
-            ).fetchone()[0]
+            count = conn.execute("SELECT COUNT(*) FROM processed_receipts").fetchone()[
+                0
+            ]
             sums = conn.execute(
                 "SELECT SUM(total_incl_vat), SUM(vat_amount), AVG(ocr_confidence) FROM processed_receipts"
             ).fetchone()

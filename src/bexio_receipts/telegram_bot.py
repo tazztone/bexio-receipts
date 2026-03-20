@@ -90,7 +90,7 @@ class ReceiptBot:
         status_msg += f"🔍 *OCR Engine:* `{self.settings.ocr_engine}`\n"
         status_msg += f"🧠 *LLM Provider:* `{self.settings.llm_provider}`\n"
         status_msg += "🗄️ *Database:* Online\n"
-        
+
         await update.message.reply_text(status_msg, parse_mode="Markdown")
 
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
