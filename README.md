@@ -51,13 +51,15 @@ The `--quickstart` flag will:
   - **Email (IMAP):** Automatically downloads attachments from an inbox.
   - **Telegram Bot:** Send photos or PDFs directly to the bot for processing.
   - **Google Drive:** Polls a specific Drive folder for new receipts.
-- **Multi-Engine OCR:**
-  - **GLM-OCR (Default):** A lightweight (0.9B) multimodal LLM for high-accuracy text and table recognition (via Ollama).
-  - **PaddleOCR:** High-performance PP-OCRv5 with orientation and unwarping support.
-- **Intelligent Extraction:** Uses **Pydantic AI** with local LLMs (e.g., Qwen2.5) to parse OCR text into structured data.
-- **Swiss Business Rules:** Built-in validation for Swiss VAT rates (8.1%, 2.6%, 3.8%) and 5-rappen rounding tolerance.
-- **bexio Integration:** Automatic file upload and expense creation via the bexio API (v3/v4).
-- **Review Dashboard:** A web-based interface (FastAPI + HTMX) to manually correct and approve receipts that fail validation.
+- **Intelligent Parsing & OCR:**
+  - **PDF Extraction:** Uses native text extraction (`pdfplumber`) for 100% accuracy on digital PDFs.
+  - **GLM-OCR (Default):** A lightweight multimodal LLM for high-accuracy text/table recognition on scanned images.
+  - **PaddleOCR:** High-performance PP-OCRv5 fallback for fast image extraction.
+- **Intelligent Extraction:** Uses **Pydantic AI** with local LLMs (e.g., Qwen2.5) to parse text into structured data.
+- **Swiss Business Rules:** Built-in validation for Swiss VAT rates (8.1%, 2.6%, 3.8%), 5-rappen rounding, and native support for multi-rate `vat_breakdown` arrays.
+- **bexio Integration:** Automatic file upload and expense creation via the bexio API.
+- **Offline Development Mode:** Fully test the UI and LLM pipeline locally without a valid Bexio Personal Access Token.
+- **Review Dashboard:** A premium web-based interface (FastAPI + HTMX) to manually correct and approve receipts that fail validation.
 
 ---
 
@@ -73,7 +75,9 @@ graph TD
     end
 
     subgraph Processing
-        P --> OCR["OCR (Paddle/GLM)"]
+        P --> PDF["PDF Text Extraction"]
+        PDF -- Scanned/Image --> OCR["OCR (Paddle/GLM)"]
+        PDF -- Digital --> LLM
         OCR --> LLM["LLM Extraction"]
         LLM --> VAL["Validation"]
     end

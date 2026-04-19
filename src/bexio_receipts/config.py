@@ -8,7 +8,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     env: str = "development"
-    bexio_api_token: str
+    offline_mode: bool = False
+    bexio_api_token: str = "offline"
     bexio_base_url: str = "https://api.bexio.com"
 
     # OCR Settings
@@ -24,8 +25,8 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
 
     # Default accounts for bexio
-    default_booking_account_id: int
-    default_bank_account_id: int
+    default_booking_account_id: int = 0
+    default_bank_account_id: int = 0
     default_vat_rate: float = 8.1
     default_payment_terms_days: int = 30
 
@@ -67,6 +68,14 @@ class Settings(BaseSettings):
             raise ValueError(
                 "review_password must be changed from 'password' in non-development environments"
             )
+
+        if not self.offline_mode:
+            if self.bexio_api_token == "offline":
+                raise ValueError("bexio_api_token is required when offline_mode is False")
+            if self.default_booking_account_id == 0:
+                raise ValueError("default_booking_account_id is required when offline_mode is False")
+            if self.default_bank_account_id == 0:
+                raise ValueError("default_bank_account_id is required when offline_mode is False")
 
         # Hash passwords if they are not already hashed
         import bcrypt

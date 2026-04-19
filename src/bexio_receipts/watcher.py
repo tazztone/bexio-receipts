@@ -121,8 +121,12 @@ async def watch_folder(path: str, settings: Settings):
         token=settings.bexio_api_token,
         base_url=settings.bexio_base_url,
         default_vat_rate=settings.default_vat_rate,
+        default_payment_terms_days=settings.default_payment_terms_days,
     ) as bexio:
-        await bexio.cache_lookups()
+        try:
+            await bexio.cache_lookups()
+        except Exception as e:
+            logger.warning("Failed to connect to Bexio during watcher startup, proceeding anyway", error=str(e))
 
         loop = asyncio.get_running_loop()
         event_handler = ReceiptHandler(loop, settings, bexio)

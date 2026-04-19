@@ -17,8 +17,10 @@ graph TD
     subgraph Processing
         P --> DB_Hash[SHA-256 Check]
         DB_Hash -- Duplicate --> Skip[Skip]
-        DB_Hash -- New --> OCR[OCR Engine]
-        OCR --> LLM[LLM Extraction]
+        DB_Hash -- New --> PDF_Check[PDF Extraction]
+        PDF_Check -- Scanned/Image --> OCR[OCR Engine]
+        PDF_Check -- Digital --> LLM[LLM Extraction]
+        OCR --> LLM
         LLM --> VAL[Validation]
     end
 
@@ -43,9 +45,10 @@ graph TD
 - **Telegram**: Uses `python-telegram-bot` to handle incoming photos and documents.
 - **GDrive**: Uses Google Drive API (v3) to poll and move files.
 
-### 2. OCR Layer (`ocr.py`)
-- **PaddleOCR**: Local engine, fast and robust for standard Latin text.
-- **GLM-OCR**: Multimodal LLM (via Ollama) for more complex layouts or handwritten notes.
+### 2. Text Extraction Layer (`ocr.py`)
+- **PDF Extraction**: Native text extraction via `pdfplumber`. Provides 100% fidelity for digital PDFs and entirely skips the vision models.
+- **PaddleOCR**: Local engine, fast and robust for standard Latin text from images/scans.
+- **GLM-OCR**: Multimodal LLM (via Ollama) for more complex layouts or handwritten notes on images.
 - **Resilience**: The GLM-OCR path is designed to be tolerant of markdown-wrapped JSON output. The pipeline automatically strips markdown code fences (e.g., ` ```json `) before parsing the extracted data.
 
 ### 3. Extraction Layer (`extraction.py`)

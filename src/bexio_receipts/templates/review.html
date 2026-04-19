@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Review Receipt</title>
     <link rel="stylesheet" href="/static/pico.min.css">
+    <link rel="stylesheet" href="/static/styles.css">
     <style>
         .split-view {
             display: grid;
@@ -21,7 +22,9 @@
             width: 100%;
             max-height: 80vh;
             object-fit: contain;
-            border: 1px solid #ccc;
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 8px;
+            box-shadow: var(--pico-card-box-shadow);
         }
         .error-list {
             background-color: var(--pico-del-background-color);
@@ -30,16 +33,6 @@
             border-left: 5px solid var(--pico-del-color);
             margin-bottom: 1rem;
         }
-        .status-badge { 
-            padding: 0.1rem 0.4rem; 
-            border-radius: 4px; 
-            font-weight: bold; 
-            font-size: 0.8rem; 
-            display: inline-block;
-        }
-        .status-ok { background-color: var(--pico-ins-background-color); color: var(--pico-ins-color); }
-        .status-error { background-color: var(--pico-del-background-color); color: var(--pico-del-color); }
-        .status-warning { background-color: #f9a825; color: #000; }
     </style>
 </head>
 <body>

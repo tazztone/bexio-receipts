@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>bexio-receipts Dashboard</title>
     <link rel="stylesheet" href="/static/pico.min.css">
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
     <header class="container">
@@ -188,18 +189,6 @@
         @media (max-width: 600px) {
             .hide-mobile { display: none; }
         }
-        .status-badge { 
-            padding: 0.1rem 0.4rem; 
-            border-radius: 4px; 
-            font-weight: bold; 
-            font-size: 0.8rem; 
-            display: inline-block;
-            white-space: nowrap;
-        }
-        .status-ok { background-color: var(--pico-ins-background-color); color: var(--pico-ins-color); }
-        .status-error { background-color: var(--pico-del-background-color); color: var(--pico-del-color); }
-        .status-warning { background-color: #f9a825; color: #000; }
-        .status-checking { background-color: var(--pico-primary-background); color: var(--pico-primary-inverse); }
     </style>
 
     <script>

@@ -159,7 +159,7 @@ def init(
         )
         if llm_provider == "ollama":
             console.print(
-                "[dim](Note: qwen3.5:9b requires ~16 GB RAM for optimal performance)[/dim]"
+                "[dim](Note: supports Ollama quantization suffix, e.g. qwen3.5:9b for default, qwen3.5:9b-q4_K_M for lower RAM usage)[/dim]"
             )
 
         secret_key = Prompt.ask(
@@ -184,6 +184,8 @@ def init(
     config.append("DEFAULT_BOOKING_ACCOUNT_ID=630")
     config.append("DEFAULT_BANK_ACCOUNT_ID=1")
     config.append(f"SECRET_KEY={secret_key}")
+    config.append("REVIEW_USERNAME=admin")
+    config.append("REVIEW_PASSWORD=admin")
 
     with open(env_path, "w") as f:
         f.write("\n".join(config) + "\n")
@@ -296,7 +298,10 @@ def process(
             default_payment_terms_days=settings.default_payment_terms_days,
         ) as client:
             with console.status("[bold blue]Connecting to Bexio..."):
-                await client.cache_lookups()
+                try:
+                    await client.cache_lookups()
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]")
             with console.status("[bold green]Processing receipt..."):
                 result = await process_receipt(str(file), settings, client, db)
             console.print(
@@ -369,7 +374,10 @@ def reprocess(
             default_payment_terms_days=settings.default_payment_terms_days,
         ) as client:
             with console.status("[bold blue]Connecting to Bexio..."):
-                await client.cache_lookups()
+                try:
+                    await client.cache_lookups()
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]")
             with console.status("[bold green]Processing receipt..."):
                 result = await process_receipt(orig_file, settings, client, db)
             console.print(

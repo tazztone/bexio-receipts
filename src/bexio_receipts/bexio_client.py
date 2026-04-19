@@ -57,7 +57,7 @@ class BexioClient:
     @BEXIO_RETRY
     async def get_profile(self) -> dict:
         """Fetch current user profile to get user_id and owner_id."""
-        resp = await self.client.get("/3.0/profile/me")
+        resp = await self.client.get("/3.0/users/me")
         resp.raise_for_status()
         profile = resp.json()
         self._user_id = profile.get("id")
@@ -111,13 +111,23 @@ class BexioClient:
         """Fetch and cache tenant-specific IDs at startup."""
         # User profile
         if not self._user_id:
-            await self.get_profile()
+            try:
+                await self.get_profile()
+            except Exception as e:
+                logger.warning("Failed to fetch user profile in cache_lookups", error=str(e))
+                self._user_id = None
 
         # Tax rates
-        await self.fetch_taxes()
+        try:
+            await self.fetch_taxes()
+        except Exception as e:
+            logger.warning("Failed to fetch tax rates in cache_lookups", error=str(e))
 
         # Accounts
-        await self.fetch_accounts()
+        try:
+            await self.fetch_accounts()
+        except Exception as e:
+            logger.warning("Failed to fetch accounts in cache_lookups", error=str(e))
 
     async def get_tax_id(self, rate: float | None) -> int:
         """Return bexio tax ID for a given rate, fallback to standard default."""

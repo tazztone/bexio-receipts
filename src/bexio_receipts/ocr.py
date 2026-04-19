@@ -67,6 +67,30 @@ def run_paddle_ocr(file_path: str) -> tuple[str, float, list[dict]]:
     return raw_text, avg_confidence, lines
 
 
+def extract_pdf_text(file_path: str) -> str | None:
+    """
+    Extract text directly from a digital PDF using pdfplumber.
+    Returns None if the extracted text is too short (likely a scanned image).
+    """
+    try:
+        import pdfplumber
+        text_parts = []
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text_parts.append(page_text)
+        
+        full_text = "\n".join(text_parts).strip()
+        # If less than 20 chars, it's likely just an image or garbled
+        if len(full_text) > 20:
+            return full_text
+    except Exception as e:
+        logger.warning("PDF text extraction failed", error=str(e), path=file_path)
+    
+    return None
+
+
 async def run_glm_ocr(
     file_path: str, settings: Settings
 ) -> tuple[str, float, list[dict]]:
@@ -87,10 +111,11 @@ async def run_glm_ocr(
             '  "vat_amount": number or null,\n'
             '  "vat_rate_pct": number or null,\n'
             '  "currency": "CHF",\n'
-            '  "vat_breakdown": []\n'
+            '  "vat_breakdown": [{"rate": number, "base_amount": number, "vat_amount": number}]\n'
             "}\n"
             "Instruction: Extract the merchant (e.g. Coop, Migros), the date, and the total amount. "
             "Swiss VAT rates are 8.1%, 2.6%, 3.8%. "
+            "If multiple Swiss VAT rates appear, populate the vat_breakdown array. "
             "If a brand name like 'COOP' is visible, use it as merchant_name."
         )
         payload = {
@@ -117,6 +142,22 @@ async def run_glm_ocr(
 async def async_run_ocr(
     file_path: str, settings: Settings
 ) -> tuple[str, float, list[dict]]:
+    import mimetypes
+    mime_type, _ = mimetypes.guess_type(file_path)
+    
+    if mime_type == "application/pdf" or str(file_path).lower().endswith(".pdf"):
+        extracted_text = extract_pdf_text(file_path)
+        if extracted_text:
+            logger.info("Successfully extracted text directly from PDF", path=file_path)
+            return extracted_text, 1.0, [{"text": extracted_text, "confidence": 1.0}]
+        else:
+            logger.info("PDF appears to be scanned, falling back to PaddleOCR", path=file_path)
+            # PaddleOCR handles PDFs natively by converting them to images internally
+            import asyncio
+            from functools import partial
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, partial(run_paddle_ocr, file_path))
+
     if settings.ocr_engine == "paddleocr":
         # PaddleOCR is sync, wrap in thread to not block loop
         import asyncio

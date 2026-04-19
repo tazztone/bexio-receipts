@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-04-19
+
+### Added
+- **Premium UI Overhaul**: Redesigned the entire web dashboard with a custom dark theme, glassmorphism, modern typography (Outfit), and unified status badges across all templates.
+- **Smart PDF Extraction**: Replaced OCR dependency for digital PDFs with native text extraction via `pdfplumber`, guaranteeing 100% text fidelity and bypassing vision models entirely.
+- **VAT Breakdown Extraction**: Pydantic and GLM-OCR prompts now natively extract multi-rate VAT data (`vat_breakdown` arrays) from receipts like Coop or Migros.
+- **Offline Development Mode**: Introduced `OFFLINE_MODE` config flag, allowing local execution and UI testing without needing a valid Bexio Personal Access Token.
+- **Resilience Testing**: Added `test_resilience.py` mock suite.
+
+### Fixed
+- **Startup Resilience**: The CLI `process`, `reprocess`, and `watcher` commands no longer crash on boot if the Bexio API is unreachable or the token is invalid.
+- **First-Run Configuration**: The `bexio-receipts init` wizard now correctly injects `REVIEW_USERNAME` and `REVIEW_PASSWORD`, preventing immediate HTTP 401 lockouts on fresh installations.
+- **API Correctness**: Standardized around the `/3.0/users/me` endpoint.
+
 ## [0.1.3] - 2024-06-20
 
 ### Added

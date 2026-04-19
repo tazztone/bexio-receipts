@@ -12,7 +12,8 @@ This command will guide you through the most important settings and automaticall
 ## Core API Settings
 
 - **`ENV`**: Set to `production` to enable strict security checks (e.g., rejecting weak default passwords). Defaults to `development`.
-- **`BEXIO_API_TOKEN`**: Your bexio Personal Access Token. Create this in bexio under *Settings > All Settings > Apps & API > API Keys*.
+- **`OFFLINE_MODE`**: Set to `true` to run the UI and LLM/OCR pipeline locally without connecting to Bexio. Defaults to `false`.
+- **`BEXIO_API_TOKEN`**: Your bexio Personal Access Token. Create this in bexio under *Settings > All Settings > Apps & API > API Keys*. Required unless `OFFLINE_MODE=true`.
 - **`BEXIO_BASE_URL`**: Defaults to `https://api.bexio.com`.
 - **`DEFAULT_BOOKING_ACCOUNT_ID`**: (Required) Default bexio account ID for new expenses (e.g., `630`).
 - **`DEFAULT_BANK_ACCOUNT_ID`**: (Required) Default bexio bank account ID for payments (e.g., `1`).

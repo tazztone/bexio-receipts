@@ -50,3 +50,15 @@ async def test_async_run_ocr_glm(test_settings):
             assert raw_text == "GLM Text"
             assert conf == 0.9
             mock_post.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_async_run_ocr_pdf(test_settings):
+    test_settings.ocr_engine = "glm-ocr"
+    
+    with patch("bexio_receipts.ocr.extract_pdf_text") as mock_extract:
+        mock_extract.return_value = "Extracted PDF Text"
+        with patch("mimetypes.guess_type", return_value=("application/pdf", None)):
+            raw_text, conf, _ = await async_run_ocr("path.pdf", test_settings)
+            assert raw_text == "Extracted PDF Text"
+            assert conf == 1.0
+            mock_extract.assert_called_once()

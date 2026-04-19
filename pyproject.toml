@@ -34,6 +34,7 @@ dependencies = [
     "uvicorn>=0.42.0",
     "watchdog>=6.0.0",
     "bcrypt>=5.0.0",
+    "pdfplumber>=0.11.9",
 ]
 
 [project.scripts]
