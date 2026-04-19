@@ -70,7 +70,9 @@ async def test_pipeline_e2e(tmp_path):
 
         async with BexioClient("dummy") as client:
             await client.cache_lookups()
-            result = await process_receipt(str(dummy_file), settings, client, db)
+            result = await process_receipt(
+                str(dummy_file), settings, client, db, push_confirmed=True
+            )
 
         assert result["status"] == "booked"
         assert str(result["expense_id"]) == "999"
