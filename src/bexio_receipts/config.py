@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # LLM Settings
     llm_provider: str = "ollama"  # or "openai"
     llm_model: str = "qwen3.5:9b"
-    llm_timeout: int = 30
+    llm_timeout: int = 60
     ollama_url: str = "http://localhost:11434"
     openai_api_key: str | None = None
 

@@ -82,8 +82,32 @@ async def extract_receipt(
         ),
     )
 
-    # Total timeout for the entire LLM round-trip
-    result = await asyncio.wait_for(
-        agent.run(f"Receipt text:\n{raw_text}"), timeout=settings.llm_timeout
+    logger.info(
+        "LLM Request started",
+        model=settings.llm_model,
+        text_len=len(raw_text),
+        timeout=settings.llm_timeout,
     )
-    return result.output
+    start_time = asyncio.get_event_loop().time()
+
+    try:
+        # Total timeout for the entire LLM round-trip
+        result = await asyncio.wait_for(
+            agent.run(f"Receipt text:\n{raw_text}"), timeout=settings.llm_timeout
+        )
+        duration = asyncio.get_event_loop().time() - start_time
+        logger.info(
+            "LLM Request completed",
+            model=settings.llm_model,
+            duration=round(duration, 2),
+        )
+        return result.output
+    except TimeoutError:
+        duration = asyncio.get_event_loop().time() - start_time
+        logger.error(
+            "LLM Request timed out",
+            model=settings.llm_model,
+            duration=round(duration, 2),
+            timeout=settings.llm_timeout,
+        )
+        raise
