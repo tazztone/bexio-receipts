@@ -20,11 +20,16 @@ class Settings(BaseSettings):
     glm_ocr_timeout: int = 25
 
     # LLM Settings
-    llm_provider: str = "ollama"  # or "openai"
+    llm_provider: str = "ollama"  # or "openai", "openrouter"
     llm_model: str = "qwen3.5:9b"
     llm_timeout: int = 60
     ollama_url: str = "http://localhost:11434"
     openai_api_key: str | None = None
+    openrouter_api_key: str | None = None
+    openrouter_url: str = "https://openrouter.ai/api/v1"
+    openrouter_site_url: str = "https://github.com/tazztone/bexio-receipts"
+    openrouter_site_name: str = "Bexio Receipts"
+    openrouter_use_structured_output: bool = True
 
     # Default accounts for bexio
     default_booking_account_id: int = 0
@@ -58,6 +63,14 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
+
+    @model_validator(mode="after")
+    def validate_openrouter_model(self) -> "Settings":
+        if self.llm_provider == "openrouter" and "/" not in (self.llm_model or ""):
+            raise ValueError(
+                "OpenRouter requires 'provider/model' format (e.g. 'anthropic/claude-3.5-sonnet')"
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_passwords(self):

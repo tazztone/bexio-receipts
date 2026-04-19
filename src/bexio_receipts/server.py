@@ -936,16 +936,20 @@ async def check_llm_status(
                 "<small>Run: <code>ollama serve</code> "
                 '<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama serve\')">Copy</button></small></span>'
             )
-    elif settings.llm_provider == "openai":
-        import os
+    elif settings.llm_provider in ("openai", "openrouter"):
+        key_set = False
+        if settings.llm_provider == "openai" and settings.openai_api_key:
+            key_set = True
+        elif settings.llm_provider == "openrouter" and settings.openrouter_api_key:
+            key_set = True
 
-        if os.getenv("OPENAI_API_KEY"):
+        if key_set:
             return HTMLResponse(
-                '<span class="status-badge status-ok">OK (API Key set)</span>'
+                f'<span class="status-badge status-ok">OK ({settings.llm_provider.capitalize()} API Key set)</span>'
             )
         else:
             return HTMLResponse(
-                '<span class="status-badge status-error">Error: OPENAI_API_KEY not set. <br><small>Add to .env or environment</small></span>'
+                f'<span class="status-badge status-error">Error: {settings.llm_provider.upper()}_API_KEY not set. <br><small>Add to .env or environment</small></span>'
             )
     return HTMLResponse(
         '<span class="status-badge status-error">Unknown Provider</span>'

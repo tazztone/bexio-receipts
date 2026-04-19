@@ -111,9 +111,12 @@ cp .env.example .env
 # Interactive Setup (Recommended)
 uv run bexio-receipts init
 
-# Or manually pull Ollama models
 ollama pull glm-ocr        # for OCR
 ollama pull qwen3.5:9b     # for extraction
+
+# OpenRouter (Optional)
+# 1. Get API Key at openrouter.ai
+# 2. Recommended: Enable "Response Healing" at openrouter.ai/settings/plugins
 ```
 
 ---
@@ -182,6 +185,7 @@ Simply drop files into the configured `INBOX_PATH` (default: `./inbox`).
 
 - **Ollama Connection Error:** Ensure Ollama is running (`ollama serve`) and `OLLAMA_HOST` is correctly set.
 - **bexio 401 Unauthorized:** Verify your `BEXIO_API_TOKEN` hasn't expired and has the correct permissions.
+- **OpenRouter Validation Errors:** Ensure you have enabled "Response Healing" in your OpenRouter account settings to fix minor JSON formatting issues.
 - **Missing Poppler:** Ensure `poppler-utils` is installed for scanned PDF support.
 
 ---

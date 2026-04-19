@@ -1,10 +1,9 @@
 """
-Core ingestion logic for the receipt processing pipeline.
-Orchestrates OCR, extraction, and validation steps.
+Main processing pipeline for bexio-receipts.
+Orchestrates OCR, LLM extraction, validation, and Bexio API calls.
 """
 
 import json
-import mimetypes
 from pathlib import Path
 
 import httpx
@@ -12,8 +11,8 @@ import structlog
 
 from .bexio_client import BexioClient
 from .config import Settings
-from .database import DuplicateDetector
-from .extraction import extract_receipt
+from .database import DuplicateDetector as Database
+from .extraction import ExtractionError, extract_receipt
 from .models import Receipt
 from .ocr import async_run_ocr
 from .validation import validate_receipt
@@ -22,10 +21,13 @@ logger = structlog.get_logger(__name__)
 
 
 def decide_bexio_action(receipt: Receipt) -> str:
-    """Return 'purchase_bill' or 'expense' based on receipt completeness."""
-    if receipt.merchant_name or (
-        receipt.vat_breakdown and len(receipt.vat_breakdown) > 1
-    ):
+    """
+    Decide whether to create a simple 'expense' or a 'purchase_bill'.
+    Heuristic: Use bill if we have a merchant name or multiple VAT entries.
+    """
+    if receipt.merchant_name:
+        return "purchase_bill"
+    if receipt.vat_breakdown and len(receipt.vat_breakdown) > 1:
         return "purchase_bill"
     return "expense"
 
@@ -39,6 +41,7 @@ async def send_to_review(
     ocr_confidence: float | None = None,
     failed_stage: str = "unknown",
     bexio_action: str | None = None,
+    llm_raw_response: str | None = None,
 ) -> dict:
     """Save problematic receipts to a review directory."""
     try:
@@ -53,6 +56,7 @@ async def send_to_review(
             "failed_stage": failed_stage,
             "errors": errors,
             "bexio_action": bexio_action,
+            "llm_raw_response": llm_raw_response,
             "extracted": receipt.model_dump(mode="json") if receipt else None,
         }
 
@@ -78,25 +82,18 @@ async def process_receipt(
     file_path: str,
     settings: Settings,
     bexio: BexioClient,
-    db: DuplicateDetector,
+    db: Database,
+    mime_type: str | None = None,
     push_confirmed: bool = False,
 ) -> dict:
-    """Full pipeline: OCR → Extract → Validate → Push."""
+    """
+    Full pipeline for a single receipt file.
+    """
     file_path_obj = Path(file_path)
     if not file_path_obj.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
+        return {"status": "error", "message": f"File not found: {file_path}"}
 
-    # 0. File Type Validation
-    mime_type, _ = mimetypes.guess_type(file_path)
-    allowed_mime_types = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
-    if mime_type not in allowed_mime_types:
-        error_msg = f"Unsupported file type: {mime_type}. Allowed: {', '.join(allowed_mime_types)}"
-        logger.error(error_msg, path=file_path)
-        return await send_to_review(
-            file_path, "", [error_msg], settings, failed_stage="validation"
-        )
-
-    # 0.1 Duplicate Detection
+    # Duplicate check via file hash
     file_hash = db.get_hash(file_path)
     existing_id = db.is_duplicate(file_hash)
     if existing_id:
@@ -130,8 +127,10 @@ async def process_receipt(
 
         # 2. Extract structured data
         logger.info("Extracting data via LLM", model=settings.llm_model)
+        receipt = None
+        llm_raw = None
         try:
-            receipt = await extract_receipt(raw_text, settings, client=client)
+            receipt, llm_raw = await extract_receipt(raw_text, settings, client=client)
         except (TimeoutError, httpx.TimeoutException):
             error_msg = "LLM extraction stage timed out"
             logger.error(error_msg, path=file_path)
@@ -143,12 +142,23 @@ async def process_receipt(
                 ocr_confidence=avg_confidence,
                 failed_stage="extraction",
             )
-        except Exception as e:
-            logger.error("LLM extraction failed", error=str(e))
+        except ExtractionError as e:
+            logger.error("LLM extraction failed", error=str(e), last_raw=e.last_raw)
             return await send_to_review(
                 file_path,
                 raw_text,
                 [f"LLM extraction failed: {e!s}"],
+                settings,
+                ocr_confidence=avg_confidence,
+                failed_stage="extraction",
+                llm_raw_response=e.last_raw,
+            )
+        except Exception as e:
+            logger.error("Unexpected error during extraction", error=str(e))
+            return await send_to_review(
+                file_path,
+                raw_text,
+                [f"Unexpected error: {e!s}"],
                 settings,
                 ocr_confidence=avg_confidence,
                 failed_stage="extraction",
@@ -166,27 +176,23 @@ async def process_receipt(
             receipt,
             ocr_confidence=avg_confidence,
             failed_stage="validation",
+            llm_raw_response=llm_raw,
         )
 
     # 4. Push to bexio
-    # determine predicted action for review UI
     bexio_action = decide_bexio_action(receipt)
-
-    if not settings.bexio_push_enabled or not push_confirmed:
-        msg = (
-            "Safety gate: BEXIO_PUSH_ENABLED=false."
-            if not settings.bexio_push_enabled
-            else "Push not confirmed via CLI/UI."
-        )
+    if not settings.bexio_push_enabled and not push_confirmed:
+        logger.info("Bexio push disabled, sending to review queue", action=bexio_action)
         return await send_to_review(
             file_path,
             raw_text,
-            [f"{msg} Approve via dashboard to push."],
+            [f"Push gate: BEXIO_PUSH_ENABLED=false. Would be: {bexio_action}"],
             settings,
             receipt,
             ocr_confidence=avg_confidence,
             failed_stage="safety_gate",
             bexio_action=bexio_action,
+            llm_raw_response=llm_raw,
         )
 
     logger.info("Pushing to bexio", action=bexio_action)
@@ -205,19 +211,12 @@ async def process_receipt(
                 receipt,
                 ocr_confidence=avg_confidence,
                 failed_stage="bexio",
+                llm_raw_response=llm_raw,
             )
 
         # Prefer Bill (v4) if we have a merchant name or multiple VAT rates.
-        # Fall back to simple Expense (v4) only if no merchant name and single VAT rate.
         if decide_bexio_action(receipt) == "purchase_bill":
             merchant = receipt.merchant_name or "Unknown Merchant"
-            if not receipt.merchant_name:
-                logger.warning(
-                    "No merchant name but multiple VAT rates detected. Using Purchase Bill with 'Unknown Merchant'."
-                )
-
-            logger.info("Creating Purchase Bill", merchant=merchant)
-
             # Smart Account Mapping: lookup last used account for this merchant
             booking_account_id = (
                 db.get_merchant_account(merchant) or settings.default_booking_account_id
@@ -244,9 +243,9 @@ async def process_receipt(
                     receipt,
                     ocr_confidence=avg_confidence,
                     failed_stage="bexio",
+                    llm_raw_response=llm_raw,
                 )
 
-            logger.info("No merchant name and single VAT, creating simple Expense")
             expense = await bexio.create_expense(
                 receipt,
                 file_uuid,
@@ -283,4 +282,5 @@ async def process_receipt(
             receipt,
             ocr_confidence=avg_confidence,
             failed_stage="bexio",
+            llm_raw_response=llm_raw,
         )

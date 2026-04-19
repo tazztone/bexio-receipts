@@ -143,14 +143,30 @@ def init(
 
         llm_provider = Prompt.ask(
             "LLM Provider",
-            choices=["ollama", "openai"],
+            choices=["ollama", "openai", "openrouter"],
             default="ollama",
             show_choices=True,
         )
+
+        openrouter_key = ""
+        openrouter_model = "anthropic/claude-3.5-sonnet"
+        openai_key = ""
+
         if llm_provider == "ollama":
             console.print(
                 "[dim](Note: supports Ollama quantization suffix, e.g. qwen3.5:9b for default, qwen3.5:9b-q4_K_M for lower RAM usage)[/dim]"
             )
+        elif llm_provider == "openrouter":
+            openrouter_key = Prompt.ask("OpenRouter API Key")
+            console.print(
+                "[dim]Note: OpenRouter models must use provider/model format.[/dim]\n"
+                "[dim]Examples: anthropic/claude-3.5-sonnet, meta-llama/llama-3-70b-instruct, google/gemini-1.5-pro[/dim]"
+            )
+            openrouter_model = Prompt.ask(
+                "LLM Model", default="anthropic/claude-3.5-sonnet"
+            )
+        elif llm_provider == "openai":
+            openai_key = Prompt.ask("OpenAI API Key")
 
         secret_key = Prompt.ask(
             "Secret Key (for dashboard sessions)", default="change-me-in-production"
@@ -169,6 +185,17 @@ def init(
     if llm_provider == "ollama":
         config.append("OLLAMA_URL=http://localhost:11434")
         config.append("LLM_MODEL=qwen3.5:9b")
+    elif llm_provider == "openrouter":
+        config.append("OPENROUTER_URL=https://openrouter.ai/api/v1")
+        if not non_interactive:
+            config.append(f"OPENROUTER_API_KEY={openrouter_key}")
+            config.append(f"LLM_MODEL={openrouter_model}")
+        else:
+            config.append("LLM_MODEL=anthropic/claude-3.5-sonnet")
+    elif llm_provider == "openai":
+        if not non_interactive:
+            config.append(f"OPENAI_API_KEY={openai_key}")
+        config.append("LLM_MODEL=gpt-4o-mini")
 
     config.append("DEFAULT_BOOKING_ACCOUNT_ID=630")
     config.append("DEFAULT_BANK_ACCOUNT_ID=1")
