@@ -199,3 +199,39 @@ async def test_send_to_review(tmp_path, test_settings):
             str(test_file), "raw text", ["error 1"], test_settings, receipt
         )
         assert result["status"] == "review_failed"
+
+
+@pytest.mark.asyncio
+async def test_process_receipt_unsupported_mime(tmp_path, test_settings, mock_db):
+    import json
+
+    test_file = tmp_path / "test.txt"
+    test_file.write_text("unsupported")
+
+    bexio_client = AsyncMock()
+    result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
+    assert result["status"] == "review"
+
+    with open(result["review_file"]) as f:
+        review_data = json.load(f)
+        assert "Unsupported file type" in review_data["errors"][0]
+
+
+@pytest.mark.asyncio
+@patch("bexio_receipts.pipeline.async_run_ocr")
+async def test_process_receipt_ocr_timeout(mock_ocr, tmp_path, test_settings, mock_db):
+    import asyncio
+    import json
+
+    test_file = tmp_path / "test.png"
+    test_file.write_text("dummy")
+
+    mock_ocr.side_effect = asyncio.TimeoutError()
+
+    bexio_client = AsyncMock()
+    result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
+    assert result["status"] == "review"
+
+    with open(result["review_file"]) as f:
+        review_data = json.load(f)
+        assert "OCR stage timed out" in review_data["errors"][0]

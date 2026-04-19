@@ -22,6 +22,7 @@ async def test_pipeline_e2e(tmp_path):
         default_bank_account_id=200,
         database_path=str(tmp_path / "test.db"),
         review_dir=str(tmp_path / "review"),
+        bexio_push_enabled=True,
     )
 
     db = DuplicateDetector(settings.database_path)
@@ -68,7 +69,7 @@ async def test_pipeline_e2e(tmp_path):
             vat_rate_pct=8.1,
         )
 
-        async with BexioClient("dummy") as client:
+        async with BexioClient("dummy", push_enabled=True) as client:
             await client.cache_lookups()
             result = await process_receipt(
                 str(dummy_file), settings, client, db, push_confirmed=True

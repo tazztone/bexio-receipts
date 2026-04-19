@@ -231,12 +231,10 @@ def test_push_to_bexio_success(test_settings, tmp_path):
 
     review_file = review_dir / "test_id.json"
     review_file.write_text(
-        json.dumps(
-            {
-                "original_file": str(img_file),
-                "extracted": {"merchant_name": "Test Merchant"},
-            }
-        )
+        json.dumps({
+            "original_file": str(img_file),
+            "extracted": {"merchant_name": "Test Merchant"},
+        })
     )
 
     mock_db = MagicMock()
@@ -250,14 +248,14 @@ def test_push_to_bexio_success(test_settings, tmp_path):
 
         # booking_account_ids is list[int]; send a single element via repeated key.
         # vat_breakdown is None for this receipt so expected_count == 1.
-        form_data = [
-            ("merchant_name", "Updated Merchant"),
-            ("date", "2023-01-01"),
-            ("total_incl_vat", "15.50"),
-            ("booking_account_ids", "100"),
-            ("bexio_action", "purchase_bill"),
-            ("csrf_token", "test_token"),
-        ]
+        form_data = {
+            "merchant_name": "Updated Merchant",
+            "date": "2023-01-01",
+            "total_incl_vat": 15.50,
+            "booking_account_ids": [100],
+            "bexio_action": "purchase_bill",
+            "csrf_token": "test_token",
+        }
 
         with patch(
             "bexio_receipts.server.Request.session",
@@ -292,3 +290,9 @@ def test_auth_rate_limit(test_settings):
 
     assert response.status_code in [401, 429]
     app.dependency_overrides.clear()
+
+
+def test_favicon():
+    response = client.get("/favicon.ico")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/x-icon"
