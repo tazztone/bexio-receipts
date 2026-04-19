@@ -16,7 +16,7 @@ async def test_rate_limit(test_settings):
         transport=ASGITransport(app=app), base_url="http://test"
     ) as ac:
         # 5 attempts allowed, 6th should fail
-        for i in range(5):
+        for _i in range(5):
             response = await ac.get("/", headers=headers)
             # The 5th request might already be limited if previous tests ran
             # But in a clean environment, 1-5 are 401, 6+ is 429
@@ -29,7 +29,7 @@ async def test_rate_limit(test_settings):
         bad_headers_2 = {"Authorization": f"Basic {bad_auth_2}"}
 
         responses = []
-        for i in range(10):
+        for _i in range(10):
             responses.append(await ac.get("/", headers=bad_headers_2))
 
         assert any(r.status_code == 429 for r in responses)
@@ -38,6 +38,6 @@ async def test_rate_limit(test_settings):
         good_auth = base64.b64encode(b"admin:test_password").decode()
         good_headers = {"Authorization": f"Basic {good_auth}"}
 
-        for i in range(10):
+        for _i in range(10):
             response = await ac.get("/", headers=good_headers)
             assert response.status_code == 200

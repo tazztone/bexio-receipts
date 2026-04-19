@@ -1,0 +1,1 @@
+You can search API docs at https://docs.bexio.com/

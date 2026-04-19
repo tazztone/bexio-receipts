@@ -83,7 +83,7 @@ def get_settings() -> Settings:
             console.print(
                 "\n[yellow]Run [bold]bexio-receipts init[/bold] to update your configuration.[/yellow]"
             )
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
 
 
 @app.command()
@@ -665,6 +665,43 @@ def import_mappings(
         mappings = json.load(f)
     db.import_merchant_accounts(mappings)
     console.print(f"Imported {len(mappings)} mappings from {file}")
+
+
+@app.command()
+def start(
+    host: str = typer.Option("0.0.0.0", help="Host to bind to"),
+    port: int = typer.Option(8000, help="Port to bind to"),
+    path: Optional[Path] = typer.Option(None, help="Path to monitor"),
+):
+    """Start both the dashboard and the folder watcher concurrently."""
+    import uvicorn
+
+    from .server import app as fastapi_app
+    from .watcher import watch_folder as _watch
+
+    settings = get_settings()
+    setup_logging(settings.env)
+
+    if not settings.bexio_push_enabled:
+        console.print(
+            "[yellow]⚠ Push gate: BEXIO_PUSH_ENABLED=false — receipts will queue for manual review.[/yellow]"
+        )
+
+    async def _start_all():
+        config = uvicorn.Config(fastapi_app, host=host, port=port, log_level="info")
+        server = uvicorn.Server(config)
+
+        watcher_task = asyncio.create_task(
+            _watch(str(path or settings.inbox_path), settings)
+        )
+        server_task = asyncio.create_task(server.serve())
+
+        try:
+            await asyncio.gather(watcher_task, server_task)
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(_start_all())
 
 
 def main():

@@ -133,6 +133,28 @@ async def watch_folder(path: str, settings: Settings):
                 error=str(e),
             )
 
+        # Initial sweep: process existing files
+        logger.info("Performing initial sweep of watch directory")
+        db = DuplicateDetector(settings.database_path)
+        for file_path in path_obj.glob("*"):
+            if file_path.is_file() and file_path.suffix.lower() in [
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".pdf",
+            ]:
+                logger.info("Queuing existing file for processing", path=str(file_path))
+                # Note: safe_process is async, we need to schedule it
+                asyncio.create_task(
+                    process_receipt(
+                        str(file_path),
+                        settings,
+                        bexio,
+                        db,
+                        push_confirmed=True,
+                    )
+                )
+
         loop = asyncio.get_running_loop()
         event_handler = ReceiptHandler(loop, settings, bexio)
         observer = Observer()

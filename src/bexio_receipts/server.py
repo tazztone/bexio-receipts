@@ -3,38 +3,38 @@ Dashboard backend powered by FastAPI and HTMX.
 Provides the web interface for receipt review and management.
 """
 
+import functools
 import json
 import mimetypes
 import re
 import secrets
-import bcrypt
-from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request, Form, Depends, status, Response
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
-from starlette.middleware.sessions import SessionMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Gauge
-from fastapi.templating import Jinja2Templates
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-import functools
 import sqlite3
+from pathlib import Path
+
+import bcrypt
 import structlog
-
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, status
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from starlette.middleware.sessions import SessionMiddleware
 
-from .config import Settings
 from .bexio_client import BexioClient
-from .models import Receipt
+from .config import Settings
 from .database import DuplicateDetector
+from .models import Receipt
 
 logger = structlog.get_logger(__name__)
 
 app = FastAPI(title="bexio-receipts Review Dashboard")
 
 
-@functools.lru_cache()
+@functools.lru_cache
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]
 
@@ -118,7 +118,7 @@ OCR_CONFIDENCE = Gauge("ocr_confidence_avg", "Average OCR confidence of receipts
 
 @app.get("/metrics")
 async def metrics(
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
     db: DuplicateDetector = Depends(get_db),
 ):
@@ -139,7 +139,7 @@ async def metrics(
 
 
 @app.get("/healthz")
-async def healthz(settings: Settings = Depends(get_settings)):
+async def healthz(_settings: Settings = Depends(get_settings)):
     """Health check endpoint."""
     status_data = {
         "status": "ok",
@@ -151,7 +151,7 @@ async def healthz(settings: Settings = Depends(get_settings)):
 
     # Check DB
     try:
-        with sqlite3.connect(settings.database_path, timeout=5.0) as conn:
+        with sqlite3.connect(_settings.database_path, timeout=5.0) as conn:
             conn.execute("SELECT 1").fetchone()
         status_data["db"] = "ok"
     except Exception as e:
@@ -162,10 +162,10 @@ async def healthz(settings: Settings = Depends(get_settings)):
     # Check Bexio
     try:
         async with BexioClient(
-            settings.bexio_api_token,
-            settings.bexio_base_url,
-            settings.default_vat_rate,
-            settings.default_payment_terms_days,
+            _settings.bexio_api_token,
+            _settings.bexio_base_url,
+            _settings.default_vat_rate,
+            _settings.default_payment_terms_days,
         ) as bexio:
             resp = await bexio.client.get("/2.0/company_profile")
             resp.raise_for_status()
@@ -176,11 +176,11 @@ async def healthz(settings: Settings = Depends(get_settings)):
         logger.error("Health check Bexio error", error=str(e))
 
     # Check IMAP configured
-    if settings.imap_server and settings.imap_user:
+    if _settings.imap_server and _settings.imap_user:
         status_data["imap"] = "configured"
 
     # Check GDrive configured
-    if settings.gdrive_credentials_file:
+    if _settings.gdrive_credentials_file:
         status_data["gdrive"] = "configured"
 
     status_code = (
@@ -194,7 +194,7 @@ async def healthz(settings: Settings = Depends(get_settings)):
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(
     request: Request,
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
     page: int = 1,
     per_page: int = 50,
@@ -223,18 +223,16 @@ async def dashboard(
             if search and search.lower() not in merchant.lower():
                 continue
 
-            reviews_data.append(
-                {
-                    "id": p.stem,
-                    "file": data.get("original_file"),
-                    "errors": data.get("errors", []),
-                    "merchant": merchant,
-                    "total": extracted.get("total_incl_vat", 0.0),
-                    "date": extracted.get("transaction_date", "Unknown"),
-                    "ocr_confidence": data.get("ocr_confidence"),
-                    "failed_stage": data.get("failed_stage", "unknown"),
-                }
-            )
+            reviews_data.append({
+                "id": p.stem,
+                "file": data.get("original_file"),
+                "errors": data.get("errors", []),
+                "merchant": merchant,
+                "total": extracted.get("total_incl_vat", 0.0),
+                "date": extracted.get("transaction_date", "Unknown"),
+                "ocr_confidence": data.get("ocr_confidence"),
+                "failed_stage": data.get("failed_stage", "unknown"),
+            })
 
     total_reviews = len(reviews_data)
     total_pages = max(1, (total_reviews + per_page - 1) // per_page)
@@ -270,7 +268,7 @@ async def dashboard(
 @app.get("/thumbnail/{review_id}")
 async def get_receipt_thumbnail(
     review_id: str,
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
 ):
     """Serve a thumbnail of the original receipt image."""
@@ -296,11 +294,17 @@ async def get_receipt_thumbnail(
         Path(settings.review_dir).resolve(),
     ]
     if not any(img_path_obj.is_relative_to(root) for root in allowed_roots):
+        logger.warning(
+            "Access denied: Path is outside allowed roots",
+            path=str(img_path_obj),
+            allowed_roots=[str(r) for r in allowed_roots],
+        )
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Simple thumbnail generation using Pillow
-    from PIL import Image
     import io
+
+    from PIL import Image
 
     try:
         with Image.open(img_path) as img:
@@ -313,19 +317,29 @@ async def get_receipt_thumbnail(
         return FileResponse(img_path)  # Fallback to original image
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Serve a dummy favicon to prevent 404 logs."""
+    return Response(content=b"", media_type="image/x-icon")
+
+
 @app.post("/bulk-action")
 async def bulk_action(
     request: Request,
-    ids: list[str] = Form(...),
+    ids: list[str] = Form([]),
     action: str = Form(...),
     csrf_token: str = Form(...),
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
     db: DuplicateDetector = Depends(get_db),
 ):
     """Process or discard multiple receipts."""
     if not csrf_token or request.session.get("csrf_token") != csrf_token:
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    if not ids:
+        request.session["success_msg"] = "⚠️ No receipts selected for bulk action."
+        return RedirectResponse(url="/", status_code=303)
 
     review_dir = Path(settings.review_dir)
     success_count = 0
@@ -426,8 +440,8 @@ async def get_history(
     request: Request,
     page: int = 1,
     search: str | None = None,
-    username: str = Depends(verify_credentials),
-    settings: Settings = Depends(get_settings),
+    _username: str = Depends(verify_credentials),
+    _settings: Settings = Depends(get_settings),
     db: DuplicateDetector = Depends(get_db),
 ):
     """Browse history of processed receipts."""
@@ -453,7 +467,7 @@ async def get_history(
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_view(
     request: Request,
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     db: DuplicateDetector = Depends(get_db),
 ):
     """Show processing statistics."""
@@ -462,10 +476,10 @@ async def stats_view(
 
 
 @app.get("/review/{review_id}", response_class=HTMLResponse)
-async def review_receipt(
+async def get_review_form(
     request: Request,
     review_id: str,
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
 ):
     """Show review form for a specific receipt."""
@@ -493,7 +507,7 @@ async def review_receipt(
         all_accounts = await bexio.get_accounts()
 
     # Resolve allowed SOLL accounts to internal IDs
-    allowed_numbers = set(str(no) for no in settings.bexio_allowed_soll_accounts)
+    allowed_numbers = {str(no) for no in settings.bexio_allowed_soll_accounts}
     allowed_accounts = [
         {"id": a["id"], "account_no": a["account_no"], "name": a["name"]}
         for a in all_accounts
@@ -573,7 +587,7 @@ async def review_receipt(
 @app.get("/image/{review_id}")
 async def get_receipt_image(
     review_id: str,
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
 ):
     """Serve the original receipt image."""
@@ -600,6 +614,11 @@ async def get_receipt_image(
         Path(settings.review_dir).resolve(),
     ]
     if not any(img_path_obj.is_relative_to(root) for root in allowed_roots):
+        logger.warning(
+            "Access denied: Path is outside allowed roots",
+            path=str(img_path_obj),
+            allowed_roots=[str(r) for r in allowed_roots],
+        )
         raise HTTPException(status_code=403, detail="Access denied")
 
     return FileResponse(img_path)
@@ -617,7 +636,7 @@ async def push_to_bexio(
     bank_account_id: int | None = Form(None),
     bexio_action: str = Form("purchase_bill"),
     csrf_token: str = Form(...),
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
     db: DuplicateDetector = Depends(get_db),
 ):
@@ -728,7 +747,7 @@ async def push_to_bexio(
 
     except Exception as e:
         logger.exception("Failed to push to bexio")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/discard/{review_id}")
@@ -736,7 +755,7 @@ async def discard_review(
     request: Request,
     review_id: str,
     csrf_token: str = Form(...),
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
 ):
     """Remove a receipt from the review queue."""
@@ -761,7 +780,7 @@ async def bulk_discard_review(
     request: Request,
     ids: list[str] = Form([]),
     csrf_token: str = Form(...),
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
 ):
     """Batch remove receipts from the review queue."""
@@ -788,7 +807,7 @@ async def bulk_discard_review(
 @app.get("/setup", response_class=HTMLResponse)
 async def setup_wizard(
     request: Request,
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
 ):
     """Render the setup wizard page."""
@@ -802,7 +821,7 @@ async def setup_wizard(
 
 @app.get("/setup/check/bexio")
 async def check_bexio_status(
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
 ):
     try:
@@ -815,8 +834,20 @@ async def check_bexio_status(
             resp = await bexio.client.get("/2.0/company_profile")
             resp.raise_for_status()
             data = resp.json()
+
+            # Handle case where Bexio returns a list of profiles
+            company_data = data
+            if isinstance(data, list) and len(data) > 0:
+                company_data = data[0]
+
+            name = (
+                company_data.get("name", "Connected")
+                if isinstance(company_data, dict)
+                else "Connected"
+            )
+
             return HTMLResponse(
-                f'<span class="status-badge status-ok">OK ({data.get("name", "Connected")})</span>'
+                f'<span class="status-badge status-ok">OK ({name})</span>'
             )
     except Exception as e:
         msg = f"Error: {str(e)}"
@@ -827,7 +858,7 @@ async def check_bexio_status(
 
 @app.get("/setup/check/ocr")
 async def check_ocr_status(
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
 ):
     if settings.ocr_engine == "paddleocr":
@@ -876,7 +907,7 @@ async def check_ocr_status(
 
 @app.get("/setup/check/llm")
 async def check_llm_status(
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
 ):
     if settings.llm_provider == "ollama":
@@ -923,7 +954,7 @@ async def check_llm_status(
 
 
 @app.get("/setup/check/system")
-async def check_system_status(username: str = Depends(verify_credentials)):
+async def check_system_status(_username: str = Depends(verify_credentials)):
     import shutil
 
     pdftoppm = shutil.which("pdftoppm")
@@ -941,7 +972,7 @@ async def check_system_status(username: str = Depends(verify_credentials)):
 
 @app.get("/setup/check/db")
 async def check_db_status(
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
 ):
     try:
@@ -962,7 +993,7 @@ async def pull_ollama_model(
     request: Request,
     model: str = Form(...),
     csrf_token: str = Form(...),
-    username: str = Depends(verify_credentials),
+    _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
 ):
     """Trigger Ollama model pull."""
@@ -997,7 +1028,7 @@ async def pull_ollama_model(
 
 
 @app.get("/setup/run-all")
-async def run_all_checks(username: str = Depends(verify_credentials)):
+async def run_all_checks(_username: str = Depends(verify_credentials)):
     """Hacky way to trigger all checks via HTMX by returning a trigger header."""
     # This tells HTMX to trigger these events on the client side
     return Response(headers={"HX-Trigger": "load-checks"})

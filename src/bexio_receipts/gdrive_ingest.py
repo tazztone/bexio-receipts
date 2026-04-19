@@ -78,7 +78,7 @@ class GoogleDriveIngestor:
                     raise RuntimeError(
                         f"Google OAuth2 token missing or invalid at {token_path}. "
                         "Please run 'bexio-receipts gdrive-auth' first."
-                    )
+                    ) from None
             else:
                 logger.info(
                     "Authenticated with Google OAuth2 token", path=str(token_path)
@@ -99,7 +99,8 @@ class GoogleDriveIngestor:
             return []
 
         results = await asyncio.to_thread(
-            self.service.files()
+            self.service
+            .files()
             .list(
                 q=query,
                 fields="files(id, name, mimeType, md5Checksum, createdTime)",
@@ -162,7 +163,8 @@ class GoogleDriveIngestor:
             return
 
         await asyncio.to_thread(
-            self.service.files()
+            self.service
+            .files()
             .update(
                 fileId=file_id,
                 addParents=self.settings.gdrive_processed_folder_id,

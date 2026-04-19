@@ -47,6 +47,21 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 addopts = "--cov=bexio_receipts --cov-fail-under=85"
 
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+# Completely exclude markdown and data dirs from all ruff operations
+exclude = ["*.md", "docs/*", "inbox/*", "review_queue/*"]
+
+[tool.ruff.lint]
+# Only essential rules: Errors (E), Pyflakes (F), and Bugbear (B)
+select = ["E", "F", "B"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.format]
+preview = true
+quote-style = "double"
+
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
