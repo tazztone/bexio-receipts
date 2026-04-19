@@ -18,7 +18,7 @@ async def test_bexio_client_read_only_by_default():
         await client.create_expense(receipt, "uuid", 1, 1)
 
     with pytest.raises(RuntimeError, match="Bexio write operations are disabled"):
-        await client.create_purchase_bill(receipt, "uuid", 1)
+        await client.create_purchase_bill(receipt, "uuid", [1])
 
 
 @pytest.mark.asyncio

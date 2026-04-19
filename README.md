@@ -26,7 +26,7 @@ The `--quickstart` flag will:
 ### What you'll see first
 1.  **Interactive Setup:** Run `init` to connect your Bexio account.
 2.  **System Health:** Start the dashboard (`serve`) and visit `/setup` to ensure your hardware is ready.
-3.  **First Ingestion:** Drop a receipt in `inbox/` or send it to your Telegram bot.
+3.  **First Ingestion:** Drop a receipt in `inbox/` or upload it to your configured Google Drive folder.
 4.  **Review Queue:** Visit the dashboard to triage any receipts with low confidence or validation errors.
 
 ---
@@ -46,16 +46,13 @@ The `--quickstart` flag will:
 
 ## ✨ Features
 
-- **Multi-Source Ingestion:**
+- **Consolidated Ingestion:**
   - **Folder Watcher:** Monitors a local directory for new files.
-  - **Email (IMAP):** Automatically downloads attachments from an inbox.
-  - **Telegram Bot:** Send photos or PDFs directly to the bot for processing.
   - **Google Drive:** Polls a specific Drive folder for new receipts.
 - **Intelligent Parsing & OCR:**
   - **PDF Extraction:** Uses native text extraction (`pdfplumber`) for 100% accuracy on digital PDFs.
-  - **GLM-OCR (Default):** A lightweight multimodal LLM for high-accuracy text/table recognition on scanned images.
-  - **PaddleOCR:** High-performance PP-OCRv5 fallback for fast image extraction.
-- **Intelligent Extraction:** Uses **Pydantic AI** with local LLMs (e.g., Qwen2.5) to parse text into structured data.
+  - **GLM-OCR:** A specialized multimodal LLM for high-accuracy text/table recognition on scanned images.
+- **Intelligent Extraction:** Uses **Pydantic AI** with local LLMs (e.g., Qwen 3.5) to parse text into structured data.
 - **Swiss Business Rules:** Built-in validation for Swiss VAT rates (8.1%, 2.6%, 3.8%), 5-rappen rounding, and native support for multi-rate `vat_breakdown` arrays.
 - **bexio Integration:** Automatic file upload and expense creation via the bexio API.
 - **Offline Development Mode:** Fully test the UI and LLM pipeline locally without a valid Bexio Personal Access Token.
@@ -69,14 +66,12 @@ The `--quickstart` flag will:
 graph TD
     subgraph Ingestion
         FW["Watcher"] --> P["Pipeline"]
-        EM["Email"] --> P
-        TB["Telegram"] --> P
         GD["GDrive"] --> P
     end
 
     subgraph Processing
         P --> PDF["PDF Text Extraction"]
-        PDF -- Scanned/Image --> OCR["OCR (Paddle/GLM)"]
+        PDF -- Scanned/Image --> OCR["GLM-OCR"]
         PDF -- Digital --> LLM
         OCR --> LLM["LLM Extraction"]
         LLM --> VAL["Validation"]
@@ -101,7 +96,7 @@ graph TD
 ### Prerequisites
 
 - [uv](https://github.com/astral-sh/uv) installed.
-- [Ollama](https://ollama.com/) (if using GLM-OCR or local LLM extraction).
+- [Ollama](https://ollama.com/) (for GLM-OCR and local LLM extraction).
 - A [bexio Personal Access Token](https://docs.bexio.com/#section/Authentication).
 
 ### Installation
@@ -120,15 +115,6 @@ uv run bexio-receipts init
 ollama pull glm-ocr        # for OCR
 ollama pull qwen3.5:9b     # for extraction
 ```
-
-### Docker
-
-The project includes an optimized multi-stage `Dockerfile`.
-
-```bash
-docker compose up -d
-```
-The dashboard will be available at `http://localhost:8000`.
 
 ---
 
@@ -152,13 +138,10 @@ uv run bexio-receipts process path/to/receipt.png
 ```bash
 uv run bexio-receipts process path/to/receipt.png --dry-run
 ```
-*Note: Dry-run performs OCR and LLM extraction but does NOT write to the database or upload to bexio.*
 
 **Watchers:**
 ```bash
 uv run bexio-receipts watch folder --path ./my-inbox
-uv run bexio-receipts watch telegram
-uv run bexio-receipts watch email
 uv run bexio-receipts watch gdrive
 ```
 
@@ -175,7 +158,7 @@ Start the web interface to manage files that fail validation:
 uv run bexio-receipts serve
 ```
 
-The new dashboard includes:
+The dashboard includes:
 - **Receipt Thumbnails**: Quick visual identification in the queue.
 - **Date Column**: Sort and track receipts by transaction date.
 - **Bulk Actions**: Discard multiple invalid receipts at once.
@@ -189,14 +172,6 @@ The new dashboard includes:
 ### Folder Watcher
 Simply drop files into the configured `INBOX_PATH` (default: `./inbox`).
 
-### Email (IMAP)
-Configure `IMAP_SERVER`, `IMAP_USER`, and `IMAP_PASSWORD`. The bot will poll for new unread emails with attachments.
-
-### Telegram
-1. Create a bot via [@BotFather](https://t.me/botfather).
-2. Set `TELEGRAM_BOT_TOKEN` and your numeric ID in `TELEGRAM_ALLOWED_USERS`.
-3. Run `uv run bexio-receipts watch telegram`.
-
 ### Google Drive
 - **Service Account (Recommended):** Share your Drive folder with the SA email.
 - **User Account (OAuth2):** Run `uv run bexio-receipts gdrive-auth` to generate `token.json`.
@@ -206,9 +181,8 @@ Configure `IMAP_SERVER`, `IMAP_USER`, and `IMAP_PASSWORD`. The bot will poll for
 ## 🛠️ Troubleshooting
 
 - **Ollama Connection Error:** Ensure Ollama is running (`ollama serve`) and `OLLAMA_HOST` is correctly set.
-- **PaddleOCR Installation Failures:** On Linux, ensure `libpoppler-cpp-dev` is installed. On macOS, use `brew install poppler`.
 - **bexio 401 Unauthorized:** Verify your `BEXIO_API_TOKEN` hasn't expired and has the correct permissions.
-- **Docker Port Conflicts:** If port 8000 is taken, change the mapping in `docker-compose.yml`.
+- **Missing Poppler:** Ensure `poppler-utils` is installed for scanned PDF support.
 
 ---
 
@@ -217,7 +191,7 @@ Configure `IMAP_SERVER`, `IMAP_USER`, and `IMAP_PASSWORD`. The bot will poll for
 ```text
 .
 ├── src/bexio_receipts/
-│   ├── ocr.py           # Unified OCR layer (Paddle/GLM)
+│   ├── ocr.py           # Unified OCR layer (GLM-OCR)
 │   ├── extraction.py    # LLM structured extraction (Pydantic AI)
 │   ├── validation.py    # Swiss VAT & business rules
 │   ├── server.py        # Dashboard backend (FastAPI + HTMX)
@@ -225,9 +199,7 @@ Configure `IMAP_SERVER`, `IMAP_USER`, and `IMAP_PASSWORD`. The bot will poll for
 │   ├── pipeline.py      # Core ingestion logic
 │   ├── database.py      # SQLite & deduplication
 │   ├── watcher.py       # Folder filesystem monitoring
-│   ├── telegram_bot.py  # Telegram bot interface
 │   ├── gdrive_ingest.py # Google Drive polling
-│   ├── email_ingest.py  # IMAP email attachment polling
 │   ├── config.py        # Pydantic Settings
 │   └── models.py        # Pydantic data models
 ├── docs/                # Extended documentation
@@ -240,21 +212,6 @@ Configure `IMAP_SERVER`, `IMAP_USER`, and `IMAP_PASSWORD`. The bot will poll for
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): Development setup and best practices.
 - [docs/OPERATIONS.md](docs/OPERATIONS.md): Production setup and maintenance tasks.
 - [CHANGELOG.md](CHANGELOG.md): History of changes.
-
----
-
-## 🚧 Known Limitations
-
-- **Hardware**: local extraction with `qwen3.5:9b` via Ollama requires at least 16GB RAM and is significantly faster with a CUDA-compatible GPU.
-- **Language**: PaddleOCR (default) is optimized for Latin-based languages. Handwritten or non-Latin receipts may require `glm-ocr`.
-- **Merchant Match**: Automatic contact creation in bexio relies on high-confidence merchant name extraction.
-
----
-
-## 🔗 Useful Links
-- [bexio API Documentation](https://docs.bexio.com/)
-- [GLM-OCR](https://github.com/zai-org/GLM-OCR)
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 
 ---
 

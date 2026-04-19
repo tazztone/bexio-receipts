@@ -251,8 +251,8 @@ def test_push_to_bexio_success(test_settings, tmp_path):
         form_data = {
             "merchant_name": "Updated Merchant",
             "date": "2023-01-01",
-            "total_incl_vat": 15.50,
-            "booking_account_ids": [100],
+            "total_incl_vat": "15.50",
+            "booking_account_ids": ["100"],
             "bexio_action": "purchase_bill",
             "csrf_token": "test_token",
         }

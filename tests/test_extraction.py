@@ -1,6 +1,7 @@
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from bexio_receipts.extraction import extract_receipt
@@ -25,7 +26,9 @@ async def test_extract_receipt_ollama(test_settings):
         mock_agent_instance = mock_agent_class.return_value
         mock_agent_instance.run = AsyncMock(return_value=mock_result)
 
-        receipt = await extract_receipt("Dummy text", test_settings)
+        receipt = await extract_receipt(
+            "Dummy text", test_settings, httpx.AsyncClient()
+        )
 
         assert receipt.merchant_name == "Mock Coop"
         assert receipt.total_incl_vat == 10.0
@@ -53,7 +56,9 @@ async def test_extract_receipt_with_vat_breakdown(test_settings):
         mock_agent_instance = mock_agent_class.return_value
         mock_agent_instance.run = AsyncMock(return_value=mock_result)
 
-        receipt = await extract_receipt("Dummy text with multiple VATs", test_settings)
+        receipt = await extract_receipt(
+            "Dummy text with multiple VATs", test_settings, httpx.AsyncClient()
+        )
 
         assert len(receipt.vat_breakdown) == 2
         assert receipt.vat_breakdown[0].rate == 8.1

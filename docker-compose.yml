@@ -13,9 +13,6 @@ services:
       - BEXIO_BASE_URL=http://mock-bexio:8001
       - REVIEW_PASSWORD=${REVIEW_PASSWORD:-admin}
       - SECRET_KEY=${SECRET_KEY:-super-secret-key-change-me-in-prod}
-      - IMAP_SERVER=mock-imap
-      - IMAP_USER=test@example.com
-      - IMAP_PASSWORD=password
       - GLM_OCR_URL=http://host.docker.internal:11434
       - OLLAMA_URL=http://host.docker.internal:11434
       - GLM_OCR_MODEL=glm-ocr
@@ -30,7 +27,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - mock-imap
       - mock-bexio
 
   watcher:
@@ -47,9 +43,6 @@ services:
       - BEXIO_BASE_URL=http://mock-bexio:8001
       - REVIEW_PASSWORD=${REVIEW_PASSWORD:-admin}
       - SECRET_KEY=${SECRET_KEY:-super-secret-key-change-me-in-prod}
-      - IMAP_SERVER=mock-imap
-      - IMAP_USER=test@example.com
-      - IMAP_PASSWORD=password
       - GLM_OCR_URL=http://host.docker.internal:11434
       - OLLAMA_URL=http://host.docker.internal:11434
       - GLM_OCR_MODEL=glm-ocr
@@ -62,7 +55,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - mock-imap
       - mock-bexio
 
   mock-bexio:
@@ -74,13 +66,6 @@ services:
     ports:
       - "8001:8001"
     command: ["python", "tests/mock_bexio.py"]
-
-  mock-imap:
-    image: greenmail/standalone:latest
-    environment:
-      - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=test@example.com:password
-    ports:
-      - "3143:3143"
 
 volumes:
   ollama_data:
