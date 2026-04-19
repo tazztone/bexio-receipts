@@ -529,6 +529,15 @@ async def review_receipt(
     else:
         bexio_action = "expense"
 
+    # Bug #3 Guard: Degrade to purchase_bill if HABEN accounts are missing
+    if bexio_action == "expense" and (haben_bank_id is None or haben_cash_id is None):
+        logger.warning(
+            "HABEN accounts not found in chart of accounts; degrading to purchase_bill",
+            bank=settings.bexio_haben_account_bank,
+            cash=settings.bexio_haben_account_cash,
+        )
+        bexio_action = "purchase_bill"
+
     # Get the default account for this merchant if known
     db = DuplicateDetector(settings.database_path)
     default_account_id = None
@@ -606,6 +615,7 @@ async def push_to_bexio(
     vat_rate_pct: float | None = Form(None),
     booking_account_ids: list[int] = Form(...),
     bank_account_id: int | None = Form(None),
+    bexio_action: str = Form("purchase_bill"),
     csrf_token: str = Form(...),
     username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
@@ -671,8 +681,14 @@ async def push_to_bexio(
             await bexio.cache_lookups()
             file_uuid = await bexio.upload_file(img_path, filename, mime_type)
 
+            # Logic #4: Server-side override (never trust client blindly)
+            if bexio_action == "expense":
+                if receipt.merchant_name or (vat_breakdown and len(vat_breakdown) > 1):
+                    logger.info("Overriding 'expense' to 'purchase_bill' for safety")
+                    bexio_action = "purchase_bill"
+
             # Routing decision
-            if receipt.merchant_name or (vat_breakdown and len(vat_breakdown) > 1):
+            if bexio_action == "purchase_bill":
                 # Always Purchase Bill for multi-rate or merchant
                 await bexio.create_purchase_bill(
                     receipt, file_uuid, booking_account_ids=booking_account_ids

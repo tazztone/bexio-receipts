@@ -214,10 +214,8 @@ class BexioClient:
             )
 
         if receipt.vat_breakdown and len(receipt.vat_breakdown) > 1:
-            logger.warning(
-                "Multiple VAT rates detected, but bexio Expenses only support one tax_id. "
-                "Using dominant rate.",
-                breakdown=receipt.vat_breakdown,
+            raise ValueError(
+                "Cannot create expense with multiple VAT rates. Use purchase bill instead."
             )
 
         if receipt.total_incl_vat is None:
@@ -289,10 +287,17 @@ class BexioClient:
                     "position": 0,
                     "title": receipt.merchant_name or "Receipt",
                     "tax_id": await self.get_tax_id(receipt.vat_rate_pct),
-                    "amount": round(receipt.total_incl_vat or 0.0, 2)
-                    if receipt.vat_rate_pct == 0.0
-                    else round(
-                        (receipt.total_incl_vat or 0.0) - (receipt.vat_amount or 0.0), 2
+                    "amount": (
+                        round(receipt.total_incl_vat or 0.0, 2)
+                        if receipt.vat_rate_pct == 0.0
+                        else round(
+                            (receipt.total_incl_vat or 0.0)
+                            / (
+                                1
+                                + (receipt.vat_rate_pct or self.default_vat_rate) / 100
+                            ),
+                            2,
+                        )
                     ),
                     "booking_account_id": booking_account_ids[0],
                 }

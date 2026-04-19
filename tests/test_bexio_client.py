@@ -41,7 +41,7 @@ async def test_create_expense():
         return_value=httpx.Response(200, json={"id": 999})
     )
 
-    async with BexioClient(token="test") as client:
+    async with BexioClient(token="test", push_enabled=True) as client:
         client._tax_cache[8.1] = 1
 
         receipt = Receipt(
@@ -67,3 +67,50 @@ async def test_create_expense():
         assert payload["booking_account_id"] == 100
         assert payload["bank_account_id"] == 200
         assert payload["attachment_ids"] == ["file-uuid"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_purchase_bill_net_fallback():
+    bill_route = respx.post("https://api.bexio.com/4.0/purchase/bills").mock(
+        return_value=httpx.Response(200, json={"id": 888})
+    )
+
+    async with BexioClient(token="test", push_enabled=True) as client:
+        client._tax_cache[8.1] = 1
+        client._tax_cache[2.6] = 2
+
+        # Mock contact search (POST to /2.0/contact/search)
+        respx.post("https://api.bexio.com/2.0/contact/search").mock(
+            return_value=httpx.Response(200, json=[{"id": 50}])
+        )
+
+        # Case 1: vat_amount is None, vat_rate_pct is 8.1
+        # Gross 214.20 / 1.081 = 198.15 net
+        receipt = Receipt(
+            merchant_name="Prodega",
+            date=date(2026, 1, 31),
+            total_incl_vat=214.20,
+            vat_rate_pct=8.1,
+            vat_amount=None,  # Crucial for test
+        )
+
+        await client.create_purchase_bill(receipt, "uuid", [100])
+        payload = bill_route.calls.last.request.read()
+        import json
+
+        data = json.loads(payload)
+        assert data["item_net"] is True
+        assert data["line_items"][0]["amount"] == 198.15
+
+        # Case 2: Both vat_amount and vat_rate_pct are None (fallback to default 8.1)
+        receipt_no_rate = Receipt(
+            merchant_name="Prodega",
+            date=date(2026, 1, 31),
+            total_incl_vat=214.20,
+            vat_rate_pct=None,
+            vat_amount=None,
+        )
+        await client.create_purchase_bill(receipt_no_rate, "uuid", [100])
+        data = json.loads(bill_route.calls.last.request.read())
+        assert data["line_items"][0]["amount"] == 198.15
