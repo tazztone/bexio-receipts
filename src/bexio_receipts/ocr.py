@@ -27,7 +27,7 @@ def _optimize_image(img: Image.Image, max_long_edge: int = 2560) -> Image.Image:
     long_edge = max(w, h)
     if long_edge > max_long_edge:
         scale = max_long_edge / long_edge
-        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        img = img.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
 
     # Boost contrast for thermal receipts (mildly)
     img = ImageEnhance.Contrast(img).enhance(1.3)
@@ -118,15 +118,15 @@ async def run_glm_ocr(
     if image_data:
         # Decode bytes, optimize, and re-encode to WebP for model
         with Image.open(io.BytesIO(image_data)) as img:
-            img = _optimize_image(img)
+            optimized_img = _optimize_image(img)
             buf = io.BytesIO()
-            img.save(buf, format="WEBP", quality=90)
+            optimized_img.save(buf, format="WEBP", quality=90)
             img_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
     elif file_path:
         with Image.open(file_path) as img:
-            img = _optimize_image(img)
+            optimized_img = _optimize_image(img)
             buf = io.BytesIO()
-            img.save(buf, format="WEBP", quality=90)
+            optimized_img.save(buf, format="WEBP", quality=90)
             img_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
     else:
         raise ValueError("Either file_path or image_data must be provided")

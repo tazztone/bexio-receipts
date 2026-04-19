@@ -202,8 +202,12 @@ async def process_receipt(
                 db.get_merchant_account(merchant) or settings.default_booking_account_id
             )
 
+            # If multiple VAT rates, repeat the same account ID for each entry (as default)
+            num_accounts = len(receipt.vat_breakdown) if receipt.vat_breakdown else 1
+            booking_account_ids = [booking_account_id] * num_accounts
+
             expense = await bexio.create_purchase_bill(
-                receipt, file_uuid, booking_account_id=booking_account_id
+                receipt, file_uuid, booking_account_ids=booking_account_ids
             )
 
             # Save mapping for next time if it was a real merchant
