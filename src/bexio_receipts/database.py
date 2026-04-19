@@ -146,22 +146,22 @@ class DuplicateDetector:
                 )
 
     def get_merchant_account(self, merchant_name: str) -> int | None:
-        """Get the last used booking account for a merchant."""
+        """Get the last used booking account for a merchant (case-insensitive)."""
         with closing(self._get_conn()) as conn:
             cursor = conn.execute(
                 "SELECT booking_account_id FROM merchant_accounts WHERE merchant_name = ?",
-                (merchant_name,),
+                (merchant_name.upper(),),
             )
             row = cursor.fetchone()
             return row[0] if row else None
 
     def set_merchant_account(self, merchant_name: str, account_id: int):
-        """Save the booking account for a merchant."""
+        """Save the booking account for a merchant (case-insensitive)."""
         with closing(self._get_conn()) as conn:
             with conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
-                    (merchant_name, account_id),
+                    (merchant_name.upper(), account_id),
                 )
 
     def get_all_merchant_accounts(self) -> dict[str, int]:
@@ -173,12 +173,13 @@ class DuplicateDetector:
             return {row[0]: row[1] for row in cursor.fetchall()}
 
     def import_merchant_accounts(self, mappings: dict[str, int]):
-        """Import merchant to booking account mappings."""
+        """Import merchant to booking account mappings (case-insensitive)."""
+        normalized = {k.upper(): v for k, v in mappings.items()}
         with closing(self._get_conn()) as conn:
             with conn:
                 conn.executemany(
                     "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
-                    mappings.items(),
+                    normalized.items(),
                 )
 
     def is_gdrive_seen(self, file_id: str) -> bool:

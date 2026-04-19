@@ -129,7 +129,7 @@ def test_missing_merchant(test_settings):
 
 
 def test_vat_back_calculation_mismatch(test_settings):
-    receipt = Receipt(
+    receipt = Receipt.model_construct(
         merchant_name="VAT Calc",
         transaction_date=date.today(),
         subtotal_excl_vat=10.0,
@@ -142,7 +142,7 @@ def test_vat_back_calculation_mismatch(test_settings):
 
 
 def test_vat_breakdown_cross_check(test_settings):
-    receipt = Receipt(
+    receipt = Receipt.model_construct(
         merchant_name="Breakdown Check",
         transaction_date=date.today(),
         subtotal_excl_vat=10.0,

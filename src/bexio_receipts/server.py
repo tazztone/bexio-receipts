@@ -28,6 +28,7 @@ from .bexio_client import BexioClient
 from .config import Settings
 from .database import DuplicateDetector
 from .models import Receipt
+from .pipeline import decide_bexio_action
 
 logger = structlog.get_logger(__name__)
 
@@ -144,6 +145,23 @@ async def metrics(
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
+def _load_review(review_id: str, review_dir: str) -> tuple[dict, Path]:
+    """Load and parse a review JSON file, raising appropriate HTTP exceptions."""
+    path = Path(review_dir) / f"{review_id}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Review not found")
+    try:
+        data = json.loads(path.read_text())
+        return data, path
+    except json.JSONDecodeError as exc:
+        logger.error(
+            "Corrupt review file detected", review_id=review_id, error=str(exc)
+        )
+        raise HTTPException(
+            status_code=422, detail=f"Review file corrupt: {exc}"
+        ) from exc
+
+
 @app.get("/healthz")
 async def healthz(_settings: Settings = Depends(get_settings)):
     """Health check endpoint."""
@@ -203,7 +221,7 @@ async def dashboard(
 ):
     """List all receipts awaiting review."""
     # Auto-redirect to setup if not configured
-    if not settings.bexio_api_token or settings.bexio_api_token == "your_bexio_token":
+    if not settings.offline_mode and settings.bexio_api_token == "offline":
         return RedirectResponse(url="/setup")
 
     review_dir = Path(settings.review_dir)
@@ -216,24 +234,28 @@ async def dashboard(
 
     reviews_data = []
     for p in all_files_list:
-        with open(p) as f:
-            data = json.load(f)
-            extracted = data.get("extracted", {}) or {}
-            merchant = extracted.get("merchant_name", "Unknown")
+        try:
+            data = json.loads(p.read_text())
+        except Exception as e:
+            logger.error("Skipping corrupted review file", path=str(p), error=str(e))
+            continue
 
-            if search and search.lower() not in merchant.lower():
-                continue
+        extracted = data.get("extracted", {}) or {}
+        merchant = extracted.get("merchant_name", "Unknown")
 
-            reviews_data.append({
-                "id": p.stem,
-                "file": data.get("original_file"),
-                "errors": data.get("errors", []),
-                "merchant": merchant,
-                "total": extracted.get("total_incl_vat", 0.0),
-                "date": extracted.get("transaction_date", "Unknown"),
-                "ocr_confidence": data.get("ocr_confidence"),
-                "failed_stage": data.get("failed_stage", "unknown"),
-            })
+        if search and search.lower() not in merchant.lower():
+            continue
+
+        reviews_data.append({
+            "id": p.stem,
+            "file": data.get("original_file"),
+            "errors": data.get("errors", []),
+            "merchant": merchant,
+            "total": extracted.get("total_incl_vat", 0.0),
+            "date": extracted.get("transaction_date", "Unknown"),
+            "ocr_confidence": data.get("ocr_confidence"),
+            "failed_stage": data.get("failed_stage", "unknown"),
+        })
 
     total_reviews = len(reviews_data)
     total_pages = max(1, (total_reviews + per_page - 1) // per_page)
@@ -276,14 +298,8 @@ async def get_receipt_thumbnail(
     if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
         raise HTTPException(status_code=400, detail="Invalid review ID")
 
-    review_dir = Path(settings.review_dir)
-    p = review_dir / f"{review_id}.json"
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="Review not found")
-
-    with open(p) as f:
-        data = json.load(f)
-        img_path = data.get("original_file")
+    data, _ = _load_review(review_id, settings.review_dir)
+    img_path = data.get("original_file")
 
     if not img_path or not Path(img_path).exists():
         raise HTTPException(status_code=404, detail="Image file not found")
@@ -376,8 +392,15 @@ async def bulk_action(
                     continue
 
                 try:
-                    with open(p) as f:
-                        data = json.load(f)
+                    try:
+                        data = json.loads(p.read_text())
+                    except Exception as e:
+                        logger.error(
+                            "Skipping corrupted review file in bulk action",
+                            path=str(p),
+                            error=str(e),
+                        )
+                        continue
 
                     extracted = data.get("extracted", {})
                     receipt = Receipt.model_validate(extracted)
@@ -495,8 +518,7 @@ async def get_review_form(
     if not p.exists():
         raise HTTPException(status_code=404, detail="Review not found")
 
-    with open(p) as f:
-        data = json.load(f)
+    data, p = _load_review(review_id, settings.review_dir)
 
     # Fetch accounts for the dropdown
     async with BexioClient(
@@ -534,15 +556,8 @@ async def get_review_form(
     )
 
     # Detect bexio_action
-    receipt_data = data.get("extracted", {})
-    vat_breakdown = receipt_data.get("vat_breakdown", [])
-    merchant_name = receipt_data.get("merchant_name")
-
-    # Rule: multi-rate OR merchant present -> purchase_bill
-    if merchant_name or (vat_breakdown and len(vat_breakdown) > 1):
-        bexio_action = "purchase_bill"
-    else:
-        bexio_action = "expense"
+    receipt = Receipt.model_validate(data.get("extracted", {}))
+    bexio_action = decide_bexio_action(receipt)
 
     # Bug #3 Guard: Degrade to purchase_bill if HABEN accounts are missing
     if bexio_action == "expense" and (haben_bank_id is None or haben_cash_id is None):
@@ -556,8 +571,8 @@ async def get_review_form(
     # Get the default account for this merchant if known
     db = DuplicateDetector(settings.database_path)
     default_account_id = None
-    if merchant_name:
-        default_account_id = db.get_merchant_account(merchant_name)
+    if receipt.merchant_name:
+        default_account_id = db.get_merchant_account(receipt.merchant_name)
 
     if not default_account_id:
         default_account_id = settings.default_booking_account_id
@@ -573,14 +588,14 @@ async def get_review_form(
         {
             "id": review_id,
             "data": data,
-            "receipt": receipt_data,
+            "receipt": receipt,
             "allowed_accounts": allowed_accounts,
             "default_account_id": default_account_id,
             "haben_bank_id": haben_bank_id,
             "haben_cash_id": haben_cash_id,
             "bexio_action": bexio_action,
             "csrf_token": csrf_token,
-            "payment_method": receipt_data.get("payment_method"),
+            "payment_method": receipt.payment_method,
         },
     )
 
@@ -595,15 +610,8 @@ async def get_receipt_image(
     if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
         raise HTTPException(status_code=400, detail="Invalid review ID")
 
-    review_dir = Path(settings.review_dir)
-    review_dir.mkdir(exist_ok=True, parents=True)
-    p = review_dir / f"{review_id}.json"
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="Review not found")
-
-    with open(p) as f:
-        data = json.load(f)
-        img_path = data.get("original_file")
+    data, _ = _load_review(review_id, settings.review_dir)
+    img_path = data.get("original_file")
 
     if not img_path or not Path(img_path).exists():
         raise HTTPException(status_code=404, detail="Image file not found")
@@ -656,8 +664,7 @@ async def push_to_bexio(
     if not p.exists():
         raise HTTPException(status_code=404, detail="Review not found")
 
-    with open(p) as f:
-        data = json.load(f)
+    data, p = _load_review(review_id, settings.review_dir)
 
     # Update data from form
     receipt_data = data.get("extracted", {})
@@ -679,7 +686,13 @@ async def push_to_bexio(
         )
 
     # Push to bexio
-    img_path = data.get("original_file")
+    img_path_raw = data.get("original_file")
+    if not isinstance(img_path_raw, str):
+        raise HTTPException(
+            status_code=422, detail="Missing original_file in review data"
+        )
+    img_path: str = img_path_raw
+
     filename = Path(img_path).name
     mime_type, _ = mimetypes.guess_type(img_path)
     mime_type = mime_type or "application/octet-stream"
@@ -703,7 +716,7 @@ async def push_to_bexio(
 
             # Logic #4: Server-side override (never trust client blindly)
             if bexio_action == "expense":
-                if receipt.merchant_name or (vat_breakdown and len(vat_breakdown) > 1):
+                if decide_bexio_action(receipt) == "purchase_bill":
                     logger.info("Overriding 'expense' to 'purchase_bill' for safety")
                     bexio_action = "purchase_bill"
 

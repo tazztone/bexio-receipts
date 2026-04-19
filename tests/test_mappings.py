@@ -28,8 +28,8 @@ def test_merchant_mappings(tmp_path, test_settings):
         with open(export_file) as f:
             data = json.load(f)
 
-        assert data["Coop"] == 100
-        assert data["Migros"] == 200
+        assert data["COOP"] == 100
+        assert data["MIGROS"] == 200
 
         # Modify data for import
         data["Aldi"] = 300

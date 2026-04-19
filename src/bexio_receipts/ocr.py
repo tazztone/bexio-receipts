@@ -175,9 +175,10 @@ async def _do_async_run_ocr(
                 [{"text": combined_text, "confidence": 0.90}],
             )
         except Exception as e:
-            logger.warning(
-                f"Failed to convert scanned PDF to images: {e}. Falling back to raw file."
-            )
-            return await run_glm_ocr(file_path, settings, client)
+            logger.warning(f"pdf2image failed, attempting raw GLM fallback: {e}")
+            try:
+                return await run_glm_ocr(file_path, settings, client)
+            except Exception as e2:
+                raise RuntimeError(f"OCR failed for PDF: {e2}") from e2
 
     return await run_glm_ocr(file_path, settings, client)

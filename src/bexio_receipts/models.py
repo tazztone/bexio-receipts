@@ -57,8 +57,38 @@ class Receipt(BaseModel):
         description="Breakdown of VAT per rate found on the receipt",
     )
     line_items: list[LineItem] | None = None
-    invoice_number: str | None = None
     payment_method: str | None = None  # card/cash/twint etc.
+    invoice_number: str | None = None
+
+    @model_validator(mode="after")
+    def check_totals(self) -> Receipt:
+        tol = 0.05
+        if self.vat_breakdown:
+            sum_vat = sum(e.vat_amount for e in self.vat_breakdown)
+            sum_base = sum(e.base_amount for e in self.vat_breakdown)
+            if self.vat_amount is not None and abs(sum_vat - self.vat_amount) > tol:
+                raise ValueError(
+                    f"vat_breakdown sum {sum_vat:.2f} ≠ vat_amount {self.vat_amount:.2f}"
+                )
+            if (
+                self.subtotal_excl_vat is not None
+                and abs(sum_base - self.subtotal_excl_vat) > tol
+            ):
+                raise ValueError(
+                    f"vat_breakdown base sum {sum_base:.2f} ≠ subtotal_excl_vat {self.subtotal_excl_vat:.2f}"
+                )
+
+        if (
+            self.subtotal_excl_vat is not None
+            and self.vat_amount is not None
+            and self.total_incl_vat is not None
+        ):
+            expected = round(self.subtotal_excl_vat + self.vat_amount, 2)
+            if abs(expected - self.total_incl_vat) > tol:
+                raise ValueError(
+                    f"{self.subtotal_excl_vat} + {self.vat_amount} = {expected} ≠ {self.total_incl_vat}"
+                )
+        return self
 
     @field_validator("merchant_name", mode="after")
     @classmethod
@@ -66,7 +96,5 @@ class Receipt(BaseModel):
         if v is None:
             return None
 
-        # Strip and Title Case but keep suffixes to avoid aggressive normalization
-        v = v.strip().title()
-
-        return v
+        # Collapse whitespace, preserve case
+        return " ".join(v.split())

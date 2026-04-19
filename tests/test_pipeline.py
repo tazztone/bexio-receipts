@@ -6,7 +6,36 @@ import pytest
 
 from bexio_receipts.database import DuplicateDetector
 from bexio_receipts.models import Receipt
-from bexio_receipts.pipeline import process_receipt, send_to_review
+from bexio_receipts.pipeline import (
+    decide_bexio_action,
+    process_receipt,
+    send_to_review,
+)
+
+
+def test_decide_bexio_action():
+    from bexio_receipts.models import VatEntry
+
+    # Case 1: Merchant name present -> purchase_bill
+    r1 = Receipt(merchant_name="Migros")
+    assert decide_bexio_action(r1) == "purchase_bill"
+
+    # Case 2: Multi-VAT -> purchase_bill
+    r2 = Receipt(
+        vat_breakdown=[
+            VatEntry(rate=8.1, base_amount=100.0, vat_amount=8.1),
+            VatEntry(rate=2.6, base_amount=50.0, vat_amount=1.3),
+        ]
+    )
+    assert decide_bexio_action(r2) == "purchase_bill"
+
+    # Case 3: No merchant, single VAT -> expense
+    r3 = Receipt(vat_breakdown=[VatEntry(rate=8.1, base_amount=100.0, vat_amount=8.1)])
+    assert decide_bexio_action(r3) == "expense"
+
+    # Case 4: No merchant, no VAT -> expense
+    r4 = Receipt()
+    assert decide_bexio_action(r4) == "expense"
 
 
 @pytest.fixture

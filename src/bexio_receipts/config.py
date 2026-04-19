@@ -61,9 +61,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_passwords(self):
-        if self.env != "development" and self.review_password == "password":
+        is_dev = self.env == "development"
+        if not is_dev and self.review_password == "password":
             raise ValueError(
                 "review_password must be changed from 'password' in non-development environments"
+            )
+        if not is_dev and self.secret_key == "change-me":
+            raise ValueError(
+                "secret_key must be changed from 'change-me' in non-development environments"
             )
 
         if not self.offline_mode:

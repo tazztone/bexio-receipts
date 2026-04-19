@@ -39,7 +39,7 @@ def test_merchant_mappings(tmp_path):
     assert db.get_merchant_account("Unknown") is None
 
     mappings = db.get_all_merchant_accounts()
-    assert mappings["Migros"] == 100
+    assert mappings["MIGROS"] == 100
 
     db.import_merchant_accounts({"Coop": 200})
     assert db.get_merchant_account("Coop") == 200

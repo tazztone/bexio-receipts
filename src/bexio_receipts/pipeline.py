@@ -21,6 +21,15 @@ from .validation import validate_receipt
 logger = structlog.get_logger(__name__)
 
 
+def decide_bexio_action(receipt: Receipt) -> str:
+    """Return 'purchase_bill' or 'expense' based on receipt completeness."""
+    if receipt.merchant_name or (
+        receipt.vat_breakdown and len(receipt.vat_breakdown) > 1
+    ):
+        return "purchase_bill"
+    return "expense"
+
+
 async def send_to_review(
     file_path: str,
     raw_text: str,
@@ -160,12 +169,8 @@ async def process_receipt(
         )
 
     # 4. Push to bexio
-    # Determine predicted action for review UI
-    bexio_action = "expense"
-    if receipt.merchant_name or (
-        receipt.vat_breakdown and len(receipt.vat_breakdown) > 1
-    ):
-        bexio_action = "purchase_bill"
+    # determine predicted action for review UI
+    bexio_action = decide_bexio_action(receipt)
 
     if not settings.bexio_push_enabled or not push_confirmed:
         msg = (
@@ -204,9 +209,7 @@ async def process_receipt(
 
         # Prefer Bill (v4) if we have a merchant name or multiple VAT rates.
         # Fall back to simple Expense (v4) only if no merchant name and single VAT rate.
-        if receipt.merchant_name or (
-            receipt.vat_breakdown and len(receipt.vat_breakdown) > 1
-        ):
+        if decide_bexio_action(receipt) == "purchase_bill":
             merchant = receipt.merchant_name or "Unknown Merchant"
             if not receipt.merchant_name:
                 logger.warning(

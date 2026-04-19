@@ -296,3 +296,33 @@ def test_favicon():
     response = client.get("/favicon.ico")
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/x-icon"
+
+
+def test_corrupt_review_json(tmp_path, test_settings):
+    test_settings.review_dir = str(tmp_path)
+    app.dependency_overrides[get_settings] = lambda: test_settings
+
+    # Create a corrupted JSON file
+    corrupt_file = tmp_path / "corrupt.json"
+    corrupt_file.write_text("{invalid: json}")
+
+    response = client.get("/review/corrupt", auth=("admin", "test_password"))
+    assert response.status_code == 422
+    assert "Review file corrupt" in response.text
+
+    # Test dashboard skipping corrupted file
+    # Create one valid and one corrupted
+    (tmp_path / "valid.json").write_text(
+        json.dumps({
+            "original_file": "test.png",
+            "extracted": {"merchant_name": "Test"},
+        })
+    )
+
+    response = client.get("/", auth=("admin", "test_password"))
+    assert response.status_code == 200
+    assert "Test" in response.text
+    # Corrupt file should be skipped without crashing the whole page
+    assert "corrupt" not in response.text
+
+    app.dependency_overrides.clear()

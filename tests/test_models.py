@@ -22,10 +22,10 @@ def test_merchant_name_normalization():
         total_incl_vat=10.0,
     )
 
-    assert r1.merchant_name == "Migros"
-    assert r2.merchant_name == "Migros Ag"
-    assert r3.merchant_name == "Migros"
-    assert r4.merchant_name == "My Shop Gmbh"
+    assert r1.merchant_name == "MIGROS"
+    assert r2.merchant_name == "Migros AG"
+    assert r3.merchant_name == "migros"
+    assert r4.merchant_name == "My Shop GmbH"
 
 
 def test_vat_entry_math_validation():

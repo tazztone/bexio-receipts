@@ -146,11 +146,18 @@ class BexioClient:
 
     async def get_tax_id(self, rate: float | None) -> int:
         """Return bexio tax ID for a given rate, fallback to standard default."""
-        if rate is None:
-            return self._tax_cache.get(self.default_vat_rate, 1)  # Fallback to standard
-        return self._tax_cache.get(
-            float(rate), self._tax_cache.get(self.default_vat_rate, 1)
+        requested_rate = float(rate) if rate is not None else self.default_vat_rate
+
+        if requested_rate in self._tax_cache:
+            return self._tax_cache[requested_rate]
+
+        logger.warning(
+            "VAT rate not in cache — using fallback",
+            requested_rate=rate,
+            fallback_rate=self.default_vat_rate,
+            tenant_rates=list(self._tax_cache.keys()),
         )
+        return self._tax_cache.get(self.default_vat_rate, 1)
 
     @BEXIO_RETRY
     async def upload_file(self, file_path: str, filename: str, mime_type: str) -> str:
