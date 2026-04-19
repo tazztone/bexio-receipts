@@ -142,7 +142,7 @@ async def run_glm_ocr(
 
         # Overall timeout for the vision model call
         resp = await asyncio.wait_for(
-            client.post(f"{settings.glm_ocr_url}/api/chat", json=payload), timeout=90
+            client.post(f"{settings.glm_ocr_url}/api/chat", json=payload), timeout=9
         )
         resp.raise_for_status()
         data = resp.json()
@@ -190,18 +190,29 @@ async def async_run_ocr(
                 # Convert all pages of scanned PDF to images for vision model
                 try:
                     images = convert_from_path(file_path, dpi=300)
-                    texts = []
-                    for i, img in enumerate(images):
-                        img = _optimize_image(img)
-                        buf = io.BytesIO()
-                        img.save(buf, format="WEBP", quality=90)
-                        logger.info(
-                            f"Processing PDF page {i + 1}/{len(images)}", path=file_path
-                        )
-                        page_text, _, _ = await run_glm_ocr(
-                            None, settings, image_data=buf.getvalue()
-                        )
-                        texts.append(page_text)
+
+                    async def _process_pdf_pages():
+                        texts = []
+                        for i, img in enumerate(images):
+                            img = _optimize_image(img)
+                            buf = io.BytesIO()
+                            img.save(buf, format="WEBP", quality=90)
+                            logger.info(
+                                f"Processing PDF page {i + 1}/{len(images)}",
+                                path=file_path,
+                            )
+                            page_text, _, _ = await run_glm_ocr(
+                                None, settings, image_data=buf.getvalue()
+                            )
+                            texts.append(page_text)
+                        return texts
+
+                    # Aggregate timeout for multi-page PDF (10% of user suggestion)
+                    # min(pages * 6, 30) ensures we don't hold the semaphore too long
+                    timeout = min(len(images) * 6, 30)
+                    texts = await asyncio.wait_for(
+                        _process_pdf_pages(), timeout=timeout
+                    )
 
                     combined_text = "\n---PAGE BREAK---\n".join(texts)
                     return (

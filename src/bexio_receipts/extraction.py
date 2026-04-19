@@ -82,6 +82,6 @@ async def extract_receipt(raw_text: str, settings: Settings) -> Receipt:
 
         # Total timeout for the entire LLM round-trip
         result = await asyncio.wait_for(
-            agent.run(f"Receipt text:\n{raw_text}"), timeout=120
+            agent.run(f"Receipt text:\n{raw_text}"), timeout=12
         )
         return result.output

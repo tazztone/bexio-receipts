@@ -5,6 +5,7 @@ Orchestrates OCR, extraction, and validation steps.
 
 import json
 import mimetypes
+import asyncio
 from pathlib import Path
 
 import structlog
@@ -96,7 +97,14 @@ async def process_receipt(
 
     # 1. OCR / One-shot Extraction
     logger.info("Running OCR/Extraction", engine=settings.ocr_engine, path=file_path)
-    raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
+    try:
+        raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
+    except asyncio.TimeoutError:
+        error_msg = "OCR stage timed out"
+        logger.error(error_msg, path=file_path)
+        return await send_to_review(
+            file_path, "", [error_msg], settings, failed_stage="ocr"
+        )
 
     # Only enforce confidence for PaddleOCR; GLM-OCR is a VLM and uses validation instead
     if (
@@ -116,6 +124,17 @@ async def process_receipt(
     logger.info("Extracting data via LLM", model=settings.llm_model)
     try:
         receipt = await extract_receipt(raw_text, settings)
+    except asyncio.TimeoutError:
+        error_msg = "LLM extraction stage timed out"
+        logger.error(error_msg, path=file_path)
+        return await send_to_review(
+            file_path,
+            raw_text,
+            [error_msg],
+            settings,
+            ocr_confidence=avg_confidence,
+            failed_stage="extraction",
+        )
     except Exception as e:
         logger.error("LLM extraction failed", error=str(e))
         return await send_to_review(

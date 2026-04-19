@@ -5,6 +5,7 @@ Triggers the ingestion pipeline when new files are detected.
 
 import asyncio
 import os
+import time
 from pathlib import Path
 
 from watchdog.observers import Observer
@@ -64,8 +65,6 @@ class ReceiptHandler(FileSystemEventHandler):
             return
 
         # Cooldown: skip if processed very recently (avoid double events)
-        import time
-
         now = time.time()
         if file_path in self._last_processed:
             if now - self._last_processed[file_path] < 30:
@@ -117,8 +116,6 @@ class ReceiptHandler(FileSystemEventHandler):
                     self.db,
                     push_confirmed=True,
                 )
-            import time
-
             self._last_processed[file_path] = time.time()
             logger.info(
                 "Processing finished", path=str(file_path), status=result.get("status")
@@ -196,4 +193,6 @@ async def watch_folder(path: str, settings: Settings):
             observer.stop()
             logger.info("Stopping folder watcher")
 
-        observer.join()
+        observer.join(timeout=5)
+        if observer.is_alive():
+            logger.warning("Observer thread did not stop cleanly within 5s")
