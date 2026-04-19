@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Setup Wizard - bexio-receipts</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/pico.min.css">
     <link rel="stylesheet" href="/static/styles.css">
     <script src="https://unpkg.com/htmx.org@2.0.1"></script>
 </head>
@@ -18,173 +18,184 @@
                 <li><a href="/">Queue</a></li>
                 <li><a href="/history">History</a></li>
                 <li><a href="/stats">Stats</a></li>
-                <li><a href="/setup"><strong>Setup</strong></a></li>
+                <li><a href="/setup" class="active">Setup</a></li>
             </ul>
         </nav>
     </header>
+
     <main class="container">
-        <div style="display: flex; justify-content: space-between; align-items: baseline;">
-            <h1>System Setup & Health</h1>
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem;">
             <div>
-                <small id="last-check" style="margin-right: 1rem; opacity: 0.7;"></small>
-                <button hx-get="/setup/run-all" hx-target="#checks" hx-swap="none" style="margin-bottom: 0;">Run All Checks</button>
+                <h1>System Setup</h1>
+                <p style="color: var(--color-text-muted);">Verify your integrations and environment configuration.</p>
+            </div>
+            <div style="text-align: right;">
+                <div id="api-status-pulse" class="status-badge status-checking animate-pulse" style="margin-bottom: 0.5rem; display: none;">Checking API...</div>
+                <button hx-get="/setup/run-all" hx-target="#checks" hx-swap="none" class="secondary outline" style="margin-bottom: 0;">Run All Checks</button>
             </div>
         </div>
-        <p>This wizard helps you verify that all dependencies are correctly configured and reachable.</p>
 
-        <section id="checks">
-            <div id="status-summary" style="margin-bottom: 2rem; display: none;">
+        <div class="grid">
+            <section id="wizard-steps" style="grid-column: span 8;">
                 <article>
-                    <div id="status-summary-content"></div>
-                    <div id="next-step-container" style="display: none; margin-top: 1rem;">
-                        <a href="/" role="button" class="contrast">Next step: Process your first receipt</a>
+                    <header style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="font-size: 1.2rem;">Integration Health</strong>
+                        <small id="last-check" style="opacity: 0.6; font-weight: 500;"></small>
+                    </header>
+
+                    <table style="margin-bottom: 0;">
+                        <thead>
+                            <tr>
+                                <th>Component</th>
+                                <th>Status</th>
+                                <th style="text-align: right;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="checks">
+                            <tr>
+                                <td>
+                                    <div style="font-weight: 600;">Bexio API</div>
+                                    <small style="opacity: 0.7;">Core financial integration</small>
+                                </td>
+                                <td id="check-bexio"><div class="status-badge status-checking">Pending</div></td>
+                                <td style="text-align: right;"><button class="outline" style="padding: 0.2rem 0.75rem; font-size: 0.8rem;" hx-get="/setup/check/bexio" hx-target="#check-bexio">Verify</button></td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div style="font-weight: 600;">OCR Engine ({{ settings.ocr_engine }})</div>
+                                    <small style="opacity: 0.7;">Visual text extraction</small>
+                                </td>
+                                <td id="check-ocr"><div class="status-badge status-checking">Pending</div></td>
+                                <td style="text-align: right;"><button class="outline" style="padding: 0.2rem 0.75rem; font-size: 0.8rem;" hx-get="/setup/check/ocr" hx-target="#check-ocr">Verify</button></td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div style="font-weight: 600;">LLM Provider ({{ settings.llm_provider }})</div>
+                                    <small style="opacity: 0.7;">Structured data parsing</small>
+                                </td>
+                                <td id="check-llm"><div class="status-badge status-checking">Pending</div></td>
+                                <td style="text-align: right;"><button class="outline" style="padding: 0.2rem 0.75rem; font-size: 0.8rem;" hx-get="/setup/check/llm" hx-target="#check-llm">Verify</button></td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div style="font-weight: 600;">System Libraries</div>
+                                    <small style="opacity: 0.7;">Poppler / PDF processing</small>
+                                </td>
+                                <td id="check-system"><div class="status-badge status-checking">Pending</div></td>
+                                <td style="text-align: right;"><button class="outline" style="padding: 0.2rem 0.75rem; font-size: 0.8rem;" hx-get="/setup/check/system" hx-target="#check-system">Verify</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </article>
+
+                {% if settings.llm_provider == "ollama" or settings.ocr_engine == "glm-ocr" %}
+                <article>
+                    <header><strong>Model Maintenance</strong></header>
+                    <p style="font-size: 0.9rem; color: var(--color-text-muted);">Ensure local Ollama models are synced.</p>
+                    <div id="pull-status"></div>
+                    <div class="grid">
+                        <button class="outline secondary" style="font-size: 0.85rem;"
+                                hx-post="/setup/pull-model" 
+                                hx-vals='{"model": "{{ settings.llm_model }}", "csrf_token": "{{ csrf_token }}"}'
+                                hx-target="#pull-status"
+                                hx-confirm="Download {{ settings.llm_model }}?">
+                            Sync LLM ({{ settings.llm_model }})
+                        </button>
+                        {% if settings.ocr_engine == "glm-ocr" %}
+                        <button class="outline secondary" style="font-size: 0.85rem;"
+                                hx-post="/setup/pull-model" 
+                                hx-vals='{"model": "{{ settings.glm_ocr_model }}", "csrf_token": "{{ csrf_token }}"}'
+                                hx-target="#pull-status"
+                                hx-confirm="Download {{ settings.glm_ocr_model }}?">
+                            Sync OCR ({{ settings.glm_ocr_model }})
+                        </button>
+                        {% endif %}
                     </div>
                 </article>
-            </div>
+                {% endif %}
+            </section>
 
-            <article>
-                <header><strong>Dependency Checks</strong></header>
-                <table class="striped">
-                    <thead>
-                        <tr>
-                            <th>Component</th>
-                            <th>Status</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Bexio API Connection</td>
-                            <td id="check-bexio"><span class="status-badge status-checking">Pending</span></td>
-                            <td><button class="outline secondary" hx-get="/setup/check/bexio" hx-target="#check-bexio">Re-check</button></td>
-                        </tr>
-                        <tr>
-                            <td>OCR Engine ({{ settings.ocr_engine }})</td>
-                            <td id="check-ocr"><span class="status-badge status-checking">Pending</span></td>
-                            <td><button class="outline secondary" hx-get="/setup/check/ocr" hx-target="#check-ocr">Re-check</button></td>
-                        </tr>
-                        <tr>
-                            <td>LLM Provider ({{ settings.llm_provider }})</td>
-                            <td id="check-llm"><span class="status-badge status-checking">Pending</span></td>
-                            <td><button class="outline secondary" hx-get="/setup/check/llm" hx-target="#check-llm">Re-check</button></td>
-                        </tr>
-                        <tr>
-                            <td>System Dependencies (Poppler)</td>
-                            <td id="check-system"><span class="status-badge status-checking">Pending</span></td>
-                            <td><button class="outline secondary" hx-get="/setup/check/system" hx-target="#check-system">Re-check</button></td>
-                        </tr>
-                        <tr>
-                            <td>Database Status</td>
-                            <td id="check-db"><span class="status-badge status-checking">Pending</span></td>
-                            <td><button class="outline secondary" hx-get="/setup/check/db" hx-target="#check-db">Re-check</button></td>
-                        </tr>
-                    </tbody>
-                </table>
-                <footer>
-                    <div class="grid">
-                        <button hx-get="/setup/run-all" hx-target="#checks" hx-swap="none">Run All Checks</button>
-                        <button class="secondary outline" onclick="copyConfig(this)">Copy Config (.env)</button>
+            <aside style="grid-column: span 4;">
+                <article>
+                    <header><strong>Active Profile</strong></header>
+                    <div style="font-family: monospace; font-size: 0.8rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: var(--border-radius-sm); border: 1px solid var(--border-color); overflow-x: auto;">
+                        <div style="color: var(--primary); margin-bottom: 0.5rem;"># Bexio Config</div>
+                        <div>TOKEN: {{ settings.bexio_api_token[:4] }}...{{ settings.bexio_api_token[-4:] if settings.bexio_api_token|length > 8 else '***' }}</div>
+                        <div>PUSH: {{ 'ENABLED' if settings.bexio_push_enabled else 'DISABLED' }}</div>
+                        <div style="color: var(--primary); margin: 0.5rem 0;"># Engine</div>
+                        <div>OCR: {{ settings.ocr_engine }}</div>
+                        <div>LLM: {{ settings.llm_provider }} ({{ settings.llm_model }})</div>
                     </div>
-                </footer>
-            </article>
+                    <footer style="margin-top: 1.5rem;">
+                        <button class="outline secondary w-100" onclick="copyFullConfig()">Copy .env Template</button>
+                    </footer>
+                </article>
 
-            <article>
-                <header><strong>Resolved Configuration</strong></header>
-                <pre id="config-text" style="background: var(--pico-pre-background-color); color: var(--pico-pre-color); padding: 1rem; border-radius: 8px; font-size: 0.8rem;">BEXIO_API_TOKEN={{ settings.bexio_api_token }}
+                <div id="status-summary" style="display: none; animation: fadeIn 0.3s ease-out;">
+                    <article style="border-left: 4px solid var(--accent-success);">
+                        <div id="status-summary-content"></div>
+                        <div id="next-step-container" style="display: none; margin-top: 1rem;">
+                            <a href="/" role="button" style="width: 100%;">Return to Queue</a>
+                        </div>
+                    </article>
+                </div>
+            </aside>
+        </div>
+
+        <pre id="config-full" style="display: none;">
+BEXIO_API_TOKEN={{ settings.bexio_api_token }}
 BEXIO_BASE_URL={{ settings.bexio_base_url }}
 OCR_ENGINE={{ settings.ocr_engine }}
 LLM_PROVIDER={{ settings.llm_provider }}
 LLM_MODEL={{ settings.llm_model }}
-GLM_OCR_MODEL={{ settings.glm_ocr_model }}
-GLM_OCR_URL={{ settings.glm_ocr_url }}
-OLLAMA_URL={{ settings.ollama_url }}
+BEXIO_PUSH_ENABLED={{ 'true' if settings.bexio_push_enabled else 'false' }}
 DATABASE_PATH={{ settings.database_path }}
-DEFAULT_BOOKING_ACCOUNT_ID={{ settings.default_booking_account_id }}
-DEFAULT_BANK_ACCOUNT_ID={{ settings.default_bank_account_id }}</pre>
-            </article>
-
-            {% if settings.llm_provider == "ollama" or settings.ocr_engine == "glm-ocr" %}
-            <article>
-                <header><strong>Ollama Maintenance</strong></header>
-                <p>Ensure the required models are downloaded to your local Ollama instance.</p>
-                <div id="pull-status"></div>
-                <div class="grid">
-                    <div>
-                        <button class="outline" 
-                                hx-post="/setup/pull-model" 
-                                hx-vals='{"model": "{{ settings.llm_model }}", "csrf_token": "{{ csrf_token }}"}'
-                                hx-target="#pull-status"
-                                hx-confirm="This might take a while depending on your internet speed. Continue?">
-                            Pull LLM Model ({{ settings.llm_model }})
-                        </button>
-                    </div>
-                    {% if settings.ocr_engine == "glm-ocr" %}
-                    <div>
-                        <button class="outline" 
-                                hx-post="/setup/pull-model" 
-                                hx-vals='{"model": "{{ settings.glm_ocr_model }}", "csrf_token": "{{ csrf_token }}"}'
-                                hx-target="#pull-status"
-                                hx-confirm="This might take a while depending on your internet speed. Continue?">
-                            Pull OCR Model ({{ settings.glm_ocr_model }})
-                        </button>
-                    </div>
-                    {% endif %}
-                </div>
-            </article>
-            {% endif %}
-        </section>
+        </pre>
     </main>
 
     <script>
-        function copyConfig() {
-            const configText = document.getElementById('config-text').innerText;
-            navigator.clipboard.writeText(configText).then(() => {
-                alert('Configuration copied to clipboard!');
-            });
+        function copyFullConfig() {
+            const text = document.getElementById('config-full').innerText.trim();
+            navigator.clipboard.writeText(text).then(() => alert('Config copied!'));
         }
 
-        // Trigger all checks by finding the Re-check buttons and clicking them
         function runAllChecks() {
+            if (window.runningChecks) return;
+            window.runningChecks = true;
+
             const summaryDiv = document.getElementById('status-summary');
             summaryDiv.style.display = 'none';
-            document.getElementById('next-step-container').style.display = 'none';
+            document.getElementById('api-status-pulse').style.display = 'inline-flex';
             
             const now = new Date();
-            document.getElementById('last-check').innerText = 'Last check: ' + now.toLocaleTimeString();
+            document.getElementById('last-check').innerText = 'Synced: ' + now.toLocaleTimeString();
 
             const buttons = document.querySelectorAll('button[hx-get^="/setup/check/"]');
             buttons.forEach(btn => htmx.trigger(btn, "click"));
             
-            // Wait for all HTMX requests to finish before updating summary
             let finishedCount = 0;
             const totalCount = buttons.length;
             
-            const checkFinished = () => {
-                finishedCount++;
-                if (finishedCount === totalCount) {
-                    updateSummary();
-                }
-            };
-
-            const htmxListener = function(event) {
+            document.addEventListener('htmx:afterRequest', function listener(event) {
                 if (event.detail.elt.tagName === 'BUTTON' && event.detail.elt.hasAttribute('hx-get')) {
-                    checkFinished();
+                    finishedCount++;
+                    if (finishedCount === totalCount) {
+                        window.runningChecks = false;
+                        document.getElementById('api-status-pulse').style.display = 'none';
+                        updateSummary();
+                        document.removeEventListener('htmx:afterRequest', listener);
+                    }
                 }
-            };
-
-            // Use { once: true } to avoid duplicate listeners on repeated clicks
-            document.addEventListener('htmx:afterRequest', htmxListener, { once: true });
+            });
         }
 
         function updateSummary() {
             const statuses = document.querySelectorAll('.status-badge');
             let errors = 0;
-            let warnings = 0;
             let ok = 0;
 
             statuses.forEach(status => {
                 if (status.classList.contains('status-error')) errors++;
-                else if (status.classList.contains('status-warning')) warnings++;
                 else if (status.classList.contains('status-ok')) ok++;
             });
 
@@ -194,21 +205,15 @@ DEFAULT_BANK_ACCOUNT_ID={{ settings.default_bank_account_id }}</pre>
             
             summaryDiv.style.display = 'block';
             if (errors > 0) {
-                summaryContent.innerHTML = `<h3 style="color: #c62828; margin: 0;">⚠️ ${errors} critical issues found.</h3><p style="margin: 0;">Please fix the errors below to continue.</p>`;
+                summaryContent.innerHTML = `<h4 style="color: var(--accent-error); margin-bottom: 0.5rem;">Configuration Error</h4><p style="font-size: 0.9rem; margin: 0;">${errors} component(s) failed verification. Check your .env settings.</p>`;
                 nextStep.style.display = 'none';
-            } else if (warnings > 0) {
-                summaryContent.innerHTML = `<h3 style="color: #f9a825; margin: 0;">💡 Ready with warnings.</h3><p style="margin: 0;">System is functional, but ${warnings} minor issues were detected.</p>`;
-                nextStep.style.display = 'block';
-            } else if (ok === statuses.length) {
-                summaryContent.innerHTML = `<h3 style="color: #2e7d32; margin: 0;">✅ Ready to go!</h3><p style="margin: 0;">All dependencies are correctly configured.</p>`;
+            } else {
+                summaryContent.innerHTML = `<h4 style="color: var(--accent-success); margin-bottom: 0.5rem;">System Healthy</h4><p style="font-size: 0.9rem; margin: 0;">All integrations are responsive and ready.</p>`;
                 nextStep.style.display = 'block';
             }
         }
 
         document.addEventListener('DOMContentLoaded', runAllChecks);
-
-        // Listen for the HX-Trigger: load-checks header (htmx: before the event name)
-        document.body.addEventListener('load-checks', runAllChecks);
     </script>
 </body>
 </html>

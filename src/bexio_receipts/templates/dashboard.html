@@ -14,182 +14,152 @@
                 <li><strong>bexio-receipts</strong></li>
             </ul>
             <ul>
-                <li><a href="/"><strong>Queue</strong></a></li>
+                <li><a href="/" class="active">Queue</a></li>
                 <li><a href="/history">History</a></li>
                 <li><a href="/stats">Stats</a></li>
                 <li><a href="/setup">Setup</a></li>
             </ul>
         </nav>
     </header>
+
     <main class="container">
         {% if success_msg %}
-        <article class="success-message" style="background-color: var(--pico-ins-background-color); color: var(--pico-ins-color); border: none; padding: 1rem; margin-bottom: 1rem; border-radius: 8px; display: flex; align-items: center; gap: 0.5rem; animation: slideDownFade 0.4s ease-out;">
-            <span>{{ success_msg }}</span>
-        </article>
+        <div class="success-banner" style="background: var(--accent-success); color: white; padding: 1rem; border-radius: var(--border-radius-md); margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: var(--shadow-md);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span style="font-weight: 600;">{{ success_msg }}</span>
+        </div>
         {% endif %}
 
-        <h1>Review Queue</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <h1>Review Queue</h1>
+            <div style="display: flex; gap: 0.75rem;">
+                <form method="GET" action="/" style="margin-bottom: 0; display: flex; gap: 0.5rem;">
+                    <input type="search" name="search" placeholder="Search merchant..." value="{{ search or '' }}" style="margin-bottom: 0; width: 250px;">
+                    <button type="submit" class="secondary outline" style="margin-bottom: 0;">Search</button>
+                </form>
+            </div>
+        </div>
         
         {% if not reviews %}
-        <article>
-            <header><strong>Ready for your first receipt? 📂</strong></header>
-            <p>Your receipt processing system is active and waiting. Here's how to get started:</p>
-            <ul>
-                <li>📥 <strong>Drop Files:</strong> Place any receipt image or PDF in the <code>inbox/</code> folder.</li>
-                <li>📱 <strong>Telegram:</strong> Send a photo to your bot for instant mobile ingestion.</li>
-                <li>🔍 <strong>Auto-Process:</strong> Our AI will extract the merchant, date, and total automatically.</li>
-            </ul>
-            <p><strong>System Status:</strong></p>
-            <div class="grid" style="margin-top: 1rem;">
-                <div style="background: var(--pico-card-sectioning-background-color); padding: 1rem; border-radius: 8px; border: 1px solid var(--pico-muted-border-color);">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--pico-ins-color);">
-                        <span style="width: 10px; height: 10px; background: currentColor; border-radius: 50%;"></span>
-                        <strong>Folder Watcher</strong>
+        <article class="empty-state">
+            <div class="empty-state-icon">📂</div>
+            <h2>Ready for your first receipt?</h2>
+            <p style="color: var(--color-text-muted); max-width: 500px; margin: 0 auto 2rem;">
+                Your receipt processing system is active and waiting. Drop a file in the inbox or send a photo via Telegram to get started.
+            </p>
+            
+            <div class="grid">
+                <div style="background: rgba(255,255,255,0.03); padding: 1.5rem; border-radius: var(--border-radius-md); border: 1px solid var(--border-color);">
+                    <div style="color: var(--accent-success); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <div style="width: 8px; height: 8px; background: currentColor; border-radius: 50%;"></div>
+                        <strong style="font-size: 0.9rem;">Folder Watcher</strong>
                     </div>
-                    <small style="opacity: 0.8;">Monitoring <code>inbox/</code> for new files.</small>
+                    <small>Monitoring <code>inbox/</code> for files.</small>
                 </div>
-                <div style="background: var(--pico-card-sectioning-background-color); padding: 1rem; border-radius: 8px; border: 1px solid var(--pico-muted-border-color);">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--pico-ins-color);">
-                        <span style="width: 10px; height: 10px; background: currentColor; border-radius: 50%;"></span>
-                        <strong>Telegram Bot</strong>
+                <div style="background: rgba(255,255,255,0.03); padding: 1.5rem; border-radius: var(--border-radius-md); border: 1px solid var(--border-color);">
+                    <div style="color: var(--accent-success); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <div style="width: 8px; height: 8px; background: currentColor; border-radius: 50%;"></div>
+                        <strong style="font-size: 0.9rem;">Telegram Bot</strong>
                     </div>
-                    <small style="opacity: 0.8;"><a href="/setup" style="text-decoration: underline;">Verify status</a> to enable mobile uploads.</small>
+                    <small><a href="/setup">Verify status</a> to enable mobile uploads.</small>
                 </div>
             </div>
-            <footer>
+            
+            <footer style="margin-top: 3rem; border-top: 1px solid var(--border-color); padding-top: 2rem; display: flex; justify-content: center; gap: 1rem;">
                 <a href="/setup" role="button" class="outline">Open Setup Wizard</a>
                 <a href="/stats" role="button" class="secondary outline">View Statistics</a>
             </footer>
         </article>
         {% else %}
         
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
-            <div style="display: flex; gap: 1rem; align-items: center;">
-                <button type="button" class="secondary outline" style="margin-bottom: 0; padding: 0.5rem 1rem;" 
-                        onclick="if(confirm('Discard selected items?')) { document.getElementById('bulk-action-type').value='discard'; document.getElementById('bulk-form').submit(); }">
-                    Bulk Discard
-                </button>
-                <button type="button" class="primary" style="margin-bottom: 0; padding: 0.5rem 1rem;"
-                        onclick="if(confirm('Process and upload selected items? (Uses AI defaults)')) { document.getElementById('bulk-action-type').value='process'; document.getElementById('bulk-form').submit(); }">
-                    Bulk Process
-                </button>
-            </div>
-            
-            <form method="GET" action="/" style="margin-bottom: 0; display: flex; gap: 0.5rem; align-items: center;">
-                <input type="search" name="search" placeholder="Search merchant..." value="{{ search or '' }}" style="margin-bottom: 0; min-width: 250px;">
-                <button type="submit" class="secondary" style="margin-bottom: 0; padding: 0.5rem 1rem;">Search</button>
-            </form>
-        </div>
-
-        <form id="bulk-form" method="POST" action="/bulk-action">
+        <form id="bulk-form" method="POST" action="/bulk-action" style="margin-bottom: 0;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="action" id="bulk-action-type" value="process">
             
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                <button type="button" class="secondary outline" style="padding: 0.4rem 1rem; font-size: 0.85rem;" 
+                        onclick="if(confirm('Discard selected items?')) { document.getElementById('bulk-action-type').value='discard'; document.getElementById('bulk-form').submit(); }">
+                    Bulk Discard
+                </button>
+                <button type="button" class="primary" style="padding: 0.4rem 1rem; font-size: 0.85rem;"
+                        onclick="if(confirm('Process and upload selected items?')) { document.getElementById('bulk-action-type').value='process'; document.getElementById('bulk-form').submit(); }">
+                    Bulk Process
+                </button>
+            </div>
+
             <div style="overflow-x: auto;">
-                <table class="striped" style="--pico-spacing: 1.25rem;">
+                <table style="width: 100%;">
                     <thead>
                         <tr>
-                            <th style="width: 110px;">
-                                <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0; cursor: pointer; font-weight: 600;">
-                                    <input type="checkbox" id="select-all" onclick="toggleAll(this)" style="margin-bottom: 0; width: 1.35rem; height: 1.35rem;">
-                                    <span>All</span>
-                                </label>
+                            <th style="width: 50px;">
+                                <input type="checkbox" id="select-all" onclick="toggleAll(this)" style="margin-bottom: 0;">
                             </th>
-                            <th>Preview</th>
+                            <th style="width: 80px;">Preview</th>
                             <th>Merchant</th>
-                            <th>Date</th>
+                            <th class="hide-mobile">Date</th>
                             <th>Total</th>
-                            <th style="text-align: center;">
-                                Status
-                                <div style="font-size: 0.65rem; font-weight: normal; margin-top: 0.2rem; white-space: nowrap; opacity: 0.7;">
-                                    🔴<70% ▪ 🟡<90% ▪ 🟢>90%
-                                </div>
-                            </th>
+                            <th style="text-align: center;">AI Confidence</th>
                             <th style="text-align: right;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for review in reviews %}
-                        <tr style="transition: background-color 0.2s ease;" onmouseover="this.style.backgroundColor='var(--pico-table-row-stripped-background-color)'" onmouseout="this.style.backgroundColor='transparent'">
+                        <tr>
                             <td>
-                                <input type="checkbox" name="ids" value="{{ review.id }}" style="width: 1.35rem; height: 1.35rem; cursor: pointer;">
+                                <input type="checkbox" name="ids" value="{{ review.id }}" style="margin-bottom: 0;">
                             </td>
                             <td>
-                                <a href="/review/{{ review.id }}" title="Review receipt">
-                                    <img src="/thumbnail/{{ review.id }}" 
-                                         loading="lazy"
-                                         style="max-height: 55px; border-radius: 6px; display: block; border: 1px solid var(--pico-muted-border-color);" 
-                                         alt="Receipt thumbnail for {{ review.merchant }}">
+                                <a href="/review/{{ review.id }}">
+                                    <img src="/thumbnail/{{ review.id }}" loading="lazy" style="width: 48px; height: 48px; object-fit: cover; border-radius: var(--border-radius-sm); border: 1px solid var(--border-color);">
                                 </a>
                             </td>
                             <td>
-                                <strong style="font-size: 1.15rem; color: var(--pico-heading-color);">{{ review.merchant }}</strong>
-                                {% if review.errors %}
-                                <span style="cursor: help; margin-left: 0.5rem; color: var(--pico-del-color);" 
-                                      title="{% for err in review.errors %}{{ err }}{% if not loop.last %}\n{% endif %}{% endfor %}">
-                                    ⚠️
-                                </span>
-                                {% endif %}
-                                <div class="hide-desktop" style="font-size: 0.8rem; opacity: 0.8;">{{ review.date }}</div>
-                            </td>
-                            <td class="hide-mobile" style="opacity: 0.9;">{{ review.date }}</td>
-                            <td><strong style="color: var(--pico-primary-color); white-space: nowrap; font-size: 1.1rem;">{{ review.total }} CHF</strong></td>
-                            <td style="text-align: center;">
-                                <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem;">
-                                    {% if review.ocr_confidence %}
-                                        {% set conf = (review.ocr_confidence * 100)|round|int %}
-                                        <span class="status-badge {% if conf > 90 %}status-ok{% elif conf > 70 %}status-warning{% else %}status-error{% endif %}"
-                                              style="font-weight: 700; border-radius: 4px; padding: 0.1rem 0.6rem;">
-                                            {{ conf }}%
-                                        </span>
-                                    {% else %}
-                                        <span class="status-badge status-checking" style="border-radius: 4px; padding: 0.1rem 0.6rem;">N/A</span>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <strong style="font-size: 1.1rem; color: var(--color-heading);">{{ review.merchant }}</strong>
+                                    {% if review.errors %}
+                                    <span style="color: var(--accent-error); font-size: 0.8rem;" title="{{ review.errors|join(', ') }}">⚠️</span>
                                     {% endif %}
-                                    <small style="text-transform: capitalize; opacity: 0.9; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em;">{{ review.failed_stage }}</small>
                                 </div>
                             </td>
+                            <td class="hide-mobile" style="color: var(--color-text-muted);">{{ review.date }}</td>
+                            <td><strong style="color: var(--primary);">{{ review.total }} CHF</strong></td>
+                            <td style="text-align: center;">
+                                {% if review.ocr_confidence %}
+                                    {% set conf = (review.ocr_confidence * 100)|round|int %}
+                                    <div class="status-badge {% if conf > 90 %}status-ok{% elif conf > 70 %}status-warning{% else %}status-error{% endif %}">
+                                        {{ conf }}%
+                                    </div>
+                                {% else %}
+                                    <div class="status-badge status-checking">N/A</div>
+                                {% endif %}
+                            </td>
                             <td style="text-align: right;">
-                                <a href="/review/{{ review.id }}" role="button" 
-                                   class="{% if loop.first %}primary{% else %}outline{% endif %}" 
-                                   style="padding: 0.6rem 1.25rem; font-size: 0.9rem; min-height: 44px; display: inline-flex; align-items: center; font-weight: 600;">
-                                   Review
+                                <a href="/review/{{ review.id }}" role="button" class="{% if loop.first %}primary{% else %}outline{% endif %}" style="padding: 0.4rem 1.25rem; font-size: 0.85rem;">
+                                    Review
                                 </a>
                             </td>
                         </tr>
                         {% endfor %}
-                    </tbody>                </table>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
-                <button type="submit" formaction="/bulk-discard" class="secondary outline" onclick="return confirm('Discard all selected?')">Discard Selected</button>
+                    </tbody>
+                </table>
             </div>
         </form>
 
         {% if total_pages > 1 %}
-        <nav aria-label="Pagination" style="margin-top: 2rem;">
-            <ul style="display: flex; list-style: none; gap: 0.5rem; justify-content: center; padding: 0;">
+        <nav aria-label="Pagination" style="margin-top: 3rem; display: flex; justify-content: center;">
+            <ul style="display: flex; gap: 1rem;">
                 {% if has_prev %}
-                <li><a href="?page={{ page - 1 }}" role="button" class="outline secondary" style="padding: 0.4rem 0.8rem;">&laquo; Prev</a></li>
+                <li><a href="?page={{ page - 1 }}" role="button" class="secondary outline">Previous</a></li>
                 {% endif %}
-                <li style="display: flex; align-items: center; padding: 0 1rem; color: var(--pico-muted-color);">Page {{ page }} of {{ total_pages }}</li>
+                <li style="display: flex; align-items: center; color: var(--color-text-muted);">Page {{ page }} of {{ total_pages }}</li>
                 {% if has_next %}
-                <li><a href="?page={{ page + 1 }}" role="button" class="outline secondary" style="padding: 0.4rem 0.8rem;">Next &raquo;</a></li>
+                <li><a href="?page={{ page + 1 }}" role="button" class="secondary outline">Next</a></li>
                 {% endif %}
             </ul>
         </nav>
         {% endif %}
         {% endif %}
     </main>
-
-    <style>
-        @keyframes slideDownFade {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @media (max-width: 600px) {
-            .hide-mobile { display: none; }
-        }
-    </style>
 
     <script>
         function toggleAll(source) {

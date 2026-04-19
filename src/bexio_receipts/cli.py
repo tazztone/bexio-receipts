@@ -555,7 +555,16 @@ def watch_email():
 
     from .email_ingest import watch_email as _watch
 
-    asyncio.run(_watch(settings))
+    async def _run_safely():
+        try:
+            await _watch(settings)
+        except Exception as e:
+            console.print(f"[bold red]Email Watcher Error:[/bold red] {e}")
+            console.print(
+                "[yellow]The watcher will not start. Please check your IMAP settings.[/yellow]"
+            )
+
+    asyncio.run(_run_safely())
 
 
 @watch_app.command("telegram")
@@ -588,7 +597,13 @@ def watch_telegram():
                 f"[yellow]Warning: Could not fetch bot username: {e}[/yellow]"
             )
 
-        await run_bot(settings)
+        try:
+            await run_bot(settings)
+        except Exception as e:
+            console.print(f"[bold red]Telegram Bot Error:[/bold red] {e}")
+            console.print(
+                "[yellow]The bot will not start. Please check your Telegram token.[/yellow]"
+            )
 
     asyncio.run(_run_and_print())
 

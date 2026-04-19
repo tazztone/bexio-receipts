@@ -45,13 +45,15 @@
         </div>
 
         {% if not receipts %}
-        <article style="text-align: center; padding: 3rem;">
-            <p>No processed receipts found matching your criteria.</p>
-            <a href="/history" class="outline">Clear Search</a>
+        <article class="empty-state">
+            <div class="empty-state-icon">📄</div>
+            <h2>Archive Empty</h2>
+            <p style="color: var(--color-text-muted);">No processed receipts found matching your criteria.</p>
+            <a href="/history" role="button" class="outline">Clear Search</a>
         </article>
         {% else %}
         <div style="overflow-x: auto;">
-            <table class="striped" style="--pico-spacing: 1rem;">
+            <table style="width: 100%;">
                 <thead>
                     <tr>
                         <th>Merchant</th>
@@ -59,20 +61,20 @@
                         <th>Amount</th>
                         <th style="text-align: center;">Confidence</th>
                         <th>Bexio ID</th>
-                        <th style="text-align: right;">File</th>
+                        <th style="text-align: right;">Filename</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for r in receipts %}
                     <tr>
                         <td>
-                            <strong style="color: var(--pico-heading-color);">{{ r.merchant or "Unknown" }}</strong>
+                            <strong style="color: var(--color-heading); font-size: 1.05rem;">{{ r.merchant or "Unknown" }}</strong>
                         </td>
-                        <td style="font-size: 0.9rem; opacity: 0.8;">
+                        <td style="color: var(--color-text-muted); font-size: 0.9rem;">
                             {{ r.processed_at.strftime('%Y-%m-%d %H:%M') if r.processed_at else 'N/A' }}
                         </td>
                         <td>
-                            <strong style="color: var(--pico-primary-color);">{{ r.total or '0.00' }} CHF</strong>
+                            <strong style="color: var(--primary);">{{ r.total or '0.00' }} CHF</strong>
                             {% if r.vat %}
                             <div style="font-size: 0.7rem; opacity: 0.7;">VAT: {{ r.vat }}</div>
                             {% endif %}
@@ -80,17 +82,17 @@
                         <td style="text-align: center;">
                             {% if r.confidence %}
                                 {% set conf = (r.confidence * 100)|round|int %}
-                                <span class="status-badge {% if conf > 90 %}status-ok{% elif conf > 70 %}status-warning{% else %}status-error{% endif %}">
+                                <div class="status-badge {% if conf > 90 %}status-ok{% elif conf > 70 %}status-warning{% else %}status-error{% endif %}">
                                     {{ conf }}%
-                                </span>
+                                </div>
                             {% else %}
-                                <span style="opacity: 0.5;">-</span>
+                                <div class="status-badge status-checking">N/A</div>
                             {% endif %}
                         </td>
                         <td>
-                            <code style="font-size: 0.75rem;">{{ r.bexio_id }}</code>
+                            <code style="font-size: 0.75rem; color: var(--color-text-muted);">{{ r.bexio_id }}</code>
                         </td>
-                        <td style="text-align: right; font-size: 0.8rem; opacity: 0.6;">
+                        <td style="text-align: right; font-size: 0.8rem; opacity: 0.5;">
                             {{ r.file_path.split('/')[-1] if r.file_path else 'N/A' }}
                         </td>
                     </tr>

@@ -94,13 +94,18 @@ def extract_pdf_text(file_path: str) -> str | None:
 
 
 async def run_glm_ocr(
-    file_path: str, settings: Settings
+    file_path: str | None, settings: Settings, image_data: bytes | None = None
 ) -> tuple[str, float, list[dict]]:
     """
     Run OCR on a file using GLM-OCR via Ollama.
     """
-    with open(file_path, "rb") as f:
-        img_base64 = base64.b64encode(f.read()).decode("utf-8")
+    if image_data:
+        img_base64 = base64.b64encode(image_data).decode("utf-8")
+    elif file_path:
+        with open(file_path, "rb") as f:
+            img_base64 = base64.b64encode(f.read()).decode("utf-8")
+    else:
+        raise ValueError("Either file_path or image_data must be provided")
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         prompt = (
@@ -154,6 +159,36 @@ async def async_run_ocr(
                 return await loop.run_in_executor(
                     None, partial(run_paddle_ocr, file_path)
                 )
+            elif settings.ocr_engine == "glm-ocr":
+                from pdf2image import convert_from_path
+                import io
+
+                # Convert all pages of scanned PDF to images for vision model
+                try:
+                    images = convert_from_path(file_path, dpi=200)
+                    texts = []
+                    for i, img in enumerate(images):
+                        buf = io.BytesIO()
+                        img.save(buf, format="JPEG", quality=90)
+                        logger.info(
+                            f"Processing PDF page {i + 1}/{len(images)}", path=file_path
+                        )
+                        page_text, _, _ = await run_glm_ocr(
+                            None, settings, image_data=buf.getvalue()
+                        )
+                        texts.append(page_text)
+
+                    combined_text = "\n---PAGE BREAK---\n".join(texts)
+                    return (
+                        combined_text,
+                        0.90,
+                        [{"text": combined_text, "confidence": 0.90}],
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to convert scanned PDF to images: {e}. Falling back to raw file."
+                    )
+                    return await run_glm_ocr(file_path, settings)
             else:
                 return await run_glm_ocr(file_path, settings)
 

@@ -16,7 +16,7 @@
             <ul>
                 <li><a href="/">Queue</a></li>
                 <li><a href="/history">History</a></li>
-                <li><a href="/stats"><strong>Stats</strong></a></li>
+                <li><a href="/stats" class="active">Stats</a></li>
                 <li><a href="/setup">Setup</a></li>
             </ul>
         </nav>
@@ -24,36 +24,43 @@
     <main class="container">
         <h1>Processing Statistics</h1>
         
-        <article>
-            <div class="grid">
-                <div>
-                    <h2>Total Processed</h2>
-                    <p style="font-size: 2rem; font-weight: bold;">{{ stats.total_processed }}</p>
-                    <small>Receipts booked or duplicated</small>
-                </div>
-                <div>
-                    <h2>Total Booked Amount</h2>
-                    <p style="font-size: 2rem; font-weight: bold;">{{ "%.2f"|format(stats.total_booked) }} CHF</p>
-                    <small>Total amount of expenses created</small>
-                </div>
-                <div>
-                    <h2>Total VAT Reclaimed</h2>
-                    <p style="font-size: 2rem; font-weight: bold;">{{ "%.2f"|format(stats.total_vat) }} CHF</p>
-                    <small>Sum of extracted VAT</small>
-                </div>
-            </div>
-        </article>
+        <div class="grid" style="margin-bottom: 2rem;">
+            <article style="text-align: center;">
+                <div style="color: var(--primary); font-size: 2.5rem; font-weight: 800; line-height: 1.2;">{{ stats.total_processed }}</div>
+                <div style="color: var(--color-text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.5rem;">Total Processed</div>
+            </article>
+            <article style="text-align: center;">
+                <div style="color: var(--accent-success); font-size: 2.5rem; font-weight: 800; line-height: 1.2;">{{ "%.2f"|format(stats.total_booked) }}</div>
+                <div style="color: var(--color-text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.5rem;">Booked Amount (CHF)</div>
+            </article>
+            <article style="text-align: center;">
+                <div style="color: var(--accent-info); font-size: 2.5rem; font-weight: 800; line-height: 1.2;">{{ "%.2f"|format(stats.total_vat) }}</div>
+                <div style="color: var(--color-text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.5rem;">VAT Reclaimed (CHF)</div>
+            </article>
+        </div>
 
         <article>
-            <h2>Top Merchants</h2>
+            <header><strong style="font-size: 1.1rem;">Top Merchants</strong></header>
             {% if stats.top_merchants %}
-                <ul>
+                <div style="display: flex; flex-direction: column; gap: 1.25rem; margin-top: 1rem;">
                 {% for merchant in stats.top_merchants %}
-                    <li><strong>{{ merchant.name }}</strong>: {{ "%.2f"|format(merchant.amount) }} CHF</li>
+                    {% set pct = (merchant.amount / stats.total_booked * 100)|int if stats.total_booked > 0 else 0 %}
+                    <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.95rem;">
+                            <strong style="color: var(--color-heading);">{{ merchant.name }}</strong>
+                            <span style="color: var(--color-text-muted);">{{ "%.2f"|format(merchant.amount) }} CHF</span>
+                        </div>
+                        <div style="height: 10px; background: rgba(255,255,255,0.05); border-radius: 5px; overflow: hidden; border: 1px solid var(--border-color);">
+                            <div style="height: 100%; width: {{ pct }}%; background: linear-gradient(90deg, var(--primary), #818cf8); border-radius: 5px;"></div>
+                        </div>
+                    </div>
                 {% endfor %}
-                </ul>
+                </div>
             {% else %}
-                <p>No merchant data available yet.</p>
+                <div style="text-align: center; padding: 3rem; color: var(--color-text-muted);">
+                    <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;">📊</div>
+                    No merchant data available yet.
+                </div>
             {% endif %}
         </article>
     </main>
