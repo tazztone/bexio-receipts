@@ -7,6 +7,8 @@ client = TestClient(app)
 
 
 def test_dashboard_unauthorized():
+    # Clear any override left by a previous test so auth is actually enforced.
+    app.dependency_overrides.clear()
     response = client.get("/")
     assert response.status_code == 401
 
@@ -202,28 +204,6 @@ def test_discard_review(test_settings, tmp_path):
     review_file = review_dir / "test.json"
     review_file.write_text("{}")
 
-    # Mock session by mocking Request object or using a middleware trick
-    # For simplicity, we patch the session check in the route or the session itself
-    with patch("fastapi.Request.session", new_callable=MagicMock) as mock_session:
-        mock_session.get.return_value = "test_token"
-        response = client.post(
-            "/discard/test",
-            data={"csrf_token": "test_token"},
-            auth=("admin", "test_password"),
-            follow_redirects=False,
-        )
-        # Note: Depending on how Request is used, we might need a different patch.
-        # Let's try patching the session directly in the app state or via a dependency.
-        pass
-
-    # Alternative: patch the CSRF check logic or the session middleware
-    with patch(
-        "starlette.middleware.sessions.SessionMiddleware.__call__"
-    ) as mock_session:
-        # This is getting complex. Let's just bypass CSRF for testing or use a real session.
-        pass
-
-    # Final attempt: patch session in server.py
     with patch(
         "bexio_receipts.server.Request.session",
         property(lambda x: {"csrf_token": "test_token"}),
@@ -265,16 +245,19 @@ def test_push_to_bexio_success(test_settings, tmp_path):
     with patch("bexio_receipts.server.BexioClient") as mock_bexio:
         mock_instance = mock_bexio.return_value.__aenter__.return_value
         mock_instance.upload_file = AsyncMock(return_value="uuid-123")
-        mock_instance.create_purchase_bill = AsyncMock()
+        mock_instance.create_purchase_bill = AsyncMock(return_value={"id": 42})
         mock_instance.cache_lookups = AsyncMock()
 
-        form_data = {
-            "merchant_name": "Updated Merchant",
-            "date": "2023-01-01",
-            "total_incl_vat": 15.50,
-            "booking_account_id": 100,
-            "csrf_token": "test_token",
-        }
+        # booking_account_ids is list[int]; send a single element via repeated key.
+        # vat_breakdown is None for this receipt so expected_count == 1.
+        form_data = [
+            ("merchant_name", "Updated Merchant"),
+            ("date", "2023-01-01"),
+            ("total_incl_vat", "15.50"),
+            ("booking_account_ids", "100"),
+            ("bexio_action", "purchase_bill"),
+            ("csrf_token", "test_token"),
+        ]
 
         with patch(
             "bexio_receipts.server.Request.session",
@@ -296,7 +279,14 @@ def test_push_to_bexio_success(test_settings, tmp_path):
 
 
 def test_auth_rate_limit(test_settings):
+    # Reset the in-process limiter store so previous test runs don't pre-exhaust the quota.
+    app.dependency_overrides.clear()
     app.dependency_overrides[get_settings] = lambda: test_settings
+    try:
+        app.state.limiter.reset()
+    except Exception:
+        pass
+
     for _ in range(10):
         response = client.get("/", auth=("admin", "wrong_password"))
 
