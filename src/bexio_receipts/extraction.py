@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 import structlog
+from dateutil import parser
 from pydantic import ValidationError
 from pydantic_ai import Agent, NativeOutput, capture_run_messages
 from pydantic_ai.exceptions import AgentRunError, UnexpectedModelBehavior
@@ -23,9 +24,7 @@ from tenacity import (
 )
 
 from .config import Settings
-from .models import Receipt, RawReceipt, RawVatRow, VatEntry
-
-from dateutil import parser
+from .models import RawReceipt, RawVatRow, Receipt, VatEntry
 
 logger = structlog.get_logger(__name__)
 

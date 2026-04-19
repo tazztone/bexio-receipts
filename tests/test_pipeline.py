@@ -237,7 +237,7 @@ async def test_send_to_review(tmp_path, test_settings):
 @patch("bexio_receipts.pipeline.async_run_ocr")
 async def test_process_receipt_unsupported_mime(mock_ocr, tmp_path, test_settings, mock_db):
     import json
-    from PIL import UnidentifiedImageError
+
 
     test_file = tmp_path / "test.txt"
     test_file.write_text("unsupported")
