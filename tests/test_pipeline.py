@@ -48,7 +48,9 @@ async def test_process_receipt_success(
         merchant_name="Migros", transaction_date=date.today(), total_incl_vat=10.0
     )
 
-    result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
+    result = await process_receipt(
+        str(test_file), test_settings, bexio_client, mock_db, push_confirmed=True
+    )
     assert result["status"] == "booked"
     assert result["expense_id"] == 100
 
@@ -132,7 +134,9 @@ async def test_process_receipt_no_merchant(
         merchant_name=None, transaction_date=date.today(), total_incl_vat=10.0
     )
 
-    result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
+    result = await process_receipt(
+        str(test_file), test_settings, bexio_client, mock_db, push_confirmed=True
+    )
     assert result["status"] == "booked"
     assert result["expense_id"] == 200
 
@@ -167,7 +171,9 @@ async def test_process_receipt_bexio_error(
         merchant_name="Migros", transaction_date=date.today(), total_incl_vat=10.0
     )
 
-    result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
+    result = await process_receipt(
+        str(test_file), test_settings, bexio_client, mock_db, push_confirmed=True
+    )
     assert result["status"] in ["review", "review_failed"]
 
 
