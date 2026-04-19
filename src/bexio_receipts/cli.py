@@ -1,7 +1,8 @@
-"""
-Typer-based CLI entrypoint for bexio-receipts.
-Provides command-line interface for managing the system.
-"""
+import os
+
+# Disable PaddleOCR model source check to speed up startup
+# Must be set before paddleocr is imported via .pipeline/.ocr
+os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
 
 import asyncio
 import json
@@ -187,6 +188,7 @@ def init(
     config.append(f"SECRET_KEY={secret_key}")
     config.append("REVIEW_USERNAME=admin")
     config.append("REVIEW_PASSWORD=admin")
+    config.append("BEXIO_PUSH_ENABLED=false")
 
     with open(env_path, "w") as f:
         f.write("\n".join(config) + "\n")
@@ -251,6 +253,7 @@ def init(
 @app.command()
 def process(
     file: Path = typer.Argument(..., help="Path to the receipt file", exists=True),
+    push: bool = typer.Option(False, "--push", help="Actually write to Bexio"),
     dry_run: bool = typer.Option(False, "--dry-run", help="OCR and extraction only"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimize log output"),
 ):
@@ -291,6 +294,13 @@ def process(
                 console.print("\n[bold green]Validation Passed[/bold green]")
             return
 
+        if push and not settings.bexio_push_enabled:
+            console.print(
+                "[bold red]Error: BEXIO_PUSH_ENABLED=false in configuration.[/bold red]"
+            )
+            console.print("Set it to true in .env to enable writes via --push.")
+            raise typer.Exit(1)
+
         from .database import DuplicateDetector
 
         db = DuplicateDetector(settings.database_path)
@@ -308,6 +318,12 @@ def process(
                     console.print(
                         f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]"
                     )
+
+            # CLI safeguard: If --push is NOT provided, we force push_enabled to False
+            # so that it always lands in the review queue.
+            if not push:
+                settings.bexio_push_enabled = False
+
             with console.status("[bold green]Processing receipt..."):
                 result = await process_receipt(str(file), settings, client, db)
             console.print(
@@ -322,6 +338,7 @@ def reprocess(
     review_file: Path = typer.Argument(
         ..., help="Path to the review JSON file", exists=True
     ),
+    push: bool = typer.Option(False, "--push", help="Actually write to Bexio"),
     dry_run: bool = typer.Option(False, "--dry-run", help="OCR and extraction only"),
 ):
     """Re-process a receipt from the review queue."""
@@ -369,6 +386,13 @@ def reprocess(
                 console.print("\n[bold green]Validation Passed[/bold green]")
             return
 
+        if push and not settings.bexio_push_enabled:
+            console.print(
+                "[bold red]Error: BEXIO_PUSH_ENABLED=false in configuration.[/bold red]"
+            )
+            console.print("Set it to true in .env to enable writes via --push.")
+            raise typer.Exit(1)
+
         from .database import DuplicateDetector
 
         db = DuplicateDetector(settings.database_path)
@@ -386,6 +410,12 @@ def reprocess(
                     console.print(
                         f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]"
                     )
+
+            # CLI safeguard: If --push is NOT provided, we force push_enabled to False
+            # so that it always lands in the review queue.
+            if not push:
+                settings.bexio_push_enabled = False
+
             with console.status("[bold green]Processing receipt..."):
                 result = await process_receipt(orig_file, settings, client, db)
             console.print(
@@ -407,6 +437,91 @@ def serve(
     settings = get_settings()
     setup_logging(settings.env)
     uvicorn.run(fastapi_app, host=host, port=port)
+
+
+@app.command()
+def verify_token():
+    """Verify connectivity to Bexio API (Read-only)."""
+    settings = get_settings()
+    setup_logging(settings.env)
+
+    async def _run():
+        async with BexioClient(
+            token=settings.bexio_api_token,
+            base_url=settings.bexio_base_url,
+        ) as client:
+            console.print(
+                Panel("[bold blue]Bexio Connectivity Preflight (Read-only)[/bold blue]")
+            )
+
+            # 1. User Profile
+            try:
+                profile = await client.client.get("/3.0/users/me")
+                profile.raise_for_status()
+                user = profile.json()
+                console.print(
+                    f"✅ [bold]Authenticated User:[/bold] {user.get('firstname')} {user.get('lastname')} (ID: {user.get('id')})"
+                )
+            except Exception as e:
+                console.print(f"❌ [bold red]User Profile Check Failed:[/bold red] {e}")
+
+            # 2. Company Profile
+            try:
+                comp = await client.client.get("/2.0/company_profile")
+                comp.raise_for_status()
+                company = comp.json()
+
+                # Handle cases where Bexio returns a list of profiles
+                if isinstance(company, list) and len(company) > 0:
+                    company = company[0]
+
+                name = company.get("name") if isinstance(company, dict) else "Unknown"
+                owner_id = (
+                    company.get("owner_id") if isinstance(company, dict) else "Unknown"
+                )
+
+                console.print(
+                    f"✅ [bold]Company Name:[/bold] {name} (Owner ID: {owner_id})"
+                )
+            except Exception as e:
+                console.print(
+                    f"❌ [bold red]Company Profile Check Failed:[/bold red] {e}"
+                )
+
+            # 3. Taxes
+            try:
+                taxes_resp = await client.client.get("/3.0/taxes")
+                taxes_resp.raise_for_status()
+                taxes = taxes_resp.json()
+                console.print(f"✅ [bold]Tax Rates:[/bold] {len(taxes)} rates found")
+            except Exception as e:
+                console.print(f"❌ [bold red]Taxes Check Failed:[/bold red] {e}")
+
+            # 4. Accounts
+            try:
+                accounts_resp = await client.client.get("/2.0/accounts")
+                accounts_resp.raise_for_status()
+                accounts = accounts_resp.json()
+                console.print(
+                    f"✅ [bold]Accounts:[/bold] {len(accounts)} accounts found"
+                )
+            except Exception as e:
+                console.print(f"❌ [bold red]Accounts Check Failed:[/bold red] {e}")
+
+            console.print("\n" + "─" * 40)
+            if settings.bexio_push_enabled:
+                console.print(
+                    "[bold green]🟢 Push gate: BEXIO_PUSH_ENABLED=true — writes ENABLED.[/bold green]"
+                )
+            else:
+                console.print(
+                    "[bold yellow]⚠ Push gate: BEXIO_PUSH_ENABLED=false — no writes possible.[/bold yellow]"
+                )
+            console.print(
+                "[dim]No writes were performed during this verification.[/dim]\n"
+            )
+
+    asyncio.run(_run())
 
 
 @watch_app.command("folder")

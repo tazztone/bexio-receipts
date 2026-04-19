@@ -10,6 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     env: str = "development"
     offline_mode: bool = False
+    bexio_push_enabled: bool = False
     bexio_api_token: str = "offline"
     bexio_base_url: str = "https://api.bexio.com"
 

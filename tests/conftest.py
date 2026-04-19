@@ -24,6 +24,7 @@ def test_settings():
         ocr_engine="paddleocr",
         glm_ocr_model="glm-ocr",
         llm_model="qwen3.5",
+        bexio_push_enabled=True,
     )
 
 

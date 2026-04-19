@@ -27,6 +27,7 @@ async def send_to_review(
     receipt: Receipt | None = None,
     ocr_confidence: float | None = None,
     failed_stage: str = "unknown",
+    bexio_action: str | None = None,
 ) -> dict:
     """Save problematic receipts to a review directory."""
     try:
@@ -40,6 +41,7 @@ async def send_to_review(
             "ocr_confidence": ocr_confidence,
             "failed_stage": failed_stage,
             "errors": errors,
+            "bexio_action": bexio_action,
             "extracted": receipt.model_dump(mode="json") if receipt else None,
         }
 
@@ -160,7 +162,26 @@ async def process_receipt(
         )
 
     # 4. Push to bexio
-    logger.info("Pushing to bexio")
+    # Determine predicted action for review UI
+    bexio_action = "expense"
+    if receipt.merchant_name or (
+        receipt.vat_breakdown and len(receipt.vat_breakdown) > 1
+    ):
+        bexio_action = "purchase_bill"
+
+    if not settings.bexio_push_enabled:
+        return await send_to_review(
+            file_path,
+            raw_text,
+            ["Safety gate: BEXIO_PUSH_ENABLED=false. Approve via dashboard to push."],
+            settings,
+            receipt,
+            ocr_confidence=avg_confidence,
+            failed_stage="safety_gate",
+            bexio_action=bexio_action,
+        )
+
+    logger.info("Pushing to bexio", action=bexio_action)
     try:
         mime_type = mime_type or "application/octet-stream"
 

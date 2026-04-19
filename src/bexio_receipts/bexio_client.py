@@ -68,8 +68,16 @@ class BexioClient:
             comp_resp = await self.client.get("/2.0/company_profile")
             comp_resp.raise_for_status()
             comp_data = comp_resp.json()
-            self._owner_id = comp_data.get("owner_id", 1)
-            self._company_name = comp_data.get("name")
+
+            # Handle cases where Bexio returns a list of profiles
+            if isinstance(comp_data, list) and len(comp_data) > 0:
+                comp_data = comp_data[0]
+
+            if isinstance(comp_data, dict):
+                self._owner_id = comp_data.get("owner_id", 1)
+                self._company_name = comp_data.get("name")
+            else:
+                self._owner_id = 1
         except Exception as e:
             logger.warning(
                 "Failed to fetch company profile owner_id, defaulting to 1",

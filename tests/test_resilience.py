@@ -96,3 +96,79 @@ async def test_full_pipeline_offline(mock_settings, temp_db, tmp_path):
                 # Should fallback to review instead of crashing
                 assert result["status"] == "review"
                 assert "review_file" in result
+
+
+@pytest.mark.asyncio
+async def test_push_safety_gate_pipeline(mock_settings, temp_db, tmp_path):
+    # Setup: BEXIO_PUSH_ENABLED=False (default)
+    mock_settings.bexio_push_enabled = False
+
+    receipt_path = tmp_path / "safety_test.png"
+    receipt_path.write_text("content")
+
+    from unittest.mock import AsyncMock, patch
+
+    mock_bexio = AsyncMock(spec=BexioClient)
+
+    with tempfile.TemporaryDirectory() as review_dir:
+        mock_settings.review_dir = review_dir
+        with patch(
+            "bexio_receipts.pipeline.async_run_ocr", return_value=("text", 0.9, [])
+        ):
+            from bexio_receipts.models import Receipt
+            from datetime import date
+
+            with patch(
+                "bexio_receipts.pipeline.extract_receipt",
+                return_value=Receipt(
+                    merchant_name="T", total_incl_vat=1.0, transaction_date=date.today()
+                ),
+            ):
+                result = await process_receipt(
+                    str(receipt_path), mock_settings, mock_bexio, temp_db
+                )
+
+                assert result["status"] == "review"
+                # Check that failed_stage is safety_gate
+                import json
+
+                with open(result["review_file"]) as f:
+                    review_data = json.load(f)
+                    assert review_data["failed_stage"] == "safety_gate"
+
+                # Verify no write calls were made
+                assert mock_bexio.upload_file.call_count == 0
+                assert mock_bexio.create_purchase_bill.call_count == 0
+
+
+def test_cli_push_gate_hierarchy():
+    from bexio_receipts.cli import app
+    from typer.testing import CliRunner
+    from unittest.mock import patch
+
+    runner = CliRunner()
+
+    # Mock settings to have PUSH_ENABLED=False
+    with patch("bexio_receipts.cli.get_settings") as mock_get_settings:
+        from bexio_receipts.config import Settings
+
+        mock_get_settings.return_value = Settings(
+            bexio_push_enabled=False, review_password="admin", secret_key="test"
+        )
+
+        # Create dummy file
+        with tempfile.NamedTemporaryFile(suffix=".jpg") as tmp:
+            # Run 'process --push'
+            result = runner.invoke(app, ["process", tmp.name, "--push"])
+
+            assert result.exit_code == 1
+            assert "BEXIO_PUSH_ENABLED=false" in result.stdout
+
+            # Run 'reprocess --push'
+            with tempfile.NamedTemporaryFile(suffix=".json") as tmp_json:
+                tmp_json.write(b'{"original_file": "exists"}')
+                tmp_json.flush()
+                with patch("pathlib.Path.exists", return_value=True):
+                    result = runner.invoke(app, ["reprocess", tmp_json.name, "--push"])
+                    assert result.exit_code == 1
+                    assert "BEXIO_PUSH_ENABLED=false" in result.stdout
