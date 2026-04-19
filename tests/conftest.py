@@ -11,6 +11,7 @@ os.environ["DEFAULT_BANK_ACCOUNT_ID"] = "2"
 os.environ["REVIEW_SKIP_AUTH"] = "false"
 
 import pytest
+
 from bexio_receipts.config import Settings
 from bexio_receipts.database import DuplicateDetector
 

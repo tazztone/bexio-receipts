@@ -1,16 +1,19 @@
+from unittest.mock import MagicMock, patch
+
+import httpx
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+
 from bexio_receipts.ocr import async_run_ocr
 
 
+@pytest.mark.timeout(10)
 @pytest.mark.asyncio
-async def test_async_run_ocr_glm(test_settings):
-    mock_resp = MagicMock()
-    mock_resp.json.return_value = {"message": {"content": "GLM Text"}}
-    mock_resp.raise_for_status = MagicMock()
+async def test_async_run_ocr_glm(test_settings, respx_mock):
+    # Mock the Ollama API call
+    respx_mock.post(f"{test_settings.glm_ocr_url}/api/chat").mock(
+        return_value=httpx.Response(200, json={"message": {"content": "GLM Text"}})
+    )
 
-    # Patch Image.open so PIL never touches the fake path, then patch builtins.open
-    # so the file-read for base64 encoding also returns controlled bytes.
     mock_img = MagicMock()
     mock_img.size = (100, 100)
     mock_file = MagicMock()
@@ -20,15 +23,14 @@ async def test_async_run_ocr_glm(test_settings):
 
     with patch("bexio_receipts.ocr.Image.open", return_value=mock_img):
         with patch("bexio_receipts.ocr._optimize_image", side_effect=lambda x: x):
-            with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-                mock_post.return_value = mock_resp
-                with patch("builtins.open", return_value=mock_file):
-                    raw_text, conf, _ = await async_run_ocr("path.png", test_settings)
-                    assert raw_text == "GLM Text"
-                    assert conf == 0.5
-                    mock_post.assert_called_once()
+            with patch("builtins.open", return_value=mock_file):
+                raw_text, conf, _ = await async_run_ocr("path.png", test_settings)
+                assert raw_text == "GLM Text"
+                # conf will be 0.5 because "GLM Text" is short (< 50 chars)
+                assert conf == 0.5
 
 
+@pytest.mark.timeout(10)
 @pytest.mark.asyncio
 async def test_async_run_ocr_pdf(test_settings):
     with patch("bexio_receipts.ocr.extract_pdf_text") as mock_extract:
@@ -42,6 +44,7 @@ async def test_async_run_ocr_pdf(test_settings):
 
 def test_optimize_image():
     from PIL import Image
+
     from bexio_receipts.ocr import _optimize_image
 
     img = Image.new("RGB", (3000, 1000), color="red")

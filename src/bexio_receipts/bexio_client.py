@@ -3,12 +3,14 @@ Client for interacting with the bexio API using httpx.
 Handles authentication and resource management in bexio.
 """
 
+from datetime import date
+from typing import Any
+
 import httpx
 import structlog
-from datetime import date
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+
 from .models import Receipt
-from typing import Any
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 logger = structlog.get_logger(__name__)
 
@@ -267,41 +269,34 @@ class BexioClient:
                 )
 
             for i, entry in enumerate(receipt.vat_breakdown):
-                line_items.append(
-                    {
-                        "position": i,
-                        "title": f"VAT {entry.rate}%",
-                        "tax_id": await self.get_tax_id(entry.rate),
-                        "amount": round(
-                            entry.base_amount, 2
-                        ),  # Net amount (Bexio applies VAT)
-                        "booking_account_id": booking_account_ids[i],
-                    }
-                )
+                line_items.append({
+                    "position": i,
+                    "title": f"VAT {entry.rate}%",
+                    "tax_id": await self.get_tax_id(entry.rate),
+                    "amount": round(
+                        entry.base_amount, 2
+                    ),  # Net amount (Bexio applies VAT)
+                    "booking_account_id": booking_account_ids[i],
+                })
         else:
             if not booking_account_ids:
                 raise ValueError("No booking account ID provided")
 
-            line_items.append(
-                {
-                    "position": 0,
-                    "title": receipt.merchant_name or "Receipt",
-                    "tax_id": await self.get_tax_id(receipt.vat_rate_pct),
-                    "amount": (
-                        round(receipt.total_incl_vat or 0.0, 2)
-                        if receipt.vat_rate_pct == 0.0
-                        else round(
-                            (receipt.total_incl_vat or 0.0)
-                            / (
-                                1
-                                + (receipt.vat_rate_pct or self.default_vat_rate) / 100
-                            ),
-                            2,
-                        )
-                    ),
-                    "booking_account_id": booking_account_ids[0],
-                }
-            )
+            line_items.append({
+                "position": 0,
+                "title": receipt.merchant_name or "Receipt",
+                "tax_id": await self.get_tax_id(receipt.vat_rate_pct),
+                "amount": (
+                    round(receipt.total_incl_vat or 0.0, 2)
+                    if receipt.vat_rate_pct == 0.0
+                    else round(
+                        (receipt.total_incl_vat or 0.0)
+                        / (1 + (receipt.vat_rate_pct or self.default_vat_rate) / 100),
+                        2,
+                    )
+                ),
+                "booking_account_id": booking_account_ids[0],
+            })
 
         bill_date = receipt.transaction_date or date.today()
         from datetime import timedelta

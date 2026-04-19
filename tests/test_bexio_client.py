@@ -1,9 +1,11 @@
+from datetime import date
+
+import httpx
 import pytest
+import respx
+
 from bexio_receipts.bexio_client import BexioClient
 from bexio_receipts.models import Receipt
-from datetime import date
-import httpx
-import respx
 
 
 @pytest.mark.asyncio
@@ -46,7 +48,7 @@ async def test_create_expense():
 
         receipt = Receipt(
             merchant_name="Test Store",
-            date=date(2023, 1, 1),
+            transaction_date=date(2023, 1, 1),
             total_incl_vat=10.50,
             vat_rate_pct=8.1,
         )
@@ -89,7 +91,7 @@ async def test_create_purchase_bill_net_fallback():
         # Gross 214.20 / 1.081 = 198.15 net
         receipt = Receipt(
             merchant_name="Prodega",
-            date=date(2026, 1, 31),
+            transaction_date=date(2026, 1, 31),
             total_incl_vat=214.20,
             vat_rate_pct=8.1,
             vat_amount=None,  # Crucial for test
@@ -106,7 +108,7 @@ async def test_create_purchase_bill_net_fallback():
         # Case 2: Both vat_amount and vat_rate_pct are None (fallback to default 8.1)
         receipt_no_rate = Receipt(
             merchant_name="Prodega",
-            date=date(2026, 1, 31),
+            transaction_date=date(2026, 1, 31),
             total_incl_vat=214.20,
             vat_rate_pct=None,
             vat_amount=None,

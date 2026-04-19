@@ -1,10 +1,12 @@
-import pytest
-import httpx
-from bexio_receipts.config import Settings
-from bexio_receipts.bexio_client import BexioClient
-from bexio_receipts.pipeline import process_receipt
-from bexio_receipts.database import DuplicateDetector
 import tempfile
+
+import httpx
+import pytest
+
+from bexio_receipts.bexio_client import BexioClient
+from bexio_receipts.config import Settings
+from bexio_receipts.database import DuplicateDetector
+from bexio_receipts.pipeline import process_receipt
 
 
 @pytest.fixture
@@ -75,8 +77,9 @@ async def test_full_pipeline_offline(mock_settings, temp_db, tmp_path):
             "bexio_receipts.pipeline.async_run_ocr",
             return_value=("extracted text", 0.9, []),
         ):
-            from bexio_receipts.models import Receipt
             from datetime import date
+
+            from bexio_receipts.models import Receipt
 
             with patch(
                 "bexio_receipts.pipeline.extract_receipt",
@@ -115,8 +118,9 @@ async def test_push_safety_gate_pipeline(mock_settings, temp_db, tmp_path):
         with patch(
             "bexio_receipts.pipeline.async_run_ocr", return_value=("text", 0.9, [])
         ):
-            from bexio_receipts.models import Receipt
             from datetime import date
+
+            from bexio_receipts.models import Receipt
 
             with patch(
                 "bexio_receipts.pipeline.extract_receipt",
@@ -142,9 +146,11 @@ async def test_push_safety_gate_pipeline(mock_settings, temp_db, tmp_path):
 
 
 def test_cli_push_gate_hierarchy():
-    from bexio_receipts.cli import app
-    from typer.testing import CliRunner
     from unittest.mock import patch
+
+    from typer.testing import CliRunner
+
+    from bexio_receipts.cli import app
 
     runner = CliRunner()
 

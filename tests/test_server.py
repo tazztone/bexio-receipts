@@ -1,7 +1,9 @@
 import json
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from fastapi.testclient import TestClient
-from bexio_receipts.server import app, get_settings, get_db
+
+from bexio_receipts.server import app, get_db, get_settings
 
 client = TestClient(app)
 

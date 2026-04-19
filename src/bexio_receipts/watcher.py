@@ -8,24 +8,24 @@ import os
 import time
 from pathlib import Path
 
-from watchdog.observers import Observer
-from watchdog.events import (
-    FileSystemEventHandler,
-    FileCreatedEvent,
-    DirCreatedEvent,
-    FileModifiedEvent,
-    DirModifiedEvent,
-)
-
 import structlog
+from watchdog.events import (
+    DirCreatedEvent,
+    DirModifiedEvent,
+    FileCreatedEvent,
+    FileModifiedEvent,
+    FileSystemEventHandler,
+)
+from watchdog.observers import Observer
 
-from .pipeline import process_receipt
-from .config import Settings
 from .bexio_client import BexioClient
+from .config import Settings
 from .database import DuplicateDetector
+from .pipeline import process_receipt
 
 logger = structlog.get_logger(__name__)
 _gpu_semaphore = asyncio.Semaphore(1)
+_background_tasks = set()
 
 
 class ReceiptHandler(FileSystemEventHandler):
@@ -178,7 +178,11 @@ async def watch_folder(path: str, settings: Settings):
                         )
                         await asyncio.sleep(0.5)  # Let GPU/Ollama breathe between items
 
-                asyncio.create_task(_queued_process())
+                        await asyncio.sleep(0.5)  # Let GPU/Ollama breathe between items
+
+                task = asyncio.create_task(_queued_process())
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
 
         loop = asyncio.get_running_loop()
         event_handler = ReceiptHandler(loop, settings, bexio)

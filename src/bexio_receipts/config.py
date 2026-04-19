@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # OCR Settings
     glm_ocr_model: str = "glm-ocr"
     glm_ocr_url: str = "http://localhost:11434"  # Ollama default
+    glm_ocr_timeout: int = 25
 
     # LLM Settings
     llm_provider: str = "ollama"  # or "openai"
@@ -38,9 +39,9 @@ class Settings(BaseSettings):
     # bexio-receipts specific paths
     inbox_path: str = "./inbox"
     review_username: str = "admin"
-    review_password: str
+    review_password: str = "password"
     review_users: dict[str, str] = {}  # Multi-user support {"username": "password"}
-    secret_key: str
+    secret_key: str = "change-me"
     database_path: str = "processed_receipts.db"
     review_dir: str = "./review_queue"
     review_skip_auth: bool = False

@@ -1,10 +1,12 @@
-import pytest
-from unittest.mock import AsyncMock, patch
-from bexio_receipts.pipeline import process_receipt, send_to_review
-from bexio_receipts.database import DuplicateDetector
-from bexio_receipts.models import Receipt
 from datetime import date
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from bexio_receipts.database import DuplicateDetector
+from bexio_receipts.models import Receipt
+from bexio_receipts.pipeline import process_receipt, send_to_review
 
 
 @pytest.fixture
@@ -220,13 +222,12 @@ async def test_process_receipt_unsupported_mime(tmp_path, test_settings, mock_db
 @pytest.mark.asyncio
 @patch("bexio_receipts.pipeline.async_run_ocr")
 async def test_process_receipt_ocr_timeout(mock_ocr, tmp_path, test_settings, mock_db):
-    import asyncio
     import json
 
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
 
-    mock_ocr.side_effect = asyncio.TimeoutError()
+    mock_ocr.side_effect = TimeoutError()
 
     bexio_client = AsyncMock()
     result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)

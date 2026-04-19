@@ -1,18 +1,17 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Optional
 
 import structlog
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from .bexio_client import BexioClient
-from .pipeline import process_receipt
 from .config import Settings
+from .pipeline import process_receipt
 
 app = typer.Typer(
     help="bexio-receipts: Automate receipt ingestion into bexio.",
@@ -28,11 +27,11 @@ console = Console()
 
 def setup_logging(env: str = "development", quiet: bool = False):
     import logging
-    from typing import Any, List
+    from typing import Any
 
     level = logging.WARNING if quiet else logging.INFO
 
-    processors: List[Any] = [
+    processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.StackInfoRenderer(),
@@ -58,7 +57,7 @@ def get_settings() -> Settings:
     from pydantic import ValidationError
 
     try:
-        return Settings()  # type: ignore[call-arg]
+        return Settings()
     except ValidationError as e:
         console.print("[red]Configuration error: Missing or invalid settings.[/red]")
         is_missing_token = False
@@ -205,11 +204,11 @@ def init(
 
             # We need to reload settings since we just wrote .env
             os.environ["BEXIO_API_TOKEN"] = token  # Ensure it's in env for this process
-            settings = Settings()  # type: ignore[call-arg]
+            settings = Settings()
 
             async def _dry_run():
-                from .ocr import async_run_ocr
                 from .extraction import extract_receipt
+                from .ocr import async_run_ocr
 
                 with console.status("[bold green]Running demo OCR..."):
                     raw_text, conf, _ = await async_run_ocr(str(target), settings)
@@ -251,8 +250,8 @@ def process(
 
     async def _run():
         if dry_run:
-            from .ocr import async_run_ocr
             from .extraction import extract_receipt
+            from .ocr import async_run_ocr
             from .validation import validate_receipt
 
             with console.status("[bold green]Running OCR..."):
@@ -341,8 +340,8 @@ def reprocess(
 
     async def _run():
         if dry_run:
-            from .ocr import async_run_ocr
             from .extraction import extract_receipt
+            from .ocr import async_run_ocr
             from .validation import validate_receipt
 
             with console.status("[bold green]Running OCR..."):
@@ -416,6 +415,7 @@ def serve(
 ):
     """Start the review dashboard server."""
     import uvicorn
+
     from .server import app as fastapi_app
 
     settings = get_settings()
@@ -515,7 +515,7 @@ def verify_token():
 
 
 @watch_app.command("folder")
-def watch_folder(path: Optional[Path] = typer.Option(None, help="Path to monitor")):
+def watch_folder(path: Path | None = typer.Option(None, help="Path to monitor")):
     """Monitor a folder for new receipts."""
     settings = get_settings()
     setup_logging(settings.env)
@@ -571,6 +571,10 @@ def watch_telegram():
     async def _run_and_print():
         from telegram import Bot
 
+        if not settings.telegram_bot_token:
+            console.print("[red]Error: TELEGRAM_BOT_TOKEN not set in settings.[/red]")
+            return
+
         try:
             bot = Bot(token=settings.telegram_bot_token)
             me = await bot.get_me()
@@ -598,9 +602,7 @@ def watch_telegram():
 
 @watch_app.command("gdrive")
 def watch_gdrive(
-    folder_id: Optional[str] = typer.Option(
-        None, help="Override Google Drive folder ID"
-    ),
+    folder_id: str | None = typer.Option(None, help="Override Google Drive folder ID"),
 ):
     """Monitor Google Drive for new receipts."""
     settings = get_settings()
@@ -659,7 +661,7 @@ def import_mappings(
 def start(
     host: str = typer.Option("0.0.0.0", help="Host to bind to"),
     port: int = typer.Option(8000, help="Port to bind to"),
-    path: Optional[Path] = typer.Option(None, help="Path to monitor"),
+    path: Path | None = typer.Option(None, help="Path to monitor"),
 ):
     """Start both the dashboard and the folder watcher concurrently."""
     import uvicorn

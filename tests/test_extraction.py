@@ -1,8 +1,10 @@
+from datetime import date
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+
 from bexio_receipts.extraction import extract_receipt
 from bexio_receipts.models import Receipt
-from datetime import date
 
 
 @pytest.mark.asyncio

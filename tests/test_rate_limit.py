@@ -1,7 +1,9 @@
-import pytest
-from httpx import AsyncClient, ASGITransport
 import base64
 from unittest.mock import patch
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
 from bexio_receipts.server import app, get_settings
 
 
@@ -16,9 +18,7 @@ async def test_rate_limit(test_settings):
         pass
 
     # Pin remote address to a constant IP so all requests share the same bucket.
-    with patch(
-        "bexio_receipts.server.get_remote_address", return_value="192.0.2.1"
-    ):
+    with patch("bexio_receipts.server.get_remote_address", return_value="192.0.2.1"):
         bad_auth = base64.b64encode(b"admin:bad_password").decode()
         bad_headers = {"Authorization": f"Basic {bad_auth}"}
 

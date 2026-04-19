@@ -1,9 +1,11 @@
-import pytest
-import json
 import base64
-from httpx import AsyncClient, ASGITransport
-from bexio_receipts.server import app, get_settings, get_db
-from unittest.mock import MagicMock, patch, AsyncMock
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from bexio_receipts.server import app, get_db, get_settings
 
 
 @pytest.mark.asyncio
@@ -56,12 +58,10 @@ async def test_bulk_process(test_settings, tmp_path):
 
     # Create a review file
     (review_dir / "1.json").write_text(
-        json.dumps(
-            {
-                "original_file": str(img_path),
-                "extracted": {"merchant_name": "Test", "total_incl_vat": 10.0},
-            }
-        )
+        json.dumps({
+            "original_file": str(img_path),
+            "extracted": {"merchant_name": "Test", "total_incl_vat": 10.0},
+        })
     )
 
     mock_db = MagicMock()

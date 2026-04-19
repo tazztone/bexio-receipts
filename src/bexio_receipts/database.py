@@ -3,10 +3,10 @@ SQLite database interface and deduplication logic.
 Manages persistent storage for receipts and processing state.
 """
 
-import sqlite3
 import hashlib
-from datetime import datetime
+import sqlite3
 from contextlib import closing
+from datetime import datetime
 from typing import Any
 
 

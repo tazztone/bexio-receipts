@@ -1,5 +1,6 @@
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
+
 from bexio_receipts.server import app, get_settings
 
 

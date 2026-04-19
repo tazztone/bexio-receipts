@@ -7,19 +7,19 @@ import asyncio
 from pathlib import Path
 
 import structlog
-from telegram import Update, Message
+from telegram import Message, Update
 from telegram.ext import (
     ApplicationBuilder,
+    CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
-    CommandHandler,
 )
 
-from .pipeline import process_receipt
-from .config import Settings
 from .bexio_client import BexioClient
+from .config import Settings
 from .database import DuplicateDetector
+from .pipeline import process_receipt
 
 logger = structlog.get_logger(__name__)
 
@@ -41,15 +41,15 @@ class ReceiptBot:
         return user_id in self.allowed_users
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_id = update.effective_user.id if update.effective_user else 0  # type: ignore
+        user_id = update.effective_user.id if update.effective_user else 0
         if not update.message or not self._is_allowed(user_id):
             if update.message:
                 await update.message.reply_text(
                     f"Access denied. Your user ID: {user_id}"
-                )  # type: ignore
+                )
             return
 
-        await update.message.reply_text(  # type: ignore
+        await update.message.reply_text(
             "Welcome to bexio-receipts bot! 🧾🚀\n"
             "Send me a photo or a PDF of a receipt, and I'll process it for you.\n\n"
             "Commands:\n"
@@ -90,7 +90,7 @@ class ReceiptBot:
             status_msg += f"🏢 *Company:* {company}\n"
             status_msg += "✅ *Bexio API:* Connected\n"
         except Exception as e:
-            status_msg += f"❌ *Bexio API:* Error ({str(e)})\n"
+            status_msg += f"❌ *Bexio API:* Error ({e!s})\n"
         status_msg += f"🧠 *LLM Provider:* `{self.settings.llm_provider}`\n"
         status_msg += "🗄️ *Database:* Online\n"
 
@@ -166,7 +166,7 @@ class ReceiptBot:
 
         except Exception as e:
             logger.error("Telegram processing error", error=str(e))
-            await status_msg.edit_text(f"❌ Error during processing: {str(e)}")
+            await status_msg.edit_text(f"❌ Error during processing: {e!s}")
 
 
 async def run_bot(settings: Settings):

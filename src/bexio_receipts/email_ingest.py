@@ -10,10 +10,10 @@ from pathlib import Path
 import aioimaplib
 import structlog
 
-from .pipeline import process_receipt
-from .config import Settings
 from .bexio_client import BexioClient
+from .config import Settings
 from .database import DuplicateDetector
+from .pipeline import process_receipt
 
 logger = structlog.get_logger(__name__)
 
@@ -41,6 +41,8 @@ class EmailIngestor:
 
     async def fetch_new_emails(self):
         """Find UNSEEN emails with attachments."""
+        if self.imap_client is None:
+            return []
         obj = await self.imap_client.search("UNSEEN")
         msg_ids = obj.lines[0].decode().split()
 
@@ -106,7 +108,8 @@ class EmailIngestor:
             msg_ids = await self.fetch_new_emails()
             for msg_id in msg_ids:
                 await self.process_email(msg_id)
-            await self.imap_client.logout()
+            if self.imap_client:
+                await self.imap_client.logout()
         except Exception as e:
             logger.error("IMAP Error", error=str(e))
 

@@ -1,13 +1,15 @@
-import pytest
-import respx
-import httpx
 from datetime import date
 from unittest.mock import patch
-from bexio_receipts.pipeline import process_receipt
+
+import httpx
+import pytest
+import respx
+
 from bexio_receipts.bexio_client import BexioClient
+from bexio_receipts.config import Settings
 from bexio_receipts.database import DuplicateDetector
 from bexio_receipts.models import Receipt
-from bexio_receipts.config import Settings
+from bexio_receipts.pipeline import process_receipt
 
 
 @pytest.mark.asyncio
@@ -63,7 +65,7 @@ async def test_pipeline_e2e(tmp_path):
         mock_ocr.return_value = ("Test Text", 0.95, [])
         mock_extract.return_value = Receipt(
             merchant_name="COOP",
-            date=date.today(),
+            transaction_date=date.today(),
             total_incl_vat=10.80,
             vat_rate_pct=8.1,
         )

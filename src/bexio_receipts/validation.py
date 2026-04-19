@@ -4,9 +4,9 @@ Ensures extracted receipt data complies with accounting requirements.
 """
 
 from datetime import date, timedelta
-from .models import Receipt
 
 from .config import Settings
+from .models import Receipt
 
 VALID_CH_VAT = {0.0, 2.6, 3.8, 8.1}
 

@@ -1,7 +1,9 @@
 import json
-from unittest.mock import patch, AsyncMock, MagicMock
-from bexio_receipts.cli import app
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from typer.testing import CliRunner
+
+from bexio_receipts.cli import app
 
 runner = CliRunner()
 
@@ -69,9 +71,9 @@ def test_cli_mappings(tmp_path, test_settings):
         with patch("bexio_receipts.database.DuplicateDetector") as mock_db:
             result = runner.invoke(app, ["mapping", "import", str(mapping_file)])
             assert result.exit_code == 0
-            mock_db.return_value.import_merchant_accounts.assert_called_once_with(
-                {"Coop": 123}
-            )
+            mock_db.return_value.import_merchant_accounts.assert_called_once_with({
+                "Coop": 123
+            })
 
 
 def test_cli_reprocess(tmp_path, test_settings):
@@ -119,11 +121,7 @@ def test_cli_init_quickstart(tmp_path, test_settings):
 
     with patch(
         "bexio_receipts.cli.Path",
-        side_effect=lambda x: (
-            tmp_path / x
-            if isinstance(x, str) and not x.startswith("/")
-            else tmp_path / x
-        ),
+        side_effect=lambda x: tmp_path / x,
     ):
         # We need to be careful with Path patching
         pass

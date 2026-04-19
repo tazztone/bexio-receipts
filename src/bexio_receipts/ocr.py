@@ -3,14 +3,15 @@ Unified OCR layer using GLM-OCR via Ollama.
 Responsible for extracting raw text from images and PDFs.
 """
 
-import base64
 import asyncio
-import httpx
-from .config import Settings
-
+import base64
 import io
+
+import httpx
 import structlog
 from PIL import Image, ImageEnhance
+
+from .config import Settings
 
 logger = structlog.get_logger(__name__)
 
@@ -55,12 +56,19 @@ def extract_pdf_text(file_path: str) -> str | None:
 
 
 async def run_glm_ocr(
-    file_path: str | None, settings: Settings, image_data: bytes | None = None
+    file_path: str | None,
+    settings: Settings,
+    client: httpx.AsyncClient,
+    image_data: bytes | None = None,
+    already_optimized: bool = False,
 ) -> tuple[str, float, list[dict]]:
     """
     Run OCR on a file using GLM-OCR via Ollama.
     """
-    if image_data:
+    if already_optimized and image_data:
+        # Caller already optimized and provided bytes (e.g. PDF loop)
+        img_base64 = base64.b64encode(image_data).decode("utf-8")
+    elif image_data:
         # Decode bytes, optimize, and re-encode to WebP for model
         with Image.open(io.BytesIO(image_data)) as img:
             optimized_img = _optimize_image(img)
@@ -76,82 +84,93 @@ async def run_glm_ocr(
     else:
         raise ValueError("Either file_path or image_data must be provided")
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        prompt = "Text Recognition:"
-        payload = {
-            "model": settings.glm_ocr_model,
-            "messages": [{"role": "user", "content": prompt, "images": [img_base64]}],
-            "stream": False,
-        }
+    prompt = "Text Recognition:"
+    payload = {
+        "model": settings.glm_ocr_model,
+        "messages": [{"role": "user", "content": prompt, "images": [img_base64]}],
+        "stream": False,
+    }
 
-        # Overall timeout for the vision model call
-        resp = await asyncio.wait_for(
-            client.post(f"{settings.glm_ocr_url}/api/chat", json=payload), timeout=9
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    # Use the injected client with its configured timeouts
+    resp = await client.post(f"{settings.glm_ocr_url}/api/chat", json=payload)
+    resp.raise_for_status()
+    data = resp.json()
 
-        raw_text = data["message"]["content"]
-        # GLM-OCR via Ollama chat API doesn't easily provide confidence per word/line
-        # Using 0.90 as a default, downgrade to 0.50 if output is suspiciously short
-        avg_confidence = 0.90 if len(raw_text) > 50 else 0.50
+    raw_text = data["message"]["content"]
+    # GLM-OCR via Ollama chat API doesn't easily provide confidence per word/line
+    # Using 0.90 as a default, downgrade to 0.50 if output is suspiciously short
+    avg_confidence = 0.90 if len(raw_text) > 50 else 0.50
 
-        # We don't have per-line detail here like PaddleOCR
-        lines = [{"text": raw_text, "confidence": avg_confidence}]
+    # We don't have per-line detail here like PaddleOCR
+    lines = [{"text": raw_text, "confidence": avg_confidence}]
 
-        return raw_text, avg_confidence, lines
+    return raw_text, avg_confidence, lines
 
 
 async def async_run_ocr(
     file_path: str, settings: Settings
 ) -> tuple[str, float, list[dict]]:
-    import mimetypes
 
-    mime_type, _ = mimetypes.guess_type(file_path)
+    is_pdf = str(file_path).lower().endswith(".pdf")
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(
+            connect=5.0, read=settings.glm_ocr_timeout, write=5.0, pool=2.0
+        )
+    ) as client:
+        if is_pdf:
+            extracted_text = extract_pdf_text(file_path)
+            if extracted_text:
+                logger.info(
+                    "Successfully extracted text directly from PDF", path=file_path
+                )
+                return (
+                    extracted_text,
+                    1.0,
+                    [{"text": extracted_text, "confidence": 1.0}],
+                )
 
-    if mime_type == "application/pdf" or str(file_path).lower().endswith(".pdf"):
-        extracted_text = extract_pdf_text(file_path)
-        if extracted_text:
-            logger.info("Successfully extracted text directly from PDF", path=file_path)
-            return extracted_text, 1.0, [{"text": extracted_text, "confidence": 1.0}]
+            logger.info("PDF appears to be scanned, using GLM-OCR", path=file_path)
+            from pdf2image import convert_from_path
 
-        logger.info("PDF appears to be scanned, using GLM-OCR", path=file_path)
-        from pdf2image import convert_from_path
+            # Convert all pages of scanned PDF to images for vision model
+            try:
+                images = convert_from_path(file_path, dpi=300)
 
-        # Convert all pages of scanned PDF to images for vision model
-        try:
-            images = convert_from_path(file_path, dpi=300)
+                sem = asyncio.Semaphore(2)  # Limit concurrent OCR calls to save RAM
 
-            async def _process_pdf_pages():
-                texts = []
-                for i, img in enumerate(images):
-                    img = _optimize_image(img)
-                    buf = io.BytesIO()
-                    img.save(buf, format="WEBP", quality=90)
-                    logger.info(
-                        f"Processing PDF page {i + 1}/{len(images)}",
-                        path=file_path,
-                    )
-                    page_text, _, _ = await run_glm_ocr(
-                        None, settings, image_data=buf.getvalue()
-                    )
-                    texts.append(page_text)
-                return texts
+                async def _process_page(img, i):
+                    async with sem:
+                        img = _optimize_image(img)
+                        buf = io.BytesIO()
+                        img.save(buf, format="WEBP", quality=90)
+                        logger.info(
+                            f"Processing PDF page {i + 1}/{len(images)}",
+                            path=file_path,
+                        )
+                        page_text, _, _ = await run_glm_ocr(
+                            None,
+                            settings,
+                            client,
+                            image_data=buf.getvalue(),
+                            already_optimized=True,
+                        )
+                        return page_text
 
-            # Aggregate timeout for multi-page PDF
-            timeout = min(len(images) * 10, 60)
-            texts = await asyncio.wait_for(_process_pdf_pages(), timeout=timeout)
+                # Parallel processing with asyncio.gather, limited by semaphore
+                texts = await asyncio.gather(*[
+                    _process_page(img, i) for i, img in enumerate(images)
+                ])
 
-            combined_text = "\n---PAGE BREAK---\n".join(texts)
-            return (
-                combined_text,
-                0.90,
-                [{"text": combined_text, "confidence": 0.90}],
-            )
-        except Exception as e:
-            logger.warning(
-                f"Failed to convert scanned PDF to images: {e}. Falling back to raw file."
-            )
-            return await run_glm_ocr(file_path, settings)
+                combined_text = "\n---PAGE BREAK---\n".join(texts)
+                return (
+                    combined_text,
+                    0.90,
+                    [{"text": combined_text, "confidence": 0.90}],
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to convert scanned PDF to images: {e}. Falling back to raw file."
+                )
+                return await run_glm_ocr(file_path, settings, client)
 
-    return await run_glm_ocr(file_path, settings)
+        return await run_glm_ocr(file_path, settings, client)

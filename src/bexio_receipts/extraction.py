@@ -3,22 +3,24 @@ LLM-powered structured extraction using Pydantic AI.
 Transforms raw OCR text into validated receipt data models.
 """
 
+import asyncio
+
 import httpx
+import structlog
+from pydantic import ValidationError
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
-from pydantic import ValidationError
-import asyncio
-from .models import Receipt
+
 from .config import Settings
-import structlog
+from .models import Receipt
 
 logger = structlog.get_logger(__name__)
 
@@ -53,7 +55,7 @@ async def extract_receipt(raw_text: str, settings: Settings) -> Receipt:
         else:
             raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
 
-        agent = Agent(  # type: ignore[call-overload]
+        agent = Agent(
             model,
             output_type=Receipt,
             system_prompt=(

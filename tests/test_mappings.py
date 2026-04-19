@@ -1,8 +1,10 @@
 import json
 from unittest.mock import patch
+
+from typer.testing import CliRunner
+
 from bexio_receipts.cli import app
 from bexio_receipts.database import DuplicateDetector
-from typer.testing import CliRunner
 
 runner = CliRunner()
 

@@ -1,7 +1,9 @@
-import pytest
-from unittest.mock import patch, AsyncMock
-from httpx import AsyncClient, ASGITransport
 import base64
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
 from bexio_receipts.server import app, get_settings
 
 

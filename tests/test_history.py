@@ -1,8 +1,10 @@
-import pytest
 import base64
-from httpx import AsyncClient, ASGITransport
-from bexio_receipts.server import app, get_settings, get_db
 from unittest.mock import MagicMock
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from bexio_receipts.server import app, get_db, get_settings
 
 
 @pytest.mark.asyncio

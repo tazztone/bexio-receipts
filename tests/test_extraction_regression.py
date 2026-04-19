@@ -1,13 +1,15 @@
-import pytest
 import os
+
 import httpx
+import pytest
+
 from bexio_receipts.extraction import extract_receipt
 
 
 @pytest.fixture
 def prodega_ocr_text():
     path = os.path.join(os.path.dirname(__file__), "fixtures/prodega_ocr.txt")
-    with open(path, "r") as f:
+    with open(path) as f:
         return f.read()
 
 

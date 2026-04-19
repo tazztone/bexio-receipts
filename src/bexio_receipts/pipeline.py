@@ -5,17 +5,18 @@ Orchestrates OCR, extraction, and validation steps.
 
 import json
 import mimetypes
-import asyncio
 from pathlib import Path
 
+import httpx
 import structlog
-from .ocr import async_run_ocr
-from .extraction import extract_receipt
-from .validation import validate_receipt
+
 from .bexio_client import BexioClient
 from .config import Settings
-from .models import Receipt
 from .database import DuplicateDetector
+from .extraction import extract_receipt
+from .models import Receipt
+from .ocr import async_run_ocr
+from .validation import validate_receipt
 
 logger = structlog.get_logger(__name__)
 
@@ -99,7 +100,7 @@ async def process_receipt(
     logger.info("Running OCR/Extraction", path=file_path)
     try:
         raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
-    except asyncio.TimeoutError:
+    except (TimeoutError, httpx.TimeoutException):
         error_msg = "OCR stage timed out"
         logger.error(error_msg, path=file_path)
         return await send_to_review(
@@ -110,7 +111,7 @@ async def process_receipt(
     logger.info("Extracting data via LLM", model=settings.llm_model)
     try:
         receipt = await extract_receipt(raw_text, settings)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         error_msg = "LLM extraction stage timed out"
         logger.error(error_msg, path=file_path)
         return await send_to_review(
@@ -126,7 +127,7 @@ async def process_receipt(
         return await send_to_review(
             file_path,
             raw_text,
-            [f"LLM extraction failed: {str(e)}"],
+            [f"LLM extraction failed: {e!s}"],
             settings,
             ocr_confidence=avg_confidence,
             failed_stage="extraction",
@@ -262,7 +263,7 @@ async def process_receipt(
         return await send_to_review(
             file_path,
             raw_text,
-            [f"bexio API error: {str(e)}"],
+            [f"bexio API error: {e!s}"],
             settings,
             receipt,
             ocr_confidence=avg_confidence,

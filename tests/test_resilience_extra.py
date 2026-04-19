@@ -1,10 +1,12 @@
-import pytest
+import asyncio
+import json
 from unittest.mock import AsyncMock, patch
+
+import pytest
+from typer.testing import CliRunner
+
 from bexio_receipts.cli import app
 from bexio_receipts.config import Settings
-from typer.testing import CliRunner
-import json
-import asyncio
 
 runner = CliRunner()
 

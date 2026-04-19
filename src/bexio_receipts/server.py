@@ -36,7 +36,7 @@ app = FastAPI(title="bexio-receipts Review Dashboard")
 
 @functools.lru_cache
 def get_settings() -> Settings:
-    return Settings()  # type: ignore[call-arg]
+    return Settings()
 
 
 app.add_middleware(SessionMiddleware, secret_key=get_settings().secret_key)
@@ -48,7 +48,13 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
+
+@app.exception_handler(RateLimitExceeded)
+async def _custom_rate_limit_exceeded_handler(
+    request: Request, exc: RateLimitExceeded
+) -> Response:
+    return _rate_limit_exceeded_handler(request, exc)
 
 
 def get_db(settings: Settings = Depends(get_settings)):
@@ -850,7 +856,7 @@ async def check_bexio_status(
                 f'<span class="status-badge status-ok">OK ({name})</span>'
             )
     except Exception as e:
-        msg = f"Error: {str(e)}"
+        msg = f"Error: {e!s}"
         if "401" in msg:
             msg += ' <br><small>Tip: Check <a href="https://office.bexio.com/index.php/admin/apiTokens" target="_blank">Bexio API Tokens</a></small>'
         return HTMLResponse(f'<span class="status-badge status-error">{msg}</span>')
@@ -884,7 +890,7 @@ async def check_ocr_status(
                 )
     except Exception as e:
         return HTMLResponse(
-            f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}. <br>'
+            f'<span class="status-badge status-error">Error connecting to Ollama: {e!s}. <br>'
             "<small>Run: <code>ollama serve</code> "
             '<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama serve\')">Copy</button></small></span>'
         )
@@ -918,7 +924,7 @@ async def check_llm_status(
                     )
         except Exception as e:
             return HTMLResponse(
-                f'<span class="status-badge status-error">Error connecting to Ollama: {str(e)}. <br>'
+                f'<span class="status-badge status-error">Error connecting to Ollama: {e!s}. <br>'
                 "<small>Run: <code>ollama serve</code> "
                 '<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama serve\')">Copy</button></small></span>'
             )
@@ -969,7 +975,7 @@ async def check_db_status(
         )
     except Exception as e:
         return HTMLResponse(
-            f'<span class="status-badge status-error">Error: {str(e)}</span>'
+            f'<span class="status-badge status-error">Error: {e!s}</span>'
         )
 
 
@@ -1008,7 +1014,7 @@ async def pull_ollama_model(
             )
     except Exception as e:
         return HTMLResponse(
-            f'<div class="status-badge status-error">Failed to pull {model}: {str(e)}</div>'
+            f'<div class="status-badge status-error">Failed to pull {model}: {e!s}</div>'
         )
 
 

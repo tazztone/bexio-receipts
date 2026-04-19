@@ -8,19 +8,20 @@ import io
 import os
 import stat
 from pathlib import Path
+from typing import Any
 
 import structlog
-from google.oauth2 import service_account
 from google.auth.transport.requests import Request
+from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
-from .pipeline import process_receipt
-from .config import Settings
 from .bexio_client import BexioClient
+from .config import Settings
 from .database import DuplicateDetector
+from .pipeline import process_receipt
 
 logger = structlog.get_logger(__name__)
 
@@ -34,7 +35,7 @@ class GoogleDriveIngestor:
         self.bexio = bexio
         self.download_dir = Path(settings.inbox_path) / "gdrive"
         self.download_dir.mkdir(parents=True, exist_ok=True)
-        self.service = None
+        self.service: Any = None
         self.db = DuplicateDetector(settings.database_path)
 
     async def connect(self):
@@ -279,7 +280,6 @@ async def watch_gdrive(settings: Settings, folder_id: str | None = None):
 def run_gdrive_auth(settings: Settings):
     """Interactive OAuth2 flow for Google Drive."""
     if not settings.gdrive_credentials_file:
-        print("Error: GDRIVE_CREDENTIALS_FILE not set in settings.")
         return
 
     flow = InstalledAppFlow.from_client_secrets_file(
@@ -289,6 +289,3 @@ def run_gdrive_auth(settings: Settings):
 
     with open(settings.gdrive_token_path, "w") as token:
         token.write(creds.to_json())
-
-    print(f"Successfully saved OAuth2 token to {settings.gdrive_token_path}")
-    print("\nYou can now run: uv run bexio-receipts watch-gdrive")
