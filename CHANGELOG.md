@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2026-04-19
 
 ### Added
+- **Per-Line Account Mapping**: The review dashboard now supports mapping distinct accounting (SOLL) accounts to individual VAT line items on a single receipt.
+- **HABEN Payment Toggles**: Added support for differentiating Bank vs Cash (HABEN) payments for expenses, complete with intelligent auto-selection based on receipt payment method (e.g. "Zahlungsart: Bar").
 - **Premium UI Overhaul**: Redesigned the entire web dashboard with a custom dark theme, glassmorphism, modern typography (Outfit), and unified status badges across all templates.
 - **Smart PDF Extraction**: Replaced OCR dependency for digital PDFs with native text extraction via `pdfplumber`, guaranteeing 100% text fidelity and bypassing vision models entirely.
 - **VAT Breakdown Extraction**: Pydantic and GLM-OCR prompts now natively extract multi-rate VAT data (`vat_breakdown` arrays) from receipts like Coop or Migros.
@@ -20,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pre-commit Integration**: Formally added `pre-commit` to the development workflow with automated `ruff` and `mypy` hooks.
 
 ### Fixed
+- **Hardened OCR Extraction**: Addressed severe `GLM-OCR` hallucination issues (swapped VAT numbers, incorrect merchants) by simplifying the vision prompt to raw text output and offloading structured extraction to the secondary LLM.
+- **Bexio `item_net` Correctness**: `create_purchase_bill` now sends net amounts and instructs Bexio to apply VAT mathematically (`item_net=True`), preventing double-taxation bugs.
 - **Startup Resilience**: The CLI `process`, `reprocess`, and `watcher` commands no longer crash on boot if the Bexio API is unreachable or the token is invalid.
 - **First-Run Configuration**: The `bexio-receipts init` wizard now correctly injects `REVIEW_USERNAME` and `REVIEW_PASSWORD`, preventing immediate HTTP 401 lockouts on fresh installations.
 - **API Correctness**: Standardized around the `/3.0/users/me` endpoint.

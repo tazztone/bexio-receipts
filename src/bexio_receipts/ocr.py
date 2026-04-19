@@ -104,21 +104,9 @@ async def run_glm_ocr(
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         prompt = (
-            "Task: Information Extraction from Receipt\n"
-            "Format: Output ONLY valid JSON according to this schema:\n"
-            "{\n"
-            '  "merchant_name": string or null,\n'
-            '  "date": "YYYY-MM-DD" or null,\n'
-            '  "total_incl_vat": number or null,\n'
-            '  "vat_amount": number or null,\n'
-            '  "vat_rate_pct": number or null,\n'
-            '  "currency": "CHF",\n'
-            '  "vat_breakdown": [{"rate": number, "base_amount": number, "vat_amount": number}]\n'
-            "}\n"
-            "Instruction: Extract the merchant (e.g. Coop, Migros), the date, and the total amount. "
-            "Swiss VAT rates are 8.1%, 2.6%, 3.8%. "
-            "If multiple Swiss VAT rates appear, populate the vat_breakdown array. "
-            "If a brand name like 'COOP' is visible, use it as merchant_name."
+            "Analyze this receipt image. "
+            "List every piece of text and every number you see on the receipt, line by line. "
+            "Be especially careful to include the store name, date, total amount, and the MWST/VAT summary table with all its columns."
         )
         payload = {
             "model": settings.glm_ocr_model,

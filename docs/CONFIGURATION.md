@@ -15,8 +15,12 @@ This command will guide you through the most important settings and automaticall
 - **`OFFLINE_MODE`**: Set to `true` to run the UI and LLM/OCR pipeline locally without connecting to Bexio. Defaults to `false`.
 - **`BEXIO_API_TOKEN`**: Your bexio Personal Access Token. Create this in bexio under *Settings > All Settings > Apps & API > API Keys*. Required unless `OFFLINE_MODE=true`.
 - **`BEXIO_BASE_URL`**: Defaults to `https://api.bexio.com`.
+- **`BEXIO_PUSH_ENABLED`**: Write-gate for the pipeline. Must be `true` to create bookings in Bexio. Defaults to `false` (dry-run/queue mode).
 - **`DEFAULT_BOOKING_ACCOUNT_ID`**: (Required) Default bexio account ID for new expenses (e.g., `630`).
 - **`DEFAULT_BANK_ACCOUNT_ID`**: (Required) Default bexio bank account ID for payments (e.g., `1`).
+- **`BEXIO_ALLOWED_SOLL_ACCOUNTS`**: Comma-separated list of account *numbers* (e.g., `4200,4400`) allowed in the review UI dropdown.
+- **`BEXIO_HABEN_ACCOUNT_BANK`**: Account *number* used for the "Bank" payment toggle (e.g., `1020`).
+- **`BEXIO_HABEN_ACCOUNT_CASH`**: Account *number* used for the "Cash" payment toggle (e.g., `1000`).
 - **`DEFAULT_VAT_RATE`**: Default Swiss VAT rate (8.1, 2.6, or 3.8). Defaults to `8.1`.
 - **`DEFAULT_PAYMENT_TERMS_DAYS`**: Number of days for payment terms. Defaults to `30`.
 

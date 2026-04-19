@@ -32,7 +32,12 @@ class Settings(BaseSettings):
     default_vat_rate: float = 8.1
     default_payment_terms_days: int = 30
 
-    # bexio-receipts specific
+    # bexio-receipts specific accounts
+    bexio_allowed_soll_accounts: list[int] = [4400, 4200, 4270, 4201, 6460]
+    bexio_haben_account_bank: int = 1020
+    bexio_haben_account_cash: int = 1000
+
+    # bexio-receipts specific paths
     inbox_path: str = "./inbox"
     review_username: str = "admin"
     review_password: str

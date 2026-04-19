@@ -36,9 +36,10 @@ def validate_receipt(r: Receipt, settings: Settings) -> list[str]:
     if r.vat_rate_pct is not None and r.vat_rate_pct not in VALID_CH_VAT:
         errors.append(f"Invalid Swiss VAT rate: {r.vat_rate_pct}%")
 
-    # 3. VAT back-calculation check
+    # 3. VAT back-calculation check (only for single-rate receipts)
     if (
-        r.vat_rate_pct is not None
+        not r.vat_breakdown
+        and r.vat_rate_pct is not None
         and r.subtotal_excl_vat is not None
         and r.vat_amount is not None
     ):

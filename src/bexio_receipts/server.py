@@ -490,11 +490,47 @@ async def review_receipt(
         settings.default_vat_rate,
         settings.default_payment_terms_days,
     ) as bexio:
-        accounts = await bexio.get_accounts()
+        all_accounts = await bexio.get_accounts()
+
+    # Resolve allowed SOLL accounts to internal IDs
+    allowed_numbers = set(str(no) for no in settings.bexio_allowed_soll_accounts)
+    allowed_accounts = [
+        {"id": a["id"], "account_no": a["account_no"], "name": a["name"]}
+        for a in all_accounts
+        if str(a.get("account_no")) in allowed_numbers
+    ]
+
+    # Resolve HABEN accounts
+    haben_bank_id = next(
+        (
+            a["id"]
+            for a in all_accounts
+            if str(a.get("account_no")) == str(settings.bexio_haben_account_bank)
+        ),
+        None,
+    )
+    haben_cash_id = next(
+        (
+            a["id"]
+            for a in all_accounts
+            if str(a.get("account_no")) == str(settings.bexio_haben_account_cash)
+        ),
+        None,
+    )
+
+    # Detect bexio_action
+    receipt_data = data.get("extracted", {})
+    vat_breakdown = receipt_data.get("vat_breakdown", [])
+    merchant_name = receipt_data.get("merchant_name")
+
+    # Rule: multi-rate OR merchant present -> purchase_bill
+    if merchant_name or (vat_breakdown and len(vat_breakdown) > 1):
+        bexio_action = "purchase_bill"
+    else:
+        bexio_action = "expense"
 
     # Get the default account for this merchant if known
     db = DuplicateDetector(settings.database_path)
-    merchant_name = data.get("extracted", {}).get("merchant_name")
     default_account_id = None
     if merchant_name:
         default_account_id = db.get_merchant_account(merchant_name)
@@ -513,10 +549,14 @@ async def review_receipt(
         {
             "id": review_id,
             "data": data,
-            "receipt": data.get("extracted", {}),
-            "accounts": accounts,
+            "receipt": receipt_data,
+            "allowed_accounts": allowed_accounts,
             "default_account_id": default_account_id,
+            "haben_bank_id": haben_bank_id,
+            "haben_cash_id": haben_cash_id,
+            "bexio_action": bexio_action,
             "csrf_token": csrf_token,
+            "payment_method": receipt_data.get("payment_method"),
         },
     )
 
@@ -564,7 +604,8 @@ async def push_to_bexio(
     date: str = Form(...),
     total_incl_vat: float = Form(...),
     vat_rate_pct: float | None = Form(None),
-    booking_account_id: int = Form(...),
+    booking_account_ids: list[int] = Form(...),
+    bank_account_id: int | None = Form(None),
     csrf_token: str = Form(...),
     username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
@@ -595,8 +636,17 @@ async def push_to_bexio(
     receipt_data["total_incl_vat"] = total_incl_vat
     receipt_data["vat_rate_pct"] = vat_rate_pct
 
-    # Re-validate via Pydantic (to ensure date/floats are correct)
+    # Re-validate via Pydantic
     receipt = Receipt.model_validate(receipt_data)
+
+    # Validation Guard for account count
+    vat_breakdown = receipt.vat_breakdown
+    expected_count = len(vat_breakdown) if vat_breakdown else 1
+    if len(booking_account_ids) != expected_count:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Account count mismatch: expected {expected_count}, got {len(booking_account_ids)}",
+        )
 
     # Push to bexio
     img_path = data.get("original_file")
@@ -607,7 +657,7 @@ async def push_to_bexio(
     if not settings.bexio_push_enabled:
         raise HTTPException(
             status_code=403,
-            detail="Bexio push gate is closed (BEXIO_PUSH_ENABLED=false). Please enable it in your .env first.",
+            detail="Bexio push gate is closed (BEXIO_PUSH_ENABLED=false).",
         )
 
     try:
@@ -621,31 +671,34 @@ async def push_to_bexio(
             await bexio.cache_lookups()
             file_uuid = await bexio.upload_file(img_path, filename, mime_type)
 
-            # Prefer Bill if merchant exists
-            if receipt.merchant_name:
+            # Routing decision
+            if receipt.merchant_name or (vat_breakdown and len(vat_breakdown) > 1):
+                # Always Purchase Bill for multi-rate or merchant
                 await bexio.create_purchase_bill(
-                    receipt, file_uuid, booking_account_id=booking_account_id
+                    receipt, file_uuid, booking_account_ids=booking_account_ids
                 )
-                # Save mapping
-                db.set_merchant_account(receipt.merchant_name, booking_account_id)
+                # Save first account mapping for merchant
+                if receipt.merchant_name:
+                    db.set_merchant_account(
+                        receipt.merchant_name, booking_account_ids[0]
+                    )
             else:
+                # Single-rate expense
                 await bexio.create_expense(
                     receipt,
                     file_uuid,
-                    booking_account_id=booking_account_id,
-                    bank_account_id=settings.default_bank_account_id,
+                    booking_account_id=booking_account_ids[0],
+                    bank_account_id=bank_account_id or settings.default_bank_account_id,
                 )
 
-        # If successful, delete from review queue
+        # Success: delete review file
         p.unlink()
 
         request.session["success_msg"] = (
-            f"✅ Successfully booked receipt from {receipt.merchant_name}."
+            f"✅ Successfully booked receipt from {receipt.merchant_name or 'Unknown'}."
         )
 
-        # Mark as processed in the database with financial stats
         file_hash = db.get_hash(img_path)
-        # Note: the review JSON doesn't store OCR confidence, so we just pass None.
         db.mark_processed(
             file_hash,
             img_path,

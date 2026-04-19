@@ -49,15 +49,23 @@ async def extract_receipt(raw_text: str, settings: Settings) -> Receipt:
             model,
             output_type=Receipt,
             system_prompt=(
-                "Extract receipt data from OCR text. "
-                "Swiss VAT rates are: 8.1% (standard), 2.6% (reduced), 3.8% (accommodation). "
-                "Return null for fields not found. "
-                "Use the 'transaction_date' field for the date shown on the receipt. "
-                "CRITICAL: If the OCR output is sparse (e.g. just a brand and total), "
-                "treat the first line as the 'merchant_name' and prioritize 'total_incl_vat'. "
-                "Swiss receipts often use 'CHF' as currency. "
-                "If multiple VAT rates are present, breakdown into 'vat_breakdown'. "
-                "Ensure merchant name is extracted as cleanly as possible."
+                "Extract receipt data from OCR text. Output a structured Receipt model.\n"
+                "### CRITICAL RULES ###\n"
+                "1. MERCHANT: Extract the STORE or VENDOR name (e.g. 'Prodega Markt', 'Coop', 'Migros'). "
+                "IGNORE the customer/buyer address block (e.g. 'OHNI GmbH').\n"
+                "2. SWISS VAT: Rates are 8.1% (std), 2.6% (red), 3.8% (acc). "
+                "If multiple rates are present, breakdown into 'vat_breakdown'.\n"
+                "3. MATH: 'vat_amount' in breakdown MUST be the difference between inkl. and exkl. MWST. "
+                "'base_amount' is the exkl. MWST value. "
+                "The grand total is usually labelled 'Total Rechnung' or 'Total inkl. MWST'. "
+                "Top-level 'vat_amount' is the SUM of breakdown amounts.\n"
+                "4. VERTICAL TABLES: If the OCR text lists numbers vertically under a heading like 'MWST exkl. MWST inkl. MWST', "
+                "the first column of numbers is usually 'exkl.' and the second is 'inkl.'. "
+                "Example: 176.70 (exkl) followed by 181.29 (inkl) means rate 2.6%.\n"
+                "5. CURRENCY: Always use 'CHF' unless a different currency is clearly the primary total. "
+                "Ignore conversion equivalents (e.g. Euro total at the bottom).\n"
+                "6. PAYMENT: Detect 'cash' if 'Bar' is mentioned, else 'card' or null.\n"
+                "7. CONFIDENCE: Ensure you clean up any OCR artifacts or hallucinations."
             ),
         )
 

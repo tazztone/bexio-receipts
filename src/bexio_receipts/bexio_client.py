@@ -204,7 +204,10 @@ class BexioClient:
         booking_account_id: int,
         bank_account_id: int,
     ) -> dict:
-        """Create a simple expense (bexio v4)."""
+        """
+        Create a simple expense (bexio v4).
+        Note: Do not call with multi-rate receipts; use create_purchase_bill instead.
+        """
         if not self.push_enabled:
             raise RuntimeError(
                 "Bexio write operations are disabled (push_enabled=False)"
@@ -243,7 +246,7 @@ class BexioClient:
 
     @BEXIO_RETRY
     async def create_purchase_bill(
-        self, receipt: Receipt, file_uuid: str, booking_account_id: int
+        self, receipt: Receipt, file_uuid: str, booking_account_ids: list[int]
     ) -> dict:
         """Create a full purchase bill with line items (bexio v4)."""
         if not self.push_enabled:
@@ -260,24 +263,38 @@ class BexioClient:
 
         line_items = []
         if receipt.vat_breakdown:
+            if len(booking_account_ids) != len(receipt.vat_breakdown):
+                raise ValueError(
+                    f"Account count mismatch: expected {len(receipt.vat_breakdown)}, got {len(booking_account_ids)}"
+                )
+
             for i, entry in enumerate(receipt.vat_breakdown):
                 line_items.append(
                     {
                         "position": i,
                         "title": f"VAT {entry.rate}%",
                         "tax_id": await self.get_tax_id(entry.rate),
-                        "amount": round(entry.base_amount + entry.vat_amount, 2),
-                        "booking_account_id": booking_account_id,
+                        "amount": round(
+                            entry.base_amount, 2
+                        ),  # Net amount (Bexio applies VAT)
+                        "booking_account_id": booking_account_ids[i],
                     }
                 )
         else:
+            if not booking_account_ids:
+                raise ValueError("No booking account ID provided")
+
             line_items.append(
                 {
                     "position": 0,
                     "title": receipt.merchant_name or "Receipt",
                     "tax_id": await self.get_tax_id(receipt.vat_rate_pct),
-                    "amount": round(receipt.total_incl_vat, 2),
-                    "booking_account_id": booking_account_id,
+                    "amount": round(receipt.total_incl_vat or 0.0, 2)
+                    if receipt.vat_rate_pct == 0.0
+                    else round(
+                        (receipt.total_incl_vat or 0.0) - (receipt.vat_amount or 0.0), 2
+                    ),
+                    "booking_account_id": booking_account_ids[0],
                 }
             )
 
@@ -293,10 +310,10 @@ class BexioClient:
             "contact_partner_id": supplier_id,
             "bill_date": bill_date.isoformat(),
             "due_date": due_date.isoformat(),
-            "amount_man": round(receipt.total_incl_vat, 2),
+            "amount_man": round(receipt.total_incl_vat or 0.0, 2),
             "manual_amount": True,
             "currency_code": receipt.currency,
-            "item_net": False,  # Amounts in line items are gross
+            "item_net": True,  # Amounts in line items are net
             "attachment_ids": [file_uuid],
             "address": {"lastname_company": receipt.merchant_name, "type": "COMPANY"},
             "line_items": line_items,
