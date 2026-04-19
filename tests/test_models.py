@@ -1,5 +1,7 @@
-from bexio_receipts.models import Receipt
+from bexio_receipts.models import Receipt, VatEntry
 from datetime import date
+import pytest
+from pydantic import ValidationError
 
 
 def test_merchant_name_normalization():
@@ -14,3 +16,15 @@ def test_merchant_name_normalization():
     assert r2.merchant_name == "Migros Ag"
     assert r3.merchant_name == "Migros"
     assert r4.merchant_name == "My Shop Gmbh"
+
+
+def test_vat_entry_math_validation():
+    # Valid math
+    VatEntry(rate=8.1, base_amount=100.0, vat_amount=8.1, total_incl_vat=108.1)
+
+    # Invalid math
+    with pytest.raises(ValidationError):
+        VatEntry(rate=8.1, base_amount=100.0, vat_amount=8.1, total_incl_vat=110.0)
+
+    # Optional total_incl_vat (no validation)
+    VatEntry(rate=8.1, base_amount=100.0, vat_amount=8.1)

@@ -4,7 +4,7 @@ Defines the structure of receipt data and internal state.
 """
 
 from __future__ import annotations
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, ConfigDict, model_validator
 from datetime import date
 
 
@@ -17,8 +17,25 @@ class LineItem(BaseModel):
 
 class VatEntry(BaseModel):
     rate: float = Field(..., description="VAT rate in percent (e.g. 8.1, 2.6)")
-    base_amount: float = Field(..., description="Net amount the VAT is calculated on")
+    base_amount: float = Field(
+        ..., description="Net amount the VAT is calculated on (exkl. MWST)"
+    )
     vat_amount: float = Field(..., description="Actual VAT amount for this rate")
+    total_incl_vat: float | None = Field(
+        default=None,
+        description="Amount including VAT (inkl. MWST) — optional, used for validation only",
+    )
+
+    @model_validator(mode="after")
+    def check_vat_math(self) -> "VatEntry":
+        if self.total_incl_vat is not None:
+            expected = round(self.base_amount + self.vat_amount, 2)
+            if abs(expected - self.total_incl_vat) > 0.02:
+                raise ValueError(
+                    f"VAT math fails: {self.base_amount} + {self.vat_amount} "
+                    f"= {expected} ≠ {self.total_incl_vat}"
+                )
+        return self
 
 
 class Receipt(BaseModel):

@@ -24,6 +24,7 @@ from .bexio_client import BexioClient
 from .database import DuplicateDetector
 
 logger = structlog.get_logger(__name__)
+_gpu_semaphore = asyncio.Semaphore(1)
 
 
 class ReceiptHandler(FileSystemEventHandler):
@@ -36,6 +37,7 @@ class ReceiptHandler(FileSystemEventHandler):
         self.settings = settings
         self.bexio = bexio
         self.processing: set[Path] = set()
+        self._last_processed: dict[Path, float] = {}
         self.db = DuplicateDetector(settings.database_path)
 
     def on_created(self, event: FileCreatedEvent | DirCreatedEvent):
@@ -60,6 +62,17 @@ class ReceiptHandler(FileSystemEventHandler):
 
         if file_path in self.processing:
             return
+
+        # Cooldown: skip if processed very recently (avoid double events)
+        import time
+
+        now = time.time()
+        if file_path in self._last_processed:
+            if now - self._last_processed[file_path] < 30:
+                logger.debug(
+                    "Skipping file within cooldown period", path=str(file_path)
+                )
+                return
 
         logger.info(
             "File activity detected, scheduling processing", path=str(file_path)
@@ -96,9 +109,17 @@ class ReceiptHandler(FileSystemEventHandler):
                     path=str(file_path),
                 )
 
-            result = await process_receipt(
-                str(file_path), self.settings, self.bexio, self.db, push_confirmed=True
-            )
+            async with _gpu_semaphore:
+                result = await process_receipt(
+                    str(file_path),
+                    self.settings,
+                    self.bexio,
+                    self.db,
+                    push_confirmed=True,
+                )
+            import time
+
+            self._last_processed[file_path] = time.time()
             logger.info(
                 "Processing finished", path=str(file_path), status=result.get("status")
             )
@@ -143,17 +164,24 @@ async def watch_folder(path: str, settings: Settings):
                 ".jpeg",
                 ".pdf",
             ]:
-                logger.info("Queuing existing file for processing", path=str(file_path))
-                # Note: safe_process is async, we need to schedule it
-                asyncio.create_task(
-                    process_receipt(
-                        str(file_path),
-                        settings,
-                        bexio,
-                        db,
-                        push_confirmed=True,
+                # Pre-filter duplicates before even scheduling
+                file_hash = db.get_hash(str(file_path))
+                if db.is_duplicate(file_hash):
+                    logger.debug(
+                        "Skipping known duplicate in initial sweep", path=str(file_path)
                     )
-                )
+                    continue
+
+                logger.info("Queuing existing file for processing", path=str(file_path))
+
+                async def _queued_process(fp=file_path):
+                    async with _gpu_semaphore:
+                        await process_receipt(
+                            str(fp), settings, bexio, db, push_confirmed=True
+                        )
+                        await asyncio.sleep(0.5)  # Let GPU/Ollama breathe between items
+
+                asyncio.create_task(_queued_process())
 
         loop = asyncio.get_running_loop()
         event_handler = ReceiptHandler(loop, settings, bexio)

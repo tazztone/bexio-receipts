@@ -4,6 +4,7 @@ Responsible for extracting raw text from images and PDFs.
 """
 
 import base64
+import asyncio
 import httpx
 import logging
 from functools import lru_cache
@@ -139,7 +140,10 @@ async def run_glm_ocr(
             "stream": False,
         }
 
-        resp = await client.post(f"{settings.glm_ocr_url}/api/chat", json=payload)
+        # Overall timeout for the vision model call
+        resp = await asyncio.wait_for(
+            client.post(f"{settings.glm_ocr_url}/api/chat", json=payload), timeout=90
+        )
         resp.raise_for_status()
         data = resp.json()
 
