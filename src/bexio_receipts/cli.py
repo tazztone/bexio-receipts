@@ -1,9 +1,3 @@
-import os
-
-# Disable PaddleOCR model source check to speed up startup
-# Must be set before paddleocr is imported via .pipeline/.ocr
-os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
-
 import asyncio
 import json
 from pathlib import Path
@@ -113,12 +107,10 @@ def init(
         import os
 
         token = os.getenv("BEXIO_API_TOKEN", "your_bexio_token")
-        ocr_engine = os.getenv("OCR_ENGINE", "glm-ocr")
         llm_provider = os.getenv("LLM_PROVIDER", "ollama")
         secret_key = os.getenv("SECRET_KEY", "change-me-in-production")
 
         console.print("\n[bold]Using assumed configuration:[/bold]")
-        console.print(f"  - OCR: [cyan]{ocr_engine}[/cyan]")
         console.print(f"  - LLM: [cyan]{llm_provider}[/cyan]")
         console.print("  - Default Accounts: [cyan]630/1[/cyan]")
     else:
@@ -150,9 +142,6 @@ def init(
             if not Confirm.ask("Continue anyway?"):
                 raise typer.Exit(1)
 
-        ocr_engine = Prompt.ask(
-            "OCR Engine", choices=["glm-ocr", "paddleocr"], default="glm-ocr"
-        )
         llm_provider = Prompt.ask(
             "LLM Provider",
             choices=["ollama", "openai"],
@@ -171,13 +160,12 @@ def init(
     config = [
         f"BEXIO_API_TOKEN={token}",
         "BEXIO_BASE_URL=https://api.bexio.com",
-        f"OCR_ENGINE={ocr_engine}",
+        "OCR_ENGINE=glm-ocr",
         f"LLM_PROVIDER={llm_provider}",
     ]
 
-    if ocr_engine == "glm-ocr":
-        config.append("GLM_OCR_URL=http://localhost:11434")
-        config.append("GLM_OCR_MODEL=glm-ocr")
+    config.append("GLM_OCR_URL=http://localhost:11434")
+    config.append("GLM_OCR_MODEL=glm-ocr")
 
     if llm_provider == "ollama":
         config.append("OLLAMA_URL=http://localhost:11434")

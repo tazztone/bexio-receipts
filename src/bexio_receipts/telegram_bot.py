@@ -91,8 +91,6 @@ class ReceiptBot:
             status_msg += "✅ *Bexio API:* Connected\n"
         except Exception as e:
             status_msg += f"❌ *Bexio API:* Error ({str(e)})\n"
-
-        status_msg += f"🔍 *OCR Engine:* `{self.settings.ocr_engine}`\n"
         status_msg += f"🧠 *LLM Provider:* `{self.settings.llm_provider}`\n"
         status_msg += "🗄️ *Database:* Online\n"
 

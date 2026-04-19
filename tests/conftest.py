@@ -23,7 +23,6 @@ def test_settings():
         secret_key="test_secret_key",
         default_booking_account_id=1,
         default_bank_account_id=2,
-        ocr_engine="paddleocr",
         glm_ocr_model="glm-ocr",
         llm_model="qwen3.5",
         bexio_push_enabled=True,

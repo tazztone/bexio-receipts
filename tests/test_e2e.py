@@ -17,7 +17,6 @@ async def test_pipeline_e2e(tmp_path):
         env="test",
         bexio_api_token="dummy",
         review_password="dummy",
-        ocr_engine="paddleocr",
         default_booking_account_id=100,
         default_bank_account_id=200,
         database_path=str(tmp_path / "test.db"),

@@ -28,18 +28,17 @@ This command will guide you through the most important settings and automaticall
 
 The system supports two OCR engines and multiple LLM providers.
 
-### OCR Engines (`OCR_ENGINE`)
-- **`paddleocr`**: Runs locally. Fast. Requires `paddlepaddle` and `paddleocr` Python packages.
-- **`glm-ocr`** (Default): Multimodal LLM based OCR. Runs via Ollama. Ideal for very low-quality scans.
+### OCR Engine (`GLM-OCR`)
+
+The system uses **GLM-OCR** as its primary OCR engine. It is a multimodal LLM-based engine that runs locally via Ollama. It is highly effective for complex VAT layouts and low-quality scans.
 
 | Variable | Description | Default |
 |---|---|---|
-| `OCR_ENGINE` | `glm-ocr` or `paddleocr` | `glm-ocr` |
 | `GLM_OCR_URL` | URL for the Ollama instance running GLM-OCR | `http://localhost:11434` |
 | `GLM_OCR_MODEL` | Model name for GLM-OCR in Ollama | `glm-ocr` |
-| `OCR_CONFIDENCE_THRESHOLD` | Confidence below which receipts are flagged | `0.85` |
 
-> 💡 **Design Note**: When using `glm-ocr`, the system automatically uses a **Two-Step Extraction** process. The vision model transcribes the receipt into Markdown tables, and the LLM then parses the structured JSON from that Markdown. This is highly effective for complex VAT layouts.
+> 💡 **Design Note**: The system automatically uses a **Two-Step Extraction** process. The vision model transcribes the receipt into Markdown tables, and the LLM then parses the structured JSON from that Markdown.
+
 
 ### LLM Providers (`LLM_PROVIDER`)
 - **`ollama`** (Default): For local, privacy-first extraction. Requires an Ollama instance.

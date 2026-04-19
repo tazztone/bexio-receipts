@@ -1,22 +1,16 @@
 """
-Unified OCR layer supporting multiple engines (PaddleOCR, GLM-4-V).
+Unified OCR layer using GLM-OCR via Ollama.
 Responsible for extracting raw text from images and PDFs.
 """
 
 import base64
 import asyncio
 import httpx
-import logging
-from functools import lru_cache
-from paddleocr import PaddleOCR
 from .config import Settings
 
 import io
 import structlog
 from PIL import Image, ImageEnhance
-
-# Disable paddleocr logging to keep CLI clean
-logging.getLogger("ppocr").setLevel(logging.ERROR)
 
 logger = structlog.get_logger(__name__)
 
@@ -33,56 +27,6 @@ def _optimize_image(img: Image.Image, max_long_edge: int = 2560) -> Image.Image:
     # Boost contrast for thermal receipts (mildly)
     img = ImageEnhance.Contrast(img).enhance(1.3)
     return img
-
-
-@lru_cache(maxsize=1)
-def get_paddle_ocr() -> PaddleOCR:
-    """Instantiate and cache the PaddleOCR model to avoid 2-5s loading time per call."""
-    return PaddleOCR()
-
-
-def run_paddle_ocr(file_path: str) -> tuple[str, float, list[dict]]:
-    """
-    Run OCR on a file using PaddleOCR PP-OCRv5.
-    """
-    ocr = get_paddle_ocr()
-
-    results = ocr.ocr(file_path)
-
-    lines = []
-    page_confidences = []
-
-    if results:
-        for res in results:
-            if res:
-                page_lines = []
-                page_text_len = 0
-                for line in res:
-                    text = line[1][0]
-                    confidence = line[1][1]
-                    page_lines.append({"text": text, "confidence": confidence})
-                    page_text_len += len(text)
-
-                # Filter out near-blank pages (less than 10 characters) from confidence average
-                if page_text_len >= 10:
-                    page_avg = sum(item["confidence"] for item in page_lines) / len(
-                        page_lines
-                    )
-                    page_confidences.append(page_avg)
-
-                lines.extend(page_lines)
-
-    raw_text = "\n".join(line["text"] for line in lines)
-
-    if page_confidences:
-        avg_confidence = sum(page_confidences) / len(page_confidences)
-    else:
-        # Fallback if all pages were near-blank or no results
-        avg_confidence = (
-            sum(line["confidence"] for line in lines) / len(lines) if lines else 0.0
-        )
-
-    return raw_text, avg_confidence, lines
 
 
 def extract_pdf_text(file_path: str) -> str | None:
@@ -170,72 +114,44 @@ async def async_run_ocr(
         if extracted_text:
             logger.info("Successfully extracted text directly from PDF", path=file_path)
             return extracted_text, 1.0, [{"text": extracted_text, "confidence": 1.0}]
-        else:
-            logger.info(
-                f"PDF appears to be scanned, falling back to {settings.ocr_engine}",
-                path=file_path,
+
+        logger.info("PDF appears to be scanned, using GLM-OCR", path=file_path)
+        from pdf2image import convert_from_path
+
+        # Convert all pages of scanned PDF to images for vision model
+        try:
+            images = convert_from_path(file_path, dpi=300)
+
+            async def _process_pdf_pages():
+                texts = []
+                for i, img in enumerate(images):
+                    img = _optimize_image(img)
+                    buf = io.BytesIO()
+                    img.save(buf, format="WEBP", quality=90)
+                    logger.info(
+                        f"Processing PDF page {i + 1}/{len(images)}",
+                        path=file_path,
+                    )
+                    page_text, _, _ = await run_glm_ocr(
+                        None, settings, image_data=buf.getvalue()
+                    )
+                    texts.append(page_text)
+                return texts
+
+            # Aggregate timeout for multi-page PDF
+            timeout = min(len(images) * 10, 60)
+            texts = await asyncio.wait_for(_process_pdf_pages(), timeout=timeout)
+
+            combined_text = "\n---PAGE BREAK---\n".join(texts)
+            return (
+                combined_text,
+                0.90,
+                [{"text": combined_text, "confidence": 0.90}],
             )
-            if settings.ocr_engine == "paddleocr":
-                import asyncio
-                from functools import partial
+        except Exception as e:
+            logger.warning(
+                f"Failed to convert scanned PDF to images: {e}. Falling back to raw file."
+            )
+            return await run_glm_ocr(file_path, settings)
 
-                loop = asyncio.get_running_loop()
-                return await loop.run_in_executor(
-                    None, partial(run_paddle_ocr, file_path)
-                )
-            elif settings.ocr_engine == "glm-ocr":
-                from pdf2image import convert_from_path
-                import io
-
-                # Convert all pages of scanned PDF to images for vision model
-                try:
-                    images = convert_from_path(file_path, dpi=300)
-
-                    async def _process_pdf_pages():
-                        texts = []
-                        for i, img in enumerate(images):
-                            img = _optimize_image(img)
-                            buf = io.BytesIO()
-                            img.save(buf, format="WEBP", quality=90)
-                            logger.info(
-                                f"Processing PDF page {i + 1}/{len(images)}",
-                                path=file_path,
-                            )
-                            page_text, _, _ = await run_glm_ocr(
-                                None, settings, image_data=buf.getvalue()
-                            )
-                            texts.append(page_text)
-                        return texts
-
-                    # Aggregate timeout for multi-page PDF (10% of user suggestion)
-                    # min(pages * 6, 30) ensures we don't hold the semaphore too long
-                    timeout = min(len(images) * 6, 30)
-                    texts = await asyncio.wait_for(
-                        _process_pdf_pages(), timeout=timeout
-                    )
-
-                    combined_text = "\n---PAGE BREAK---\n".join(texts)
-                    return (
-                        combined_text,
-                        0.90,
-                        [{"text": combined_text, "confidence": 0.90}],
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to convert scanned PDF to images: {e}. Falling back to raw file."
-                    )
-                    return await run_glm_ocr(file_path, settings)
-            else:
-                return await run_glm_ocr(file_path, settings)
-
-    if settings.ocr_engine == "paddleocr":
-        # PaddleOCR is sync, wrap in thread to not block loop
-        import asyncio
-        from functools import partial
-
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, partial(run_paddle_ocr, file_path))
-    elif settings.ocr_engine == "glm-ocr":
-        return await run_glm_ocr(file_path, settings)
-    else:
-        raise ValueError(f"Unsupported OCR engine: {settings.ocr_engine}")
+    return await run_glm_ocr(file_path, settings)

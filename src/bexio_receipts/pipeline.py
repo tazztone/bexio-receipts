@@ -96,7 +96,7 @@ async def process_receipt(
         return {"status": "duplicate", "expense_id": existing_id}
 
     # 1. OCR / One-shot Extraction
-    logger.info("Running OCR/Extraction", engine=settings.ocr_engine, path=file_path)
+    logger.info("Running OCR/Extraction", path=file_path)
     try:
         raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
     except asyncio.TimeoutError:
@@ -104,20 +104,6 @@ async def process_receipt(
         logger.error(error_msg, path=file_path)
         return await send_to_review(
             file_path, "", [error_msg], settings, failed_stage="ocr"
-        )
-
-    # Only enforce confidence for PaddleOCR; GLM-OCR is a VLM and uses validation instead
-    if (
-        settings.ocr_engine == "paddleocr"
-        and avg_confidence < settings.ocr_confidence_threshold
-    ):
-        return await send_to_review(
-            file_path,
-            raw_text,
-            [f"Low OCR confidence: {avg_confidence:.1%}"],
-            settings,
-            ocr_confidence=avg_confidence,
-            failed_stage="ocr",
         )
 
     # 2. Extract structured data

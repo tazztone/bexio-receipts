@@ -62,7 +62,7 @@
                             </tr>
                             <tr>
                                 <td>
-                                    <div style="font-weight: 600;">OCR Engine ({{ settings.ocr_engine }})</div>
+                                    <div style="font-weight: 600;">OCR Engine</div>
                                     <small style="opacity: 0.7;">Visual text extraction</small>
                                 </td>
                                 <td id="check-ocr"><div class="status-badge status-checking">Pending</div></td>
@@ -88,7 +88,7 @@
                     </table>
                 </article>
 
-                {% if settings.llm_provider == "ollama" or settings.ocr_engine == "glm-ocr" %}
+                {% if settings.llm_provider == "ollama" %}
                 <article>
                     <header><strong>Model Maintenance</strong></header>
                     <p style="font-size: 0.9rem; color: var(--color-text-muted);">Ensure local Ollama models are synced.</p>
@@ -101,7 +101,6 @@
                                 hx-confirm="Download {{ settings.llm_model }}?">
                             Sync LLM ({{ settings.llm_model }})
                         </button>
-                        {% if settings.ocr_engine == "glm-ocr" %}
                         <button class="outline secondary" style="font-size: 0.85rem;"
                                 hx-post="/setup/pull-model" 
                                 hx-vals='{"model": "{{ settings.glm_ocr_model }}", "csrf_token": "{{ csrf_token }}"}'
@@ -109,7 +108,6 @@
                                 hx-confirm="Download {{ settings.glm_ocr_model }}?">
                             Sync OCR ({{ settings.glm_ocr_model }})
                         </button>
-                        {% endif %}
                     </div>
                 </article>
                 {% endif %}
@@ -123,7 +121,7 @@
                         <div>TOKEN: {{ settings.bexio_api_token[:4] }}...{{ settings.bexio_api_token[-4:] if settings.bexio_api_token|length > 8 else '***' }}</div>
                         <div>PUSH: {{ 'ENABLED' if settings.bexio_push_enabled else 'DISABLED' }}</div>
                         <div style="color: var(--primary); margin: 0.5rem 0;"># Engine</div>
-                        <div>OCR: {{ settings.ocr_engine }}</div>
+                        <div>OCR: GLM-OCR</div>
                         <div>LLM: {{ settings.llm_provider }} ({{ settings.llm_model }})</div>
                     </div>
                     <footer style="margin-top: 1.5rem;">
@@ -145,7 +143,7 @@
         <pre id="config-full" style="display: none;">
 BEXIO_API_TOKEN={{ settings.bexio_api_token }}
 BEXIO_BASE_URL={{ settings.bexio_base_url }}
-OCR_ENGINE={{ settings.ocr_engine }}
+OCR_ENGINE=glm-ocr
 LLM_PROVIDER={{ settings.llm_provider }}
 LLM_MODEL={{ settings.llm_model }}
 BEXIO_PUSH_ENABLED={{ 'true' if settings.bexio_push_enabled else 'false' }}

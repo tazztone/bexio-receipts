@@ -15,8 +15,6 @@ class Settings(BaseSettings):
     bexio_base_url: str = "https://api.bexio.com"
 
     # OCR Settings
-    ocr_engine: str = "glm-ocr"  # or "paddleocr"
-    ocr_confidence_threshold: float = 0.85  # Note: Only enforced for paddleocr
     glm_ocr_model: str = "glm-ocr"
     glm_ocr_url: str = "http://localhost:11434"  # Ollama default
 

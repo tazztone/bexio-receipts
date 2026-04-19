@@ -47,9 +47,8 @@ graph TD
 
 ### 2. Text Extraction Layer (`ocr.py`)
 - **PDF Extraction**: Native text extraction via `pdfplumber`. Provides 100% fidelity for digital PDFs and entirely skips the vision models.
-- **PaddleOCR**: Local engine, fast and robust for standard Latin text from images/scans.
-- **GLM-OCR**: Specialized multimodal model (via Ollama) built on the GLM-V architecture. It is triggered using the canonical `"Text Recognition:"` prompt to activate its internal layout analysis pipeline (**PP-DocLayout-V3**).
-- **Two-Step Extraction**: The GLM path uses a decoupled workflow: (1) GLM-OCR transcribes the receipt into raw text/Markdown, (2) Qwen extracts structured JSON. This prevents the Vision model from hallucinating math to fit a JSON schema.
+- **GLM-OCR**: Specialized multimodal model (via Ollama) built on the GLM-V architecture. It is the sole OCR engine, triggered using the canonical `"Text Recognition:"` prompt to activate its internal layout analysis pipeline (**PP-DocLayout-V3**).
+- **Two-Step Extraction**: The OCR path uses a decoupled workflow: (1) GLM-OCR transcribes the receipt into raw text/Markdown, (2) Qwen extracts structured JSON. This prevents the Vision model from hallucinating math to fit a JSON schema.
 - **Image Optimization**: All images are capped at **2560px** (LANCZOS) and converted to **WebP (q90)** before being sent to the vision model. WebP preserves text sharpness better than JPEG while keeping payloads small.
 - **PDF Scans**: Scanned PDFs are converted to images at **300 DPI** to ensure fine-text legibility for complex VAT summaries.
 

@@ -9,12 +9,6 @@
 - Verify `OLLAMA_URL` in your `.env`.
 - If running in Docker, use `host.docker.internal` or the actual IP of the host machine.
 
-### 2. `PaddleOCR: libpoppler-cpp-dev not found`
-**Symptoms**: Import errors or "Command not found" when processing PDFs.
-**Fix**: 
-- **Linux**: `sudo apt-get install libpoppler-cpp-dev`
-- **macOS**: `brew install poppler`
-
 ### 3. `bexio 401 Unauthorized`
 **Symptoms**: Receipt extraction works, but pushing to bexio fails with 401.
 **Fix**: 
@@ -32,7 +26,7 @@
 **Fix**: 
 - **Check Column Alignment**: If using `glm-ocr`, ensure the "Two-Step Extraction" (ADR-005) is active. This uses Markdown tables to preserve column structure, which is the most common cause of math errors.
 - **Swiss Rounding**: If the difference is only 0.01–0.04 CHF, it is likely a 5-rappen rounding artifact. Correct the value in the dashboard and push.
-- **Resolution**: If text is blurry, ensure `OCR_ENGINE=glm-ocr` and that the image resolution is high enough (the app automatically caps at 2560px, which is optimal).
+- **Resolution**: If text is blurry, ensure the image resolution is high enough (the app automatically caps at 2560px, which is optimal).
 
 ### 6. `Malformed JSON / Extraction Failed`
 **Symptoms**: Logs show `JSONDecodeError` or "LLM failed to return structured data".
@@ -58,10 +52,6 @@ If the pipeline hangs or times out during OCR:
 - If the merchant is new, bexio-receipts will attempt to create a contact.
 - If it fails, manually create the contact in bexio and then update the mapping in the dashboard.
 
-### 8. `Handwritten or Non-Latin Receipts`
-**Symptoms**: `paddleocr` (default) fails to recognize text.
-**Fix**: 
-- Switch to `OCR_ENGINE=glm-ocr` in your `.env`. GLM-OCR is a multimodal model that performs significantly better on handwritten and complex documents.
 
 ## Ingestion Specific Issues
 

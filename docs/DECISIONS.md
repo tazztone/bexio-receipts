@@ -24,10 +24,20 @@ When adding a new ADR, use the following format:
   - **Resilience**: Orchestrates retries and system prompts more cleanly.
 
 ## [ADR-002] Multi-Engine OCR (Paddle vs GLM)
-- **Status**: Decided
-- **Context**: PaddleOCR is fast but sometimes struggles with complex Swiss receipt layouts.
-- **Decision**: Support both PaddleOCR (local sync) and GLM-OCR (Ollama async).
-- **Rationale**: Allows users to trade-off performance vs. accuracy based on their hardware.
+- **Status**: Superseded (April 2026)
+- **Context**: Supported both PaddleOCR (local sync) and GLM-OCR (Ollama async).
+- **Decision**: Initially supported both, but consolidated to GLM-OCR only in ADR-009.
+
+---
+
+## [ADR-009] Consolidate on GLM-OCR Only
+- **Status**: Decided (April 2026)
+- **Context**: Maintaining PaddleOCR added ~1GB of dependencies and complex threading logic. GLM-OCR proved significantly more accurate for complex Swiss layouts.
+- **Decision**: Remove PaddleOCR and make GLM-OCR the sole OCR engine.
+- **Rationale**: 
+  - **Simplicity**: Dramatically reduces codebase complexity and dependency footprint.
+  - **Stability**: Eliminates thread-safety issues with Paddle's C++ extensions.
+  - **Quality**: GLM-OCR's multimodal approach handles handwritten and low-contrast receipts better.
 
 ## [ADR-003] Use bexio v4 Expenses Payload
 - **Status**: Corrected

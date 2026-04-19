@@ -75,8 +75,6 @@ def test_setup_checks(test_settings):
         response = client.get("/setup/check/bexio", auth=("admin", "test_password"))
         assert "OK (Test Co)" in response.text
 
-    # OCR Check (GLM)
-    test_settings.ocr_engine = "glm-ocr"
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"models": [{"name": "glm-ocr"}]}
     mock_resp.raise_for_status = MagicMock()
