@@ -23,9 +23,9 @@ def test_cli_process_dry_run(tmp_path, test_settings):
             ) as mock_extract:
                 from bexio_receipts.models import Receipt
 
-                mock_extract.return_value = Receipt(
+                mock_extract.return_value = (Receipt(
                     merchant_name="Test", total_incl_vat=10.0
-                )
+                ), "raw")
 
                 result = runner.invoke(app, ["process", str(img_file), "--dry-run"])
                 assert result.exit_code == 0
@@ -155,9 +155,9 @@ def test_cli_init_quickstart(tmp_path, test_settings):
                 ) as mock_ext:
                     from bexio_receipts.models import Receipt
 
-                    mock_ext.return_value = Receipt(
+                    mock_ext.return_value = (Receipt(
                         merchant_name="Test", total_incl_vat=10.0
-                    )
+                    ), "raw")
 
                     with patch(
                         "bexio_receipts.cli.Settings", return_value=test_settings

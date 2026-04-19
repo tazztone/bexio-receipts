@@ -52,8 +52,8 @@ The `--quickstart` flag will:
 - **Intelligent Parsing & OCR:**
   - **PDF Extraction:** Uses native text extraction (`pdfplumber`) for 100% accuracy on digital PDFs.
   - **GLM-OCR:** A specialized multimodal LLM for high-accuracy text/table recognition on scanned images.
-- **Intelligent Extraction:** Uses **Pydantic AI** with local LLMs (e.g., Qwen 3.5) to parse text into structured data.
-- **Swiss Business Rules:** Built-in validation for Swiss VAT rates (8.1%, 2.6%, 3.8%), 5-rappen rounding, and native support for multi-rate `vat_breakdown` arrays.
+- **Intelligent Extraction:** Uses **Pydantic AI** with local LLMs (e.g., Qwen 3.5) to parse text into structured data. LLM handles reading without requiring mathematical deduction, allowing smaller models to excel.
+- **Swiss Business Rules:** Built-in programmatic validation for Swiss VAT rates (8.1%, 2.6%, 3.8%), 5-rappen rounding, and native support for computing multi-rate `vat_breakdown` arrays.
 - **bexio Integration:** Automatic file upload and expense creation via the bexio API.
 - **Offline Development Mode:** Fully test the UI and LLM pipeline locally without a valid Bexio Personal Access Token.
 - **Review Dashboard:** A premium web-based interface (FastAPI + HTMX) to manually correct and approve receipts that fail validation.

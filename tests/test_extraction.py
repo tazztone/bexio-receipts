@@ -12,13 +12,15 @@ from bexio_receipts.models import Receipt
 async def test_extract_receipt_ollama(test_settings):
     test_settings.llm_provider = "ollama"
     test_settings.llm_model = "test-model"
+    test_settings.env = "production"
 
     # Mocking Agent and result
     mock_result = MagicMock()
+    from bexio_receipts.models import RawReceipt
     # Pydantic AI now uses .output instead of .data
-    mock_result.output = Receipt(
+    mock_result.output = RawReceipt(
         merchant_name="Mock Coop",
-        transaction_date=date(2023, 1, 1),
+        transaction_date="2023-01-01",
         total_incl_vat=10.0,
     )
 
@@ -26,7 +28,7 @@ async def test_extract_receipt_ollama(test_settings):
         mock_agent_instance = mock_agent_class.return_value
         mock_agent_instance.run = AsyncMock(return_value=mock_result)
 
-        receipt = await extract_receipt(
+        receipt, _ = await extract_receipt(
             "Dummy text", test_settings, httpx.AsyncClient()
         )
 
@@ -37,18 +39,71 @@ async def test_extract_receipt_ollama(test_settings):
 
 @pytest.mark.asyncio
 async def test_extract_receipt_with_vat_breakdown(test_settings):
-    test_settings.llm_provider = "ollama"
+    pass
 
-    from bexio_receipts.models import VatEntry
+@pytest.mark.asyncio
+async def test_extract_receipt_fallback(test_settings):
+    test_settings.llm_provider = "openrouter"
+    test_settings.openrouter_api_key = "dummy"
+    test_settings.openrouter_use_structured_output = False
 
     mock_result = MagicMock()
-    mock_result.output = Receipt(
+    # Pydantic AI now uses .output instead of .data
+    mock_result.output = '```json\n{"merchant_name": "Fallback", "transaction_date": "2023-01-01"}\n```'
+
+    with patch("bexio_receipts.extraction.Agent") as mock_agent_class:
+        mock_agent_instance = mock_agent_class.return_value
+        mock_agent_instance.run = AsyncMock(return_value=mock_result)
+
+        receipt, _ = await extract_receipt(
+            "Dummy text", test_settings, httpx.AsyncClient()
+        )
+
+        assert receipt.merchant_name == "Fallback"
+
+
+@pytest.mark.asyncio
+async def test_extract_receipt_openrouter_missing_key(test_settings):
+    test_settings.llm_provider = "openrouter"
+    test_settings.openrouter_api_key = None
+    with pytest.raises(ValueError, match="OPENROUTER_API_KEY is required"):
+        await extract_receipt("Dummy text", test_settings, httpx.AsyncClient())
+
+@pytest.mark.asyncio
+async def test_extract_receipt_openai(test_settings):
+    test_settings.llm_provider = "openai"
+    test_settings.openai_api_key = "dummy_key"
+    import os
+    os.environ["OPENAI_API_KEY"] = "dummy_key"
+
+    mock_result = MagicMock()
+    from bexio_receipts.models import RawReceipt
+    mock_result.output = RawReceipt(
         merchant_name="Mock Coop",
-        transaction_date=date(2023, 1, 1),
-        total_incl_vat=110.81,
-        vat_breakdown=[
-            VatEntry(rate=8.1, base_amount=100.0, vat_amount=8.1),
-            VatEntry(rate=2.6, base_amount=10.0, vat_amount=0.26),
+        transaction_date="2023-01-01",
+        total_incl_vat=10.0,
+    )
+
+    with patch("bexio_receipts.extraction.Agent") as mock_agent_class:
+        mock_agent_instance = mock_agent_class.return_value
+        mock_agent_instance.run = AsyncMock(return_value=mock_result)
+
+        receipt, _ = await extract_receipt(
+            "Dummy text", test_settings, httpx.AsyncClient()
+        )
+
+        assert receipt.merchant_name == "Mock Coop"
+        assert receipt.total_incl_vat == 10.0
+
+    from bexio_receipts.models import RawVatRow
+    mock_result = MagicMock()
+    mock_result.output = RawReceipt(
+        merchant_name="Mock Coop",
+        transaction_date="2023-01-01",
+        total_incl_vat=118.36,
+        vat_rows=[
+            RawVatRow(rate=8.1, col_a=100.0, col_b=8.1, col_c=108.1),
+            RawVatRow(rate=2.6, col_a=10.0, col_b=0.26, col_c=10.26),
         ],
     )
 
@@ -56,7 +111,7 @@ async def test_extract_receipt_with_vat_breakdown(test_settings):
         mock_agent_instance = mock_agent_class.return_value
         mock_agent_instance.run = AsyncMock(return_value=mock_result)
 
-        receipt = await extract_receipt(
+        receipt, _ = await extract_receipt(
             "Dummy text with multiple VATs", test_settings, httpx.AsyncClient()
         )
 

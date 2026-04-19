@@ -421,7 +421,7 @@ async def bulk_action(
                     if not booking_account_id:
                         booking_account_id = settings.default_booking_account_id
 
-                    if receipt.merchant_name:
+                    if decide_bexio_action(receipt) == "purchase_bill":
                         await bexio.create_purchase_bill(
                             receipt, file_uuid, booking_account_id=booking_account_id
                         )

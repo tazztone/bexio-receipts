@@ -244,7 +244,7 @@ def init(
 
                 with console.status("[bold blue]Extracting demo data..."):
                     async with httpx.AsyncClient() as client:
-                        receipt = await extract_receipt(raw_text, settings, client)
+                        receipt, _ = await extract_receipt(raw_text, settings, client)
                 console.print(
                     f"  - Detected Merchant: [bold]{receipt.merchant_name}[/bold]"
                 )
@@ -293,7 +293,7 @@ def process(
 
             with console.status("[bold blue]Extracting data via LLM..."):
                 async with httpx.AsyncClient() as client:
-                    receipt = await extract_receipt(raw_text, settings, client)
+                    receipt, _ = await extract_receipt(raw_text, settings, client)
 
             table = Table(title="Extracted Data (Dry Run)", show_header=True)
             table.add_column("Field", style="cyan")
@@ -386,7 +386,7 @@ def reprocess(
 
             with console.status("[bold blue]Extracting data via LLM..."):
                 async with httpx.AsyncClient() as client:
-                    receipt = await extract_receipt(raw_text, settings, client)
+                    receipt, _ = await extract_receipt(raw_text, settings, client)
 
             table = Table(title="Extracted Data (Dry Run)", show_header=True)
             table.add_column("Field", style="cyan")

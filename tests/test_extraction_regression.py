@@ -35,9 +35,9 @@ async def test_prodega_extraction_logic(test_settings, prodega_ocr_text, respx_m
                             "content": (
                                 '{"merchant_name": "Prodega", "transaction_date": "2026-01-31", '
                                 '"currency": "CHF", "total_incl_vat": 214.20, "subtotal_excl_vat": 207.15, '
-                                '"vat_amount": 7.06, "vat_breakdown": ['
-                                '{"rate": 2.6, "base_amount": 176.70, "vat_amount": 4.59}, '
-                                '{"rate": 8.1, "base_amount": 30.45, "vat_amount": 2.47}], '
+                                    '"total_incl_vat": 214.20, "vat_rows": ['
+                                        '{"rate": 2.6, "col_a": 4.59, "col_b": 176.70, "col_c": 181.29}, '
+                                        '{"rate": 8.1, "col_a": 2.47, "col_b": 30.45, "col_c": 32.92}], '
                                 '"payment_method": "cash"}'
                             ),
                         },
@@ -54,7 +54,7 @@ async def test_prodega_extraction_logic(test_settings, prodega_ocr_text, respx_m
     )
 
     async with httpx.AsyncClient() as client:
-        receipt = await extract_receipt(prodega_ocr_text, test_settings, client)
+        receipt, _ = await extract_receipt(prodega_ocr_text, test_settings, client)
 
     # Assertions using pytest.approx for floating point safety
     assert receipt.merchant_name == "Prodega"

@@ -124,6 +124,12 @@ async def process_receipt(
             return await send_to_review(
                 file_path, "", [error_msg], settings, failed_stage="ocr"
             )
+        except Exception as e:
+            error_msg = f"OCR failed: {e!s}"
+            logger.error(error_msg, path=file_path)
+            return await send_to_review(
+                file_path, "", [error_msg], settings, failed_stage="ocr"
+            )
 
         # 2. Extract structured data
         logger.info("Extracting data via LLM", model=settings.llm_model)
@@ -215,7 +221,7 @@ async def process_receipt(
             )
 
         # Prefer Bill (v4) if we have a merchant name or multiple VAT rates.
-        if decide_bexio_action(receipt) == "purchase_bill":
+        if bexio_action == "purchase_bill":
             merchant = receipt.merchant_name or "Unknown Merchant"
             # Smart Account Mapping: lookup last used account for this merchant
             booking_account_id = (
