@@ -113,43 +113,19 @@ async def process_receipt(
         )
 
     # 2. Extract structured data
-    receipt = None
-    if settings.ocr_engine == "glm-ocr":
-        try:
-            # GLM-OCR was prompted to return JSON directly
-            # Remove potential markdown formatting blocks
-            json_text = raw_text.strip()
-            if json_text.startswith("```"):
-                # Extract content between ```json and ``` or just ``` and ```
-                import re
-
-                match = re.search(
-                    r"```(?:json)?\s*(\{.*?\})\s*```", json_text, re.DOTALL
-                )
-                if match:
-                    json_text = match.group(1)
-
-            receipt = Receipt.model_validate_json(json_text)
-            logger.info("One-shot GLM extraction successful")
-        except Exception as e:
-            logger.warning(
-                "One-shot GLM parsing failed, falling back to Qwen", error=str(e)
-            )
-
-    if not receipt:
-        logger.info("Extracting data via LLM", model=settings.llm_model)
-        try:
-            receipt = await extract_receipt(raw_text, settings)
-        except Exception as e:
-            logger.error("LLM extraction failed", error=str(e))
-            return await send_to_review(
-                file_path,
-                raw_text,
-                [f"LLM extraction failed: {str(e)}"],
-                settings,
-                ocr_confidence=avg_confidence,
-                failed_stage="extraction",
-            )
+    logger.info("Extracting data via LLM", model=settings.llm_model)
+    try:
+        receipt = await extract_receipt(raw_text, settings)
+    except Exception as e:
+        logger.error("LLM extraction failed", error=str(e))
+        return await send_to_review(
+            file_path,
+            raw_text,
+            [f"LLM extraction failed: {str(e)}"],
+            settings,
+            ocr_confidence=avg_confidence,
+            failed_stage="extraction",
+        )
 
     # 3. Validation
     logger.info("Validating extracted data")

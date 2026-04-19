@@ -109,9 +109,10 @@ async def run_glm_ocr(
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         prompt = (
-            "Analyze this receipt image. "
-            "List every piece of text and every number you see on the receipt, line by line. "
-            "Be especially careful to include the store name, date, total amount, and the MWST/VAT summary table with all its columns."
+            "Transcribe this receipt exactly as it appears.\n"
+            "For any table (line items, VAT summary), reproduce it as a GitHub-Flavored Markdown table with | column | separators.\n"
+            "For all other text, output it verbatim, line by line.\n"
+            "Do not summarise, infer, or add any commentary."
         )
         payload = {
             "model": settings.glm_ocr_model,
@@ -125,8 +126,8 @@ async def run_glm_ocr(
 
         raw_text = data["message"]["content"]
         # GLM-OCR via Ollama chat API doesn't easily provide confidence per word/line
-        # Using 0.90 as a default.
-        avg_confidence = 0.90
+        # Using 0.90 as a default, downgrade to 0.50 if output is suspiciously short
+        avg_confidence = 0.90 if len(raw_text) > 50 else 0.50
 
         # We don't have per-line detail here like PaddleOCR
         lines = [{"text": raw_text, "confidence": avg_confidence}]
