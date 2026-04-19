@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     secret_key: str
     database_path: str = "processed_receipts.db"
     review_dir: str = "./review_queue"
+    review_skip_auth: bool = False
     max_receipt_age_days: int = 365
 
     # IMAP Settings

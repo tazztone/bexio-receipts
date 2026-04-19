@@ -41,6 +41,7 @@ class BexioClient:
         base_url: str = "https://api.bexio.com",
         default_vat_rate: float = 8.1,
         default_payment_terms_days: int = 30,
+        push_enabled: bool = False,
     ):
         self.client = httpx.AsyncClient(
             base_url=base_url,
@@ -49,6 +50,7 @@ class BexioClient:
         )
         self.default_vat_rate = default_vat_rate
         self.default_payment_terms_days = default_payment_terms_days
+        self.push_enabled = push_enabled
         self._tax_cache: dict[float, int] = {}
         self._account_cache: dict[str, int] = {}
         self._user_id: int | None = None
@@ -151,6 +153,11 @@ class BexioClient:
     @BEXIO_RETRY
     async def upload_file(self, file_path: str, filename: str, mime_type: str) -> str:
         """Upload file, returns UUID string."""
+        if not self.push_enabled:
+            raise RuntimeError(
+                "Bexio write operations are disabled (push_enabled=False)"
+            )
+
         with open(file_path, "rb") as f:
             resp = await self.client.post(
                 "/3.0/files",
@@ -162,6 +169,13 @@ class BexioClient:
     @BEXIO_RETRY
     async def find_or_create_contact(self, name: str) -> int:
         """Search for a contact by name, create if not found."""
+        if not self.push_enabled:
+            # For read-only mode, we can search but not create.
+            # However, since this method is used in write paths, we guard it fully.
+            raise RuntimeError(
+                "Bexio write operations are disabled (push_enabled=False)"
+            )
+
         # Search
         search_payload = [{"field": "name_1", "value": name, "criteria": "="}]
         resp = await self.client.post("/2.0/contact/search", json=search_payload)
@@ -191,6 +205,11 @@ class BexioClient:
         bank_account_id: int,
     ) -> dict:
         """Create a simple expense (bexio v4)."""
+        if not self.push_enabled:
+            raise RuntimeError(
+                "Bexio write operations are disabled (push_enabled=False)"
+            )
+
         if receipt.vat_breakdown and len(receipt.vat_breakdown) > 1:
             logger.warning(
                 "Multiple VAT rates detected, but bexio Expenses only support one tax_id. "
@@ -227,6 +246,11 @@ class BexioClient:
         self, receipt: Receipt, file_uuid: str, booking_account_id: int
     ) -> dict:
         """Create a full purchase bill with line items (bexio v4)."""
+        if not self.push_enabled:
+            raise RuntimeError(
+                "Bexio write operations are disabled (push_enabled=False)"
+            )
+
         if receipt.total_incl_vat is None:
             raise ValueError("Total amount is required to create a bexio record")
 

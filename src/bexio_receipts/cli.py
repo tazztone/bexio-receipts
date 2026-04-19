@@ -310,6 +310,7 @@ def process(
             base_url=settings.bexio_base_url,
             default_vat_rate=settings.default_vat_rate,
             default_payment_terms_days=settings.default_payment_terms_days,
+            push_enabled=settings.bexio_push_enabled,
         ) as client:
             with console.status("[bold blue]Connecting to Bexio..."):
                 try:
@@ -319,13 +320,10 @@ def process(
                         f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]"
                     )
 
-            # CLI safeguard: If --push is NOT provided, we force push_enabled to False
-            # so that it always lands in the review queue.
-            if not push:
-                settings.bexio_push_enabled = False
-
             with console.status("[bold green]Processing receipt..."):
-                result = await process_receipt(str(file), settings, client, db)
+                result = await process_receipt(
+                    str(file), settings, client, db, push_confirmed=push
+                )
             console.print(
                 f"\n[bold]Final Result:[/bold]\n{json.dumps(result, indent=2, default=str)}"
             )
@@ -402,6 +400,7 @@ def reprocess(
             base_url=settings.bexio_base_url,
             default_vat_rate=settings.default_vat_rate,
             default_payment_terms_days=settings.default_payment_terms_days,
+            push_enabled=settings.bexio_push_enabled,
         ) as client:
             with console.status("[bold blue]Connecting to Bexio..."):
                 try:
@@ -411,13 +410,10 @@ def reprocess(
                         f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]"
                     )
 
-            # CLI safeguard: If --push is NOT provided, we force push_enabled to False
-            # so that it always lands in the review queue.
-            if not push:
-                settings.bexio_push_enabled = False
-
             with console.status("[bold green]Processing receipt..."):
-                result = await process_receipt(orig_file, settings, client, db)
+                result = await process_receipt(
+                    orig_file, settings, client, db, push_confirmed=push
+                )
             console.print(
                 f"\n[bold]Final Result:[/bold]\n{json.dumps(result, indent=2, default=str)}"
             )
@@ -436,6 +432,12 @@ def serve(
 
     settings = get_settings()
     setup_logging(settings.env)
+
+    if not settings.bexio_push_enabled:
+        console.print(
+            "[yellow]⚠ Push gate: BEXIO_PUSH_ENABLED=false — receipts will queue for manual review.[/yellow]"
+        )
+
     uvicorn.run(fastapi_app, host=host, port=port)
 
 
@@ -529,6 +531,12 @@ def watch_folder(path: Optional[Path] = typer.Option(None, help="Path to monitor
     """Monitor a folder for new receipts."""
     settings = get_settings()
     setup_logging(settings.env)
+
+    if not settings.bexio_push_enabled:
+        console.print(
+            "[yellow]⚠ Push gate: BEXIO_PUSH_ENABLED=false — receipts will queue for manual review.[/yellow]"
+        )
+
     from .watcher import watch_folder as _watch
 
     asyncio.run(_watch(str(path or settings.inbox_path), settings))
@@ -539,6 +547,12 @@ def watch_email():
     """Monitor an email inbox for new receipts."""
     settings = get_settings()
     setup_logging(settings.env)
+
+    if not settings.bexio_push_enabled:
+        console.print(
+            "[yellow]⚠ Push gate: BEXIO_PUSH_ENABLED=false — receipts will queue for manual review.[/yellow]"
+        )
+
     from .email_ingest import watch_email as _watch
 
     asyncio.run(_watch(settings))
@@ -549,6 +563,12 @@ def watch_telegram():
     """Monitor Telegram for new receipts."""
     settings = get_settings()
     setup_logging(settings.env)
+
+    if not settings.bexio_push_enabled:
+        console.print(
+            "[yellow]⚠ Push gate: BEXIO_PUSH_ENABLED=false — receipts will queue for manual review.[/yellow]"
+        )
+
     from .telegram_bot import run_bot
 
     async def _run_and_print():
@@ -582,6 +602,12 @@ def watch_gdrive(
     """Monitor Google Drive for new receipts."""
     settings = get_settings()
     setup_logging(settings.env)
+
+    if not settings.bexio_push_enabled:
+        console.print(
+            "[yellow]⚠ Push gate: BEXIO_PUSH_ENABLED=false — receipts will queue for manual review.[/yellow]"
+        )
+
     from .gdrive_ingest import watch_gdrive as _watch
 
     asyncio.run(_watch(settings, folder_id))

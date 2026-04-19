@@ -143,7 +143,7 @@ class ReceiptBot:
 
         try:
             result = await process_receipt(
-                str(file_path), self.settings, self.bexio, self.db
+                str(file_path), self.settings, self.bexio, self.db, push_confirmed=True
             )
 
             status = result.get("status")
@@ -181,6 +181,7 @@ async def run_bot(settings: Settings):
         token=settings.bexio_api_token,
         base_url=settings.bexio_base_url,
         default_vat_rate=settings.default_vat_rate,
+        push_enabled=settings.bexio_push_enabled,
     ) as bexio:
         await bexio.cache_lookups()
 

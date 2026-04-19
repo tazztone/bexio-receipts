@@ -87,7 +87,7 @@ class EmailIngestor:
         """Run the full pipeline on a file."""
         try:
             result = await process_receipt(
-                str(filepath), self.settings, self.bexio, self.db
+                str(filepath), self.settings, self.bexio, self.db, push_confirmed=True
             )
             logger.info(
                 "Email attachment processing finished",
@@ -121,6 +121,7 @@ async def watch_email(settings: Settings):
         token=settings.bexio_api_token,
         base_url=settings.bexio_base_url,
         default_vat_rate=settings.default_vat_rate,
+        push_enabled=settings.bexio_push_enabled,
     ) as bexio:
         await bexio.cache_lookups()
 

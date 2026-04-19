@@ -59,14 +59,24 @@ def get_db(settings: Settings = Depends(get_settings)):
         db.close()
 
 
-security = HTTPBasic()
+security = HTTPBasic(auto_error=False)
 
 
 def verify_credentials(
     request: Request,
-    credentials: HTTPBasicCredentials = Depends(security),
+    credentials: HTTPBasicCredentials | None = Depends(security),
     settings: Settings = Depends(get_settings),
 ):
+    if settings.review_skip_auth:
+        return "admin"
+
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
     valid_users = settings.review_users or {
         settings.review_username: settings.review_password
     }
@@ -587,12 +597,19 @@ async def push_to_bexio(
     mime_type, _ = mimetypes.guess_type(img_path)
     mime_type = mime_type or "application/octet-stream"
 
+    if not settings.bexio_push_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Bexio push gate is closed (BEXIO_PUSH_ENABLED=false). Please enable it in your .env first.",
+        )
+
     try:
         async with BexioClient(
             settings.bexio_api_token,
             settings.bexio_base_url,
             settings.default_vat_rate,
             settings.default_payment_terms_days,
+            push_enabled=settings.bexio_push_enabled,
         ) as bexio:
             await bexio.cache_lookups()
             file_uuid = await bexio.upload_file(img_path, filename, mime_type)

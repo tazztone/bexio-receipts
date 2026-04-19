@@ -64,7 +64,11 @@ async def send_to_review(
 
 
 async def process_receipt(
-    file_path: str, settings: Settings, bexio: BexioClient, db: DuplicateDetector
+    file_path: str,
+    settings: Settings,
+    bexio: BexioClient,
+    db: DuplicateDetector,
+    push_confirmed: bool = False,
 ) -> dict:
     """Full pipeline: OCR → Extract → Validate → Push."""
     file_path_obj = Path(file_path)
@@ -169,11 +173,16 @@ async def process_receipt(
     ):
         bexio_action = "purchase_bill"
 
-    if not settings.bexio_push_enabled:
+    if not settings.bexio_push_enabled or not push_confirmed:
+        msg = (
+            "Safety gate: BEXIO_PUSH_ENABLED=false."
+            if not settings.bexio_push_enabled
+            else "Push not confirmed via CLI/UI."
+        )
         return await send_to_review(
             file_path,
             raw_text,
-            ["Safety gate: BEXIO_PUSH_ENABLED=false. Approve via dashboard to push."],
+            [f"{msg} Approve via dashboard to push."],
             settings,
             receipt,
             ocr_confidence=avg_confidence,

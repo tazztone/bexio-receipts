@@ -206,7 +206,11 @@ class GoogleDriveIngestor:
 
                 try:
                     result = await process_receipt(
-                        str(file_path), self.settings, self.bexio, self.db
+                        str(file_path),
+                        self.settings,
+                        self.bexio,
+                        self.db,
+                        push_confirmed=True,
                     )
                     status = result.get("status")
                     logger.info(
@@ -249,6 +253,7 @@ async def watch_gdrive(settings: Settings, folder_id: str | None = None):
         token=settings.bexio_api_token,
         base_url=settings.bexio_base_url,
         default_vat_rate=settings.default_vat_rate,
+        push_enabled=settings.bexio_push_enabled,
     ) as bexio:
         await bexio.cache_lookups()
         ingestor = GoogleDriveIngestor(settings, bexio)

@@ -97,7 +97,7 @@ class ReceiptHandler(FileSystemEventHandler):
                 )
 
             result = await process_receipt(
-                str(file_path), self.settings, self.bexio, self.db
+                str(file_path), self.settings, self.bexio, self.db, push_confirmed=True
             )
             logger.info(
                 "Processing finished", path=str(file_path), status=result.get("status")
@@ -123,6 +123,7 @@ async def watch_folder(path: str, settings: Settings):
         base_url=settings.bexio_base_url,
         default_vat_rate=settings.default_vat_rate,
         default_payment_terms_days=settings.default_payment_terms_days,
+        push_enabled=settings.bexio_push_enabled,
     ) as bexio:
         try:
             await bexio.cache_lookups()
