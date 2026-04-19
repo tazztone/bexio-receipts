@@ -48,10 +48,10 @@ graph TD
 ### 2. Text Extraction Layer (`ocr.py`)
 - **PDF Extraction**: Native text extraction via `pdfplumber`. Provides 100% fidelity for digital PDFs and entirely skips the vision models.
 - **PaddleOCR**: Local engine, fast and robust for standard Latin text from images/scans.
-- **GLM-OCR**: Multimodal LLM (via Ollama) for more complex layouts. It is optimized for high-fidelity transcription rather than direct JSON output.
-- **Two-Step Extraction**: The GLM path uses a two-step process: (1) GLM-OCR transcribes the receipt into GitHub-Flavored Markdown tables, (2) Qwen extracts structured JSON from the Markdown. This dramatically improves VAT math accuracy.
-- **Resolution Capping**: To optimize inference time and payload size, all images are capped at a maximum long-edge of **2560px** (LANCZOS) before being sent to the vision model.
-- **PDF Scans**: Scanned PDFs are converted to images at **300 DPI** (increased from 200 DPI) to ensure fine-text legibility for VAT summaries.
+- **GLM-OCR**: Specialized multimodal model (via Ollama) built on the GLM-V architecture. It is triggered using the canonical `"Text Recognition:"` prompt to activate its internal layout analysis pipeline (**PP-DocLayout-V3**).
+- **Two-Step Extraction**: The GLM path uses a decoupled workflow: (1) GLM-OCR transcribes the receipt into raw text/Markdown, (2) Qwen extracts structured JSON. This prevents the Vision model from hallucinating math to fit a JSON schema.
+- **Image Optimization**: All images are capped at **2560px** (LANCZOS) and converted to **WebP (q90)** before being sent to the vision model. WebP preserves text sharpness better than JPEG while keeping payloads small.
+- **PDF Scans**: Scanned PDFs are converted to images at **300 DPI** to ensure fine-text legibility for complex VAT summaries.
 
 ### 3. Extraction Layer (`extraction.py`)
 - **Pydantic AI**: Orchestrates the LLM prompt. It enforces a strict schema using the `Receipt` model. The core system prompt is located within `src/bexio_receipts/extraction.py`.

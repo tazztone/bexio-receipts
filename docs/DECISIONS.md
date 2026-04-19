@@ -46,3 +46,15 @@ When adding a new ADR, use the following format:
 - **Context**: Large phone photos (12MP+) create bloated base64 payloads and high latency without adding significant OCR value.
 - **Decision**: Cap all incoming images to a maximum long-edge of 2560px.
 - **Rationale**: Optimal balance for GLM-OCR's 336px patch grid. Reduces bandwidth by ~60% and lowers inference latency while maintaining sub-millimeter text legibility.
+
+## [ADR-007] Image Format (WebP)
+- **Status**: Decided (May 2024)
+- **Context**: JPEG encoding creates "ringing" artifacts around text edges, which can confuse character recognition.
+- **Decision**: Standardize on **WebP (q90)** for all OCR payloads.
+- **Rationale**: Better text sharpness at smaller file sizes than JPEG q80.
+
+## [ADR-008] GLM-OCR Prompt Strategy
+- **Status**: Decided (May 2024)
+- **Context**: GLM-OCR is a specialized model with an internal layout analysis pipeline triggered by specific keywords.
+- **Decision**: Use the canonical `"Text Recognition:"` prompt. Avoid free-form instructions or complex formatting requests.
+- **Rationale**: Faster inference and more stable internal table detection (PP-DocLayout-V3).

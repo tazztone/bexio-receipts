@@ -227,3 +227,4 @@ review_queue/
 inbox/
 .gemini/
 scratch/
+tests/fixtures/prodega_ocr.txt

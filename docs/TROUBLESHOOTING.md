@@ -40,6 +40,18 @@
 - **Markdown Tables**: The pipeline now expects Markdown-formatted OCR text for GLM. If the vision model fails to provide this, extraction might fail.
 - **Model Choice**: Ensure you are using a vision-capable model (e.g., `glm-ocr`) for the OCR step and a strong parser (e.g., `qwen3.5:9b`) for extraction.
 
+### VAT Math Mismatch Errors
+If the review queue shows `VAT breakdown total (X) ≠ extracted VAT amount (Y)`:
+1. **Column Shift**: Check the `ocr_text` in the review file. If the numbers are under the wrong headers (e.g. VAT amount under "Base"), ensure `extraction.py` has the latest "shifted column" guidance.
+2. **Resolution**: If the text is blurry, ensure `OCR_MAX_LONG_EDGE` is at least 2560px.
+3. **Contrast**: Very faint thermal receipts may require increasing the contrast enhancement in `ocr.py` (currently 1.3x).
+
+### GLM-OCR Latency (Timeout)
+If the pipeline hangs or times out during OCR:
+1. **Payload Size**: Large images are resized to 2560px. If still too slow, ensure your Ollama instance is running on a GPU.
+2. **WebP Encoding**: The system uses WebP for speed and sharpness. If your environment lacks `libwebp`, it may fall back to slow JPEG encoding.
+3. **Prompt Interference**: Do not add natural language instructions to the GLM prompt. Only use the canonical `"Text Recognition:"` trigger to ensure the model uses its optimized internal pipeline.
+
 ### 7. `Merchant Match Failure`
 **Symptoms**: Extracted merchant name is correct, but it doesn't match an existing contact in bexio.
 **Fix**: 
