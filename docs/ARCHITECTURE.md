@@ -20,7 +20,7 @@ graph TD
         DB_Hash -- New --> PDF_Check[PDF Extraction]
         PDF_Check -- Scanned/Image --> OCR[OCR Engine]
         PDF_Check -- Digital --> LLM[LLM Extraction]
-        OCR --> LLM
+        OCR -- Markdown Tables --> LLM
         LLM --> VAL[Validation]
     end
 
@@ -48,8 +48,10 @@ graph TD
 ### 2. Text Extraction Layer (`ocr.py`)
 - **PDF Extraction**: Native text extraction via `pdfplumber`. Provides 100% fidelity for digital PDFs and entirely skips the vision models.
 - **PaddleOCR**: Local engine, fast and robust for standard Latin text from images/scans.
-- **GLM-OCR**: Multimodal LLM (via Ollama) for more complex layouts or handwritten notes on images.
-- **Resilience**: The GLM-OCR path is designed to be tolerant of markdown-wrapped JSON output. The pipeline automatically strips markdown code fences (e.g., ` ```json `) before parsing the extracted data.
+- **GLM-OCR**: Multimodal LLM (via Ollama) for more complex layouts. It is optimized for high-fidelity transcription rather than direct JSON output.
+- **Two-Step Extraction**: The GLM path uses a two-step process: (1) GLM-OCR transcribes the receipt into GitHub-Flavored Markdown tables, (2) Qwen extracts structured JSON from the Markdown. This dramatically improves VAT math accuracy.
+- **Resolution Capping**: To optimize inference time and payload size, all images are capped at a maximum long-edge of **2560px** (LANCZOS) before being sent to the vision model.
+- **PDF Scans**: Scanned PDFs are converted to images at **300 DPI** (increased from 200 DPI) to ensure fine-text legibility for VAT summaries.
 
 ### 3. Extraction Layer (`extraction.py`)
 - **Pydantic AI**: Orchestrates the LLM prompt. It enforces a strict schema using the `Receipt` model. The core system prompt is located within `src/bexio_receipts/extraction.py`.

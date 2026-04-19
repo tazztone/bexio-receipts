@@ -10,12 +10,28 @@ from functools import lru_cache
 from paddleocr import PaddleOCR
 from .config import Settings
 
+import io
 import structlog
+from PIL import Image, ImageEnhance
 
 # Disable paddleocr logging to keep CLI clean
 logging.getLogger("ppocr").setLevel(logging.ERROR)
 
 logger = structlog.get_logger(__name__)
+
+
+def _optimize_image(img: Image.Image, max_long_edge: int = 1600) -> Image.Image:
+    """Optimize image for speed: cap resolution and boost contrast."""
+    # Resize if needed
+    w, h = img.size
+    long_edge = max(w, h)
+    if long_edge > max_long_edge:
+        scale = max_long_edge / long_edge
+        img = img.resize((int(w * scale), int(h * scale)), Image.BILINEAR)
+
+    # Boost contrast for thermal receipts
+    img = ImageEnhance.Contrast(img).enhance(1.8)
+    return img
 
 
 @lru_cache(maxsize=1)
@@ -102,18 +118,16 @@ async def run_glm_ocr(
     if image_data:
         img_base64 = base64.b64encode(image_data).decode("utf-8")
     elif file_path:
-        with open(file_path, "rb") as f:
-            img_base64 = base64.b64encode(f.read()).decode("utf-8")
+        with Image.open(file_path) as img:
+            img = _optimize_image(img)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=80)  # Lower quality for speed
+            img_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
     else:
         raise ValueError("Either file_path or image_data must be provided")
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        prompt = (
-            "Transcribe this receipt exactly as it appears.\n"
-            "For any table (line items, VAT summary), reproduce it as a GitHub-Flavored Markdown table with | column | separators.\n"
-            "For all other text, output it verbatim, line by line.\n"
-            "Do not summarise, infer, or add any commentary."
-        )
+        prompt = "List all text and numbers on this receipt. Be precise with dates and totals."
         payload = {
             "model": settings.glm_ocr_model,
             "messages": [{"role": "user", "content": prompt, "images": [img_base64]}],
@@ -166,11 +180,14 @@ async def async_run_ocr(
 
                 # Convert all pages of scanned PDF to images for vision model
                 try:
-                    images = convert_from_path(file_path, dpi=200)
+                    images = convert_from_path(
+                        file_path, dpi=200
+                    )  # Back to 200 DPI for speed
                     texts = []
                     for i, img in enumerate(images):
+                        img = _optimize_image(img)
                         buf = io.BytesIO()
-                        img.save(buf, format="JPEG", quality=90)
+                        img.save(buf, format="JPEG", quality=80)
                         logger.info(
                             f"Processing PDF page {i + 1}/{len(images)}", path=file_path
                         )

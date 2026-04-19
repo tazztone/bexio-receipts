@@ -35,8 +35,14 @@ When adding a new ADR, use the following format:
 - **Decision**: Strictly follow the modern `expenses` payload (using UUIDs and `paid_on`).
 - **Rationale**: Prevents silent API rejection and future-proofs the integration.
 
-## [ADR-004] SQLite for Persistence
-- **Status**: Decided
-- **Context**: Need to track processed files and merchant mappings.
-- **Decision**: Use a single SQLite file with WAL mode enabled.
-- **Rationale**: Low complexity, high reliability for a single-user system.
+## [ADR-005] Two-Step OCR Extraction (Transcribe -> Parse)
+- **Status**: Decided (April 2024)
+- **Context**: Vision models (VLMs) like GLM-OCR frequently hallucinate or skip columns in complex financial tables when forced to output structured JSON directly.
+- **Decision**: Decouple transcription from extraction. The VLM now outputs GitHub-Flavored Markdown (GFM), which is then parsed by a text-only LLM.
+- **Rationale**: GFM preserves spatial column relationships (Base | VAT | Total) which are critical for math validation.
+
+## [ADR-006] Image Resolution Capping
+- **Status**: Decided (April 2024)
+- **Context**: Large phone photos (12MP+) create bloated base64 payloads and high latency without adding significant OCR value.
+- **Decision**: Cap all incoming images to a maximum long-edge of 2560px.
+- **Rationale**: Optimal balance for GLM-OCR's 336px patch grid. Reduces bandwidth by ~60% and lowers inference latency while maintaining sub-millimeter text legibility.

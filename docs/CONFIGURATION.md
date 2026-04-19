@@ -39,6 +39,8 @@ The system supports two OCR engines and multiple LLM providers.
 | `GLM_OCR_MODEL` | Model name for GLM-OCR in Ollama | `glm-ocr` |
 | `OCR_CONFIDENCE_THRESHOLD` | Confidence below which receipts are flagged | `0.85` |
 
+> 💡 **Design Note**: When using `glm-ocr`, the system automatically uses a **Two-Step Extraction** process. The vision model transcribes the receipt into Markdown tables, and the LLM then parses the structured JSON from that Markdown. This is highly effective for complex VAT layouts.
+
 ### LLM Providers (`LLM_PROVIDER`)
 - **`ollama`** (Default): For local, privacy-first extraction. Requires an Ollama instance.
 - **`openai`**: For high-performance cloud extraction. Requires `OPENAI_API_KEY`.

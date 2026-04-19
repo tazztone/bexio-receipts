@@ -27,16 +27,18 @@
 - If `ENV=production`, the validator ensures you have changed the default password.
 - **Note**: The validator specifically checks for the literal string `password`. You should always set a strong, unique password regardless of whether the validator catches it.
 
-### 5. `Total/Subtotal Mismatch`
-**Symptoms**: Receipt appears in the Review Dashboard with a "Total mismatch" error.
-**Fix**: This is often due to the LLM misidentifying columns or Swiss VAT rounding (5-rappen). Correct the values in the dashboard and hit "Apply & Push".
+### 5. `Total/Subtotal Mismatch` or `VAT Breakdown Sum Mismatch`
+**Symptoms**: Receipt appears in the Review Dashboard with a math validation error.
+**Fix**: 
+- **Check Column Alignment**: If using `glm-ocr`, ensure the "Two-Step Extraction" (ADR-005) is active. This uses Markdown tables to preserve column structure, which is the most common cause of math errors.
+- **Swiss Rounding**: If the difference is only 0.01–0.04 CHF, it is likely a 5-rappen rounding artifact. Correct the value in the dashboard and push.
+- **Resolution**: If text is blurry, ensure `OCR_ENGINE=glm-ocr` and that the image resolution is high enough (the app automatically caps at 2560px, which is optimal).
 
 ### 6. `Malformed JSON / Extraction Failed`
 **Symptoms**: Logs show `JSONDecodeError` or "LLM failed to return structured data".
 **Fix**: 
-- The LLM might be "hallucinating" or struggling with complex receipt layouts.
-- Try switching to a more capable model (e.g., `qwen3.5:9b` or `openai`).
-- Ensure the receipt image is clear and the OCR text is legible.
+- **Markdown Tables**: The pipeline now expects Markdown-formatted OCR text for GLM. If the vision model fails to provide this, extraction might fail.
+- **Model Choice**: Ensure you are using a vision-capable model (e.g., `glm-ocr`) for the OCR step and a strong parser (e.g., `qwen3.5:9b`) for extraction.
 
 ### 7. `Merchant Match Failure`
 **Symptoms**: Extracted merchant name is correct, but it doesn't match an existing contact in bexio.
