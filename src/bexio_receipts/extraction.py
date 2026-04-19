@@ -2,6 +2,7 @@
 LLM-powered structured extraction using Pydantic AI.
 Transforms raw OCR text into validated receipt data models.
 """
+
 import httpx
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel

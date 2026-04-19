@@ -13,7 +13,7 @@ async def test_bexio_cache_lookups():
     respx.get("https://api.bexio.com/2.0/company_profile").mock(
         return_value=httpx.Response(200, json={"owner_id": 2})
     )
-    respx.get("https://api.bexio.com/3.0/profile/me").mock(
+    respx.get("https://api.bexio.com/3.0/users/me").mock(
         return_value=httpx.Response(200, json={"id": 1, "name": "Test User"})
     )
     respx.get("https://api.bexio.com/3.0/taxes").mock(

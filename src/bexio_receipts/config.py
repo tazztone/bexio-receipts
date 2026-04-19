@@ -2,6 +2,7 @@
 Configuration management using Pydantic Settings.
 Loads and validates environment variables and configuration files.
 """
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -71,11 +72,17 @@ class Settings(BaseSettings):
 
         if not self.offline_mode:
             if self.bexio_api_token == "offline":
-                raise ValueError("bexio_api_token is required when offline_mode is False")
+                raise ValueError(
+                    "bexio_api_token is required when offline_mode is False"
+                )
             if self.default_booking_account_id == 0:
-                raise ValueError("default_booking_account_id is required when offline_mode is False")
+                raise ValueError(
+                    "default_booking_account_id is required when offline_mode is False"
+                )
             if self.default_bank_account_id == 0:
-                raise ValueError("default_bank_account_id is required when offline_mode is False")
+                raise ValueError(
+                    "default_bank_account_id is required when offline_mode is False"
+                )
 
         # Hash passwords if they are not already hashed
         import bcrypt

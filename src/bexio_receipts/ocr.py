@@ -2,6 +2,7 @@
 Unified OCR layer supporting multiple engines (PaddleOCR, GLM-4-V).
 Responsible for extracting raw text from images and PDFs.
 """
+
 import base64
 import httpx
 import logging
@@ -74,20 +75,21 @@ def extract_pdf_text(file_path: str) -> str | None:
     """
     try:
         import pdfplumber
+
         text_parts = []
         with pdfplumber.open(file_path) as pdf:
             for page in pdf.pages:
                 page_text = page.extract_text()
                 if page_text:
                     text_parts.append(page_text)
-        
+
         full_text = "\n".join(text_parts).strip()
         # If less than 20 chars, it's likely just an image or garbled
         if len(full_text) > 20:
             return full_text
     except Exception as e:
         logger.warning("PDF text extraction failed", error=str(e), path=file_path)
-    
+
     return None
 
 
@@ -143,20 +145,29 @@ async def async_run_ocr(
     file_path: str, settings: Settings
 ) -> tuple[str, float, list[dict]]:
     import mimetypes
+
     mime_type, _ = mimetypes.guess_type(file_path)
-    
+
     if mime_type == "application/pdf" or str(file_path).lower().endswith(".pdf"):
         extracted_text = extract_pdf_text(file_path)
         if extracted_text:
             logger.info("Successfully extracted text directly from PDF", path=file_path)
             return extracted_text, 1.0, [{"text": extracted_text, "confidence": 1.0}]
         else:
-            logger.info("PDF appears to be scanned, falling back to PaddleOCR", path=file_path)
-            # PaddleOCR handles PDFs natively by converting them to images internally
-            import asyncio
-            from functools import partial
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(None, partial(run_paddle_ocr, file_path))
+            logger.info(
+                f"PDF appears to be scanned, falling back to {settings.ocr_engine}",
+                path=file_path,
+            )
+            if settings.ocr_engine == "paddleocr":
+                import asyncio
+                from functools import partial
+
+                loop = asyncio.get_running_loop()
+                return await loop.run_in_executor(
+                    None, partial(run_paddle_ocr, file_path)
+                )
+            else:
+                return await run_glm_ocr(file_path, settings)
 
     if settings.ocr_engine == "paddleocr":
         # PaddleOCR is sync, wrap in thread to not block loop

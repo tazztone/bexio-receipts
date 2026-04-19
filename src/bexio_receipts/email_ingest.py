@@ -2,6 +2,7 @@
 IMAP email attachment polling for receipt ingestion.
 Retrieves receipts sent as email attachments via IMAP.
 """
+
 import asyncio
 import email
 from pathlib import Path

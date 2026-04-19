@@ -2,6 +2,7 @@
 Google Drive polling service for receipt ingestion.
 Periodically checks configured Google Drive folders for new files.
 """
+
 import asyncio
 import io
 import os

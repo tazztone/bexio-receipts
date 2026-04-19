@@ -2,6 +2,7 @@
 Dashboard backend powered by FastAPI and HTMX.
 Provides the web interface for receipt review and management.
 """
+
 import json
 import mimetypes
 import re

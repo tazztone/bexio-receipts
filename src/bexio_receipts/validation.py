@@ -2,6 +2,7 @@
 Validation logic for Swiss VAT and business rules.
 Ensures extracted receipt data complies with accounting requirements.
 """
+
 from datetime import date, timedelta
 from .models import Receipt
 
@@ -52,7 +53,7 @@ def validate_receipt(r: Receipt, settings: Settings) -> list[str]:
         errors.append("Missing date")
     else:
         if r.transaction_date > date.today():
-            errors.append(f"Future date: {r.transaction_date}")
+            errors.append(f"[WARNING] Future date: {r.transaction_date}")
         if r.transaction_date < date.today() - timedelta(
             days=settings.max_receipt_age_days
         ):

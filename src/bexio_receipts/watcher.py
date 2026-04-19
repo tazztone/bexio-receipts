@@ -2,6 +2,7 @@
 Folder filesystem monitoring for new receipt files.
 Triggers the ingestion pipeline when new files are detected.
 """
+
 import asyncio
 import os
 from pathlib import Path
@@ -126,7 +127,10 @@ async def watch_folder(path: str, settings: Settings):
         try:
             await bexio.cache_lookups()
         except Exception as e:
-            logger.warning("Failed to connect to Bexio during watcher startup, proceeding anyway", error=str(e))
+            logger.warning(
+                "Failed to connect to Bexio during watcher startup, proceeding anyway",
+                error=str(e),
+            )
 
         loop = asyncio.get_running_loop()
         event_handler = ReceiptHandler(loop, settings, bexio)

@@ -33,9 +33,9 @@ async def test_extract_receipt_ollama(test_settings):
 @pytest.mark.asyncio
 async def test_extract_receipt_with_vat_breakdown(test_settings):
     test_settings.llm_provider = "ollama"
-    
+
     from bexio_receipts.models import VatEntry
-    
+
     mock_result = MagicMock()
     mock_result.output = Receipt(
         merchant_name="Mock Coop",
@@ -43,8 +43,8 @@ async def test_extract_receipt_with_vat_breakdown(test_settings):
         total_incl_vat=110.81,
         vat_breakdown=[
             VatEntry(rate=8.1, base_amount=100.0, vat_amount=8.1),
-            VatEntry(rate=2.6, base_amount=10.0, vat_amount=0.26)
-        ]
+            VatEntry(rate=2.6, base_amount=10.0, vat_amount=0.26),
+        ],
     )
 
     with patch("bexio_receipts.extraction.Agent") as mock_agent_class:

@@ -1,4 +1,8 @@
-.PHONY: up down restart logs ps setup process-test clean
+.PHONY: up down restart logs ps setup process-test clean lint
+
+# Run linting and formatting
+lint:
+	uv run pre-commit run --all-files
 
 # Start all services
 up:

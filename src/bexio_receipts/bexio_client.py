@@ -2,6 +2,7 @@
 Client for interacting with the bexio API using httpx.
 Handles authentication and resource management in bexio.
 """
+
 import httpx
 import structlog
 from datetime import date
@@ -114,7 +115,9 @@ class BexioClient:
             try:
                 await self.get_profile()
             except Exception as e:
-                logger.warning("Failed to fetch user profile in cache_lookups", error=str(e))
+                logger.warning(
+                    "Failed to fetch user profile in cache_lookups", error=str(e)
+                )
                 self._user_id = None
 
         # Tax rates

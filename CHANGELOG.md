@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Offline Development Mode**: Introduced `OFFLINE_MODE` config flag, allowing local execution and UI testing without needing a valid Bexio Personal Access Token.
 - **Resilience Testing**: Added `test_resilience.py` mock suite.
 
+### Maintenance
+- **Dependency Refresh**: Updated all core and dev dependencies to their latest versions, including `ruff` (v0.15.11), `mypy` (v1.20.1), `pydantic-ai` (v1.84.1), and `typer` (v0.24.1).
+- **Test Hardening**: Improved test isolation by fixing model overrides in `conftest.py` and aligning mocks with implementation changes in `BexioClient`.
+- **Pre-commit Integration**: Formally added `pre-commit` to the development workflow with automated `ruff` and `mypy` hooks.
+
 ### Fixed
 - **Startup Resilience**: The CLI `process`, `reprocess`, and `watcher` commands no longer crash on boot if the Bexio API is unreachable or the token is invalid.
 - **First-Run Configuration**: The `bexio-receipts init` wizard now correctly injects `REVIEW_USERNAME` and `REVIEW_PASSWORD`, preventing immediate HTTP 401 lockouts on fresh installations.

@@ -2,6 +2,7 @@
 Typer-based CLI entrypoint for bexio-receipts.
 Provides command-line interface for managing the system.
 """
+
 import asyncio
 import json
 from pathlib import Path
@@ -191,6 +192,9 @@ def init(
         f.write("\n".join(config) + "\n")
 
     console.print("[green]Successfully created .env file![/green]")
+    console.print(
+        "[yellow]⚠ Default password 'admin' written to .env — change before production.[/yellow]"
+    )
 
     if quickstart:
         console.print(
@@ -301,7 +305,9 @@ def process(
                 try:
                     await client.cache_lookups()
                 except Exception as e:
-                    console.print(f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]")
+                    console.print(
+                        f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]"
+                    )
             with console.status("[bold green]Processing receipt..."):
                 result = await process_receipt(str(file), settings, client, db)
             console.print(
@@ -377,7 +383,9 @@ def reprocess(
                 try:
                     await client.cache_lookups()
                 except Exception as e:
-                    console.print(f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]")
+                    console.print(
+                        f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]"
+                    )
             with console.status("[bold green]Processing receipt..."):
                 result = await process_receipt(orig_file, settings, client, db)
             console.print(

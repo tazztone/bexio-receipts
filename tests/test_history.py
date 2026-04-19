@@ -4,10 +4,11 @@ from httpx import AsyncClient, ASGITransport
 from bexio_receipts.server import app, get_settings, get_db
 from unittest.mock import MagicMock
 
+
 @pytest.mark.asyncio
 async def test_history_view(test_settings, tmp_path):
     app.dependency_overrides[get_settings] = lambda: test_settings
-    
+
     mock_db = MagicMock()
     # Mock return value for get_processed_receipts
     mock_db.get_processed_receipts.return_value = [
@@ -19,7 +20,7 @@ async def test_history_view(test_settings, tmp_path):
             "total": 10.5,
             "merchant": "Merchant 1",
             "vat": 0.8,
-            "confidence": 0.95
+            "confidence": 0.95,
         }
     ]
     mock_db.get_total_processed_count.return_value = 1
@@ -39,10 +40,11 @@ async def test_history_view(test_settings, tmp_path):
 
     app.dependency_overrides.clear()
 
+
 @pytest.mark.asyncio
 async def test_history_search(test_settings, tmp_path):
     app.dependency_overrides[get_settings] = lambda: test_settings
-    
+
     mock_db = MagicMock()
     mock_db.get_processed_receipts.return_value = []
     mock_db.get_total_processed_count.return_value = 0
@@ -57,6 +59,8 @@ async def test_history_search(test_settings, tmp_path):
         response = await ac.get("/history?search=UnknownMerchant", headers=headers)
         assert response.status_code == 200
         assert "No processed receipts found" in response.text
-        mock_db.get_processed_receipts.assert_called_with(limit=25, offset=0, search="UnknownMerchant")
+        mock_db.get_processed_receipts.assert_called_with(
+            limit=25, offset=0, search="UnknownMerchant"
+        )
 
     app.dependency_overrides.clear()
