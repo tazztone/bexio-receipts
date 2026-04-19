@@ -7,6 +7,8 @@ os.environ["REVIEW_PASSWORD"] = "dummy_password_for_tests"
 os.environ["SECRET_KEY"] = "dummy_secret_key_for_tests"
 os.environ["DEFAULT_BOOKING_ACCOUNT_ID"] = "1"
 os.environ["DEFAULT_BANK_ACCOUNT_ID"] = "2"
+# Prevent local .env from enabling skip-auth and masking 401 tests
+os.environ["REVIEW_SKIP_AUTH"] = "false"
 
 import pytest
 from bexio_receipts.config import Settings
