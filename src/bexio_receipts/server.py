@@ -340,11 +340,18 @@ async def bulk_action(
         request.session["success_msg"] = f"🗑️ Discarded {success_count} receipts."
 
     elif action == "process":
+        if not settings.bexio_push_enabled:
+            request.session["success_msg"] = (
+                "⚠️ Bulk push blocked: BEXIO_PUSH_ENABLED=false. Enable it in .env to push multiple receipts."
+            )
+            return RedirectResponse(url="/", status_code=303)
+
         async with BexioClient(
             settings.bexio_api_token,
             settings.bexio_base_url,
             settings.default_vat_rate,
             settings.default_payment_terms_days,
+            push_enabled=settings.bexio_push_enabled,
         ) as bexio:
             await bexio.cache_lookups()
 
