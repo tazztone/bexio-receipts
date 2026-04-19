@@ -40,16 +40,22 @@ async def test_async_run_ocr_glm(test_settings):
     mock_resp.json.return_value = {"message": {"content": "GLM Text"}}
     mock_resp.raise_for_status = MagicMock()
 
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = mock_resp
-        # Mocking open() to avoid file system issues
-        mock_file = MagicMock()
-        mock_file.__enter__.return_value.read.return_value = b"fake-image-bytes"
-        with patch("builtins.open", return_value=mock_file):
-            raw_text, conf, _ = await async_run_ocr("path.png", test_settings)
-            assert raw_text == "GLM Text"
-            assert conf == 0.9
-            mock_post.assert_called_once()
+    # Patch Image.open so PIL never touches the fake path, then patch builtins.open
+    # so the file-read for base64 encoding also returns controlled bytes.
+    mock_img = MagicMock()
+    mock_file = MagicMock()
+    mock_file.__enter__ = MagicMock(return_value=mock_file)
+    mock_file.__exit__ = MagicMock(return_value=False)
+    mock_file.read.return_value = b"fake-image-bytes"
+
+    with patch("bexio_receipts.ocr.Image.open", return_value=mock_img):
+        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value = mock_resp
+            with patch("builtins.open", return_value=mock_file):
+                raw_text, conf, _ = await async_run_ocr("path.png", test_settings)
+                assert raw_text == "GLM Text"
+                assert conf == 0.9
+                mock_post.assert_called_once()
 
 
 @pytest.mark.asyncio
