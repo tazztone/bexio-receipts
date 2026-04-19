@@ -23,6 +23,15 @@ def mock_settings():
     )
 
 
+def _run_coroutine(coroutine):
+    """Run a coroutine on a fresh event loop to prevent loop-reuse leaks."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coroutine)
+    finally:
+        loop.close()
+
+
 def test_cli_cache_lookups_resilience_process(mock_settings, tmp_path):
     """Test that process command continues even if cache_lookups fails."""
     receipt_file = tmp_path / "receipt.jpg"
@@ -36,9 +45,7 @@ def test_cli_cache_lookups_resilience_process(mock_settings, tmp_path):
         ) as mock_process,
         patch(
             "bexio_receipts.cli.asyncio.run",
-            side_effect=lambda coroutine: asyncio.get_event_loop().run_until_complete(
-                coroutine
-            ),
+            side_effect=_run_coroutine,
         ),
     ):
         client_instance = MockClient.return_value.__aenter__.return_value
@@ -70,9 +77,7 @@ def test_cli_cache_lookups_resilience_reprocess(mock_settings, tmp_path):
         ) as mock_process,
         patch(
             "bexio_receipts.cli.asyncio.run",
-            side_effect=lambda coroutine: asyncio.get_event_loop().run_until_complete(
-                coroutine
-            ),
+            side_effect=_run_coroutine,
         ),
     ):
         client_instance = MockClient.return_value.__aenter__.return_value
@@ -88,14 +93,11 @@ def test_cli_cache_lookups_resilience_reprocess(mock_settings, tmp_path):
 
 def test_offline_mode_behavior():
     """Test that Settings works in offline mode without a token."""
-    # Patch env vars to trigger offline mode and provide mandatory fields
     with patch.dict(
         "os.environ",
         {"OFFLINE_MODE": "true", "REVIEW_PASSWORD": "password", "SECRET_KEY": "secret"},
         clear=True,
     ):
-        # Instantiate Settings directly; clear=True ensures it doesn't see existing env vars
-        # Passing _env_file=None ensures it doesn't read the local .env file
         settings = Settings(_env_file=None)
         assert settings.offline_mode is True
         assert settings.bexio_api_token == "offline"
