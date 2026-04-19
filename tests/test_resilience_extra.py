@@ -103,23 +103,3 @@ def test_offline_mode_behavior():
         settings = Settings(_env_file=None)
         assert settings.offline_mode is True
         assert settings.bexio_api_token == "offline"
-
-
-def test_watcher_email_resilience(mock_settings):
-    """Test that email watcher command starts correctly."""
-    with (
-        patch("bexio_receipts.cli.get_settings", return_value=mock_settings),
-        patch("bexio_receipts.cli.asyncio.run"),
-    ):
-        result = runner.invoke(app, ["watch", "email"])
-        assert result.exit_code == 0
-
-
-def test_watcher_telegram_resilience(mock_settings):
-    """Test that telegram watcher command starts correctly."""
-    with (
-        patch("bexio_receipts.cli.get_settings", return_value=mock_settings),
-        patch("bexio_receipts.cli.asyncio.run"),
-    ):
-        result = runner.invoke(app, ["watch", "telegram"])
-        assert result.exit_code == 0

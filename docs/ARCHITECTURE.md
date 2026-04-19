@@ -9,8 +9,6 @@
 graph TD
     subgraph Ingestion
         WatchedDir[Local Folder] --> P[Pipeline]
-        IMAP[Email Attachments] --> P
-        Telegram[Telegram Bot] --> P
         GDrive[Google Drive] --> P
     end
 
@@ -41,8 +39,6 @@ graph TD
 
 ### 1. Ingestion Layer
 - **Watcher**: Uses `watchdog` to monitor filesystem events.
-- **Email**: Uses `aioimaplib` for async IMAP polling. Refrains from marking emails as read until attachments are successfully saved.
-- **Telegram**: Uses `python-telegram-bot` to handle incoming photos and documents.
 - **GDrive**: Uses Google Drive API (v3) to poll and move files.
 
 ### 2. Text Extraction Layer (`ocr.py`)

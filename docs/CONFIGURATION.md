@@ -63,17 +63,6 @@ Each ingestion source has its own configuration block.
 | `MAX_RECEIPT_AGE_DAYS` | Skip receipts older than this | `365` |
 | `DATABASE_PATH` | Path to SQLite database | `processed_receipts.db` |
 
-### Email Integration (IMAP)
-- **`IMAP_SERVER`**: IMAP server hostname (e.g., `imap.gmail.com`).
-- **`IMAP_USER`**: Email address.
-- **`IMAP_PASSWORD`**: Password or App Password.
-- **`IMAP_FOLDER`**: Folder to monitor. Defaults to `INBOX`.
-- **`IMAP_POLL_INTERVAL`**: Seconds between polls. Defaults to `300`.
-
-### Telegram Integration
-- **`TELEGRAM_BOT_TOKEN`**: The token from @BotFather.
-- **`TELEGRAM_ALLOWED_USERS`**: A comma-separated list of numeric Telegram User IDs. **Crucial for security.**
-- **Commands**: `/start`, `/help`, `/status`.
 
 ### Google Drive Integration
 - **`GDRIVE_CREDENTIALS_FILE`**: Path to `service_account.json` (recommended) or OAuth `credentials.json`.

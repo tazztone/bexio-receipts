@@ -151,7 +151,6 @@ async def healthz(_settings: Settings = Depends(get_settings)):
         "status": "ok",
         "db": "unknown",
         "bexio": "unknown",
-        "imap": "not_configured",
         "gdrive": "not_configured",
     }
 
@@ -180,10 +179,6 @@ async def healthz(_settings: Settings = Depends(get_settings)):
         status_data["bexio"] = f"error: {e}"
         status_data["status"] = "error"
         logger.error("Health check Bexio error", error=str(e))
-
-    # Check IMAP configured
-    if _settings.imap_server and _settings.imap_user:
-        status_data["imap"] = "configured"
 
     # Check GDrive configured
     if _settings.gdrive_credentials_file:

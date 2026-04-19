@@ -55,9 +55,7 @@ If the pipeline hangs or times out during OCR:
 
 ## Ingestion Specific Issues
 
-- **Email Ingestion**: Check if your IMAP server requires "App Passwords" (common with Gmail/Outlook).
 - **Google Drive**: If a file isn't picked up, ensure it's not a "Shortcut" or "Google Doc" format. The pipeline only replicates actual binary files (PDFs, PNGs, JPEGs).
-- **Telegram**: If the bot doesn't respond, verify your User ID is in `TELEGRAM_ALLOWED_USERS`.
 
 ## Database Issues
 

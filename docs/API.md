@@ -20,7 +20,6 @@ Returns a JSON object indicating the health of core dependencies (Database, bexi
   "status": "ok",
   "db": "ok",
   "bexio": "ok",
-  "imap": "configured",
   "gdrive": "not_configured"
 }
 ```

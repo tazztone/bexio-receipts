@@ -1,5 +1,3 @@
-import os
-
 import httpx
 import pytest
 
@@ -8,9 +6,7 @@ from bexio_receipts.extraction import extract_receipt
 
 @pytest.fixture
 def prodega_ocr_text():
-    path = os.path.join(os.path.dirname(__file__), "fixtures/prodega_ocr.txt")
-    with open(path) as f:
-        return f.read()
+    return "Dummy Prodega OCR text for regression testing. Content irrelevant due to LLM mock."
 
 
 @pytest.mark.asyncio
@@ -57,7 +53,8 @@ async def test_prodega_extraction_logic(test_settings, prodega_ocr_text, respx_m
         )
     )
 
-    receipt = await extract_receipt(prodega_ocr_text, test_settings)
+    async with httpx.AsyncClient() as client:
+        receipt = await extract_receipt(prodega_ocr_text, test_settings, client)
 
     # Assertions using pytest.approx for floating point safety
     assert receipt.merchant_name == "Prodega"

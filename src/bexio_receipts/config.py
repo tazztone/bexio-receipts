@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     # LLM Settings
     llm_provider: str = "ollama"  # or "openai"
     llm_model: str = "qwen3.5:9b"
+    llm_timeout: int = 30
     ollama_url: str = "http://localhost:11434"
     openai_api_key: str | None = None
 
@@ -46,17 +47,6 @@ class Settings(BaseSettings):
     review_dir: str = "./review_queue"
     review_skip_auth: bool = False
     max_receipt_age_days: int = 365
-
-    # IMAP Settings
-    imap_server: str | None = None
-    imap_user: str | None = None
-    imap_password: str | None = None
-    imap_folder: str = "INBOX"
-    imap_poll_interval: int = 300  # seconds
-
-    # Telegram Settings
-    telegram_bot_token: str | None = None
-    telegram_allowed_users: list[int] = []  # List of user IDs
 
     # Google Drive Settings
     gdrive_credentials_file: str | None = None
@@ -105,12 +95,4 @@ class Settings(BaseSettings):
             hashed_users[user] = hash_pwd(pwd)
         self.review_users = hashed_users
 
-        return self
-
-    @model_validator(mode="after")
-    def check_telegram_allowed_users(self):
-        if self.telegram_bot_token and not self.telegram_allowed_users:
-            raise ValueError(
-                "telegram_allowed_users must be non-empty when telegram_bot_token is set"
-            )
         return self

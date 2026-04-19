@@ -213,8 +213,11 @@ def init(
                 with console.status("[bold green]Running demo OCR..."):
                     raw_text, conf, _ = await async_run_ocr(str(target), settings)
                 console.print(f"  - OCR Confidence: [bold]{conf:.1%}[/bold]")
+                import httpx
+
                 with console.status("[bold blue]Extracting demo data..."):
-                    receipt = await extract_receipt(raw_text, settings)
+                    async with httpx.AsyncClient() as client:
+                        receipt = await extract_receipt(raw_text, settings, client)
                 console.print(
                     f"  - Detected Merchant: [bold]{receipt.merchant_name}[/bold]"
                 )
@@ -259,8 +262,11 @@ def process(
             console.print(f"\n[bold]OCR Confidence:[/bold] {avg_confidence:.1%}")
             console.print(f"\n[bold]Raw OCR Text:[/bold]\n{raw_text}\n")
 
+            import httpx
+
             with console.status("[bold blue]Extracting data via LLM..."):
-                receipt = await extract_receipt(raw_text, settings)
+                async with httpx.AsyncClient() as client:
+                    receipt = await extract_receipt(raw_text, settings, client)
 
             table = Table(title="Extracted Data (Dry Run)", show_header=True)
             table.add_column("Field", style="cyan")
@@ -349,8 +355,11 @@ def reprocess(
             console.print(f"\n[bold]OCR Confidence:[/bold] {avg_confidence:.1%}")
             console.print(f"\n[bold]Raw OCR Text:[/bold]\n{raw_text}\n")
 
+            import httpx
+
             with console.status("[bold blue]Extracting data via LLM..."):
-                receipt = await extract_receipt(raw_text, settings)
+                async with httpx.AsyncClient() as client:
+                    receipt = await extract_receipt(raw_text, settings, client)
 
             table = Table(title="Extracted Data (Dry Run)", show_header=True)
             table.add_column("Field", style="cyan")
@@ -528,76 +537,6 @@ def watch_folder(path: Path | None = typer.Option(None, help="Path to monitor"))
     from .watcher import watch_folder as _watch
 
     asyncio.run(_watch(str(path or settings.inbox_path), settings))
-
-
-@watch_app.command("email")
-def watch_email():
-    """Monitor an email inbox for new receipts."""
-    settings = get_settings()
-    setup_logging(settings.env)
-
-    if not settings.bexio_push_enabled:
-        console.print(
-            "[yellow]⚠ Push gate: BEXIO_PUSH_ENABLED=false — receipts will queue for manual review.[/yellow]"
-        )
-
-    from .email_ingest import watch_email as _watch
-
-    async def _run_safely():
-        try:
-            await _watch(settings)
-        except Exception as e:
-            console.print(f"[bold red]Email Watcher Error:[/bold red] {e}")
-            console.print(
-                "[yellow]The watcher will not start. Please check your IMAP settings.[/yellow]"
-            )
-
-    asyncio.run(_run_safely())
-
-
-@watch_app.command("telegram")
-def watch_telegram():
-    """Monitor Telegram for new receipts."""
-    settings = get_settings()
-    setup_logging(settings.env)
-
-    if not settings.bexio_push_enabled:
-        console.print(
-            "[yellow]⚠ Push gate: BEXIO_PUSH_ENABLED=false — receipts will queue for manual review.[/yellow]"
-        )
-
-    from .telegram_bot import run_bot
-
-    async def _run_and_print():
-        from telegram import Bot
-
-        if not settings.telegram_bot_token:
-            console.print("[red]Error: TELEGRAM_BOT_TOKEN not set in settings.[/red]")
-            return
-
-        try:
-            bot = Bot(token=settings.telegram_bot_token)
-            me = await bot.get_me()
-            console.print(
-                f"[bold green]Bot started! Open [link=https://t.me/{me.username}]https://t.me/{me.username}[/link] to begin.[/bold green]"
-            )
-            console.print(
-                "[dim]💡 Tip: Send a photo of a receipt now; it should appear in the dashboard within ~30 seconds.[/dim]"
-            )
-        except Exception as e:
-            console.print(
-                f"[yellow]Warning: Could not fetch bot username: {e}[/yellow]"
-            )
-
-        try:
-            await run_bot(settings)
-        except Exception as e:
-            console.print(f"[bold red]Telegram Bot Error:[/bold red] {e}")
-            console.print(
-                "[yellow]The bot will not start. Please check your Telegram token.[/yellow]"
-            )
-
-    asyncio.run(_run_and_print())
 
 
 @watch_app.command("gdrive")

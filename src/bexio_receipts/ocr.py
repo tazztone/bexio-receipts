@@ -108,69 +108,76 @@ async def run_glm_ocr(
 
 
 async def async_run_ocr(
-    file_path: str, settings: Settings
+    file_path: str, settings: Settings, client: httpx.AsyncClient | None = None
 ) -> tuple[str, float, list[dict]]:
-
     is_pdf = str(file_path).lower().endswith(".pdf")
+
+    if client:
+        return await _do_async_run_ocr(file_path, settings, client, is_pdf)
+
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(
             connect=5.0, read=settings.glm_ocr_timeout, write=5.0, pool=2.0
         )
     ) as client:
-        if is_pdf:
-            extracted_text = extract_pdf_text(file_path)
-            if extracted_text:
-                logger.info(
-                    "Successfully extracted text directly from PDF", path=file_path
-                )
-                return (
-                    extracted_text,
-                    1.0,
-                    [{"text": extracted_text, "confidence": 1.0}],
-                )
+        return await _do_async_run_ocr(file_path, settings, client, is_pdf)
 
-            logger.info("PDF appears to be scanned, using GLM-OCR", path=file_path)
-            from pdf2image import convert_from_path
 
-            # Convert all pages of scanned PDF to images for vision model
-            try:
-                images = convert_from_path(file_path, dpi=300)
+async def _do_async_run_ocr(
+    file_path: str, settings: Settings, client: httpx.AsyncClient, is_pdf: bool
+) -> tuple[str, float, list[dict]]:
+    if is_pdf:
+        extracted_text = extract_pdf_text(file_path)
+        if extracted_text:
+            logger.info("Successfully extracted text directly from PDF", path=file_path)
+            return (
+                extracted_text,
+                1.0,
+                [{"text": extracted_text, "confidence": 1.0}],
+            )
 
-                sem = asyncio.Semaphore(2)  # Limit concurrent OCR calls to save RAM
+        logger.info("PDF appears to be scanned, using GLM-OCR", path=file_path)
+        from pdf2image import convert_from_path
 
-                async def _process_page(img, i):
-                    async with sem:
-                        img = _optimize_image(img)
-                        buf = io.BytesIO()
-                        img.save(buf, format="WEBP", quality=90)
-                        logger.info(
-                            f"Processing PDF page {i + 1}/{len(images)}",
-                            path=file_path,
-                        )
-                        page_text, _, _ = await run_glm_ocr(
-                            None,
-                            settings,
-                            client,
-                            image_data=buf.getvalue(),
-                            already_optimized=True,
-                        )
-                        return page_text
+        # Convert all pages of scanned PDF to images for vision model
+        try:
+            images = convert_from_path(file_path, dpi=300)
 
-                # Parallel processing with asyncio.gather, limited by semaphore
-                texts = await asyncio.gather(*[
-                    _process_page(img, i) for i, img in enumerate(images)
-                ])
+            sem = asyncio.Semaphore(2)  # Limit concurrent OCR calls to save RAM
 
-                combined_text = "\n---PAGE BREAK---\n".join(texts)
-                return (
-                    combined_text,
-                    0.90,
-                    [{"text": combined_text, "confidence": 0.90}],
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Failed to convert scanned PDF to images: {e}. Falling back to raw file."
-                )
-                return await run_glm_ocr(file_path, settings, client)
+            async def _process_page(img, i):
+                async with sem:
+                    img = _optimize_image(img)
+                    buf = io.BytesIO()
+                    img.save(buf, format="WEBP", quality=90)
+                    logger.info(
+                        f"Processing PDF page {i + 1}/{len(images)}",
+                        path=file_path,
+                    )
+                    page_text, _, _ = await run_glm_ocr(
+                        None,
+                        settings,
+                        client,
+                        image_data=buf.getvalue(),
+                        already_optimized=True,
+                    )
+                    return page_text
 
-        return await run_glm_ocr(file_path, settings, client)
+            # Parallel processing with asyncio.gather, limited by semaphore
+            texts = await asyncio.gather(*[
+                _process_page(img, i) for i, img in enumerate(images)
+            ])
+
+            combined_text = "\n---PAGE BREAK---\n".join(texts)
+            return (
+                combined_text,
+                0.90,
+                [{"text": combined_text, "confidence": 0.90}],
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to convert scanned PDF to images: {e}. Falling back to raw file."
+            )
+            return await run_glm_ocr(file_path, settings, client)
+
+    return await run_glm_ocr(file_path, settings, client)

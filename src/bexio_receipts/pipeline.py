@@ -98,40 +98,52 @@ async def process_receipt(
 
     # 1. OCR / One-shot Extraction
     logger.info("Running OCR/Extraction", path=file_path)
-    try:
-        raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
-    except (TimeoutError, httpx.TimeoutException):
-        error_msg = "OCR stage timed out"
-        logger.error(error_msg, path=file_path)
-        return await send_to_review(
-            file_path, "", [error_msg], settings, failed_stage="ocr"
+    # Use a shared client for all HTTP stages (OCR, LLM, Bexio)
+    # Max timeout covers the longest possible individual stage
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(
+            connect=5.0,
+            read=max(settings.glm_ocr_timeout, settings.llm_timeout, 60.0),
+            write=5.0,
+            pool=2.0,
         )
+    ) as client:
+        try:
+            raw_text, avg_confidence, _ = await async_run_ocr(
+                file_path, settings, client=client
+            )
+        except (TimeoutError, httpx.TimeoutException):
+            error_msg = "OCR stage timed out"
+            logger.error(error_msg, path=file_path)
+            return await send_to_review(
+                file_path, "", [error_msg], settings, failed_stage="ocr"
+            )
 
-    # 2. Extract structured data
-    logger.info("Extracting data via LLM", model=settings.llm_model)
-    try:
-        receipt = await extract_receipt(raw_text, settings)
-    except TimeoutError:
-        error_msg = "LLM extraction stage timed out"
-        logger.error(error_msg, path=file_path)
-        return await send_to_review(
-            file_path,
-            raw_text,
-            [error_msg],
-            settings,
-            ocr_confidence=avg_confidence,
-            failed_stage="extraction",
-        )
-    except Exception as e:
-        logger.error("LLM extraction failed", error=str(e))
-        return await send_to_review(
-            file_path,
-            raw_text,
-            [f"LLM extraction failed: {e!s}"],
-            settings,
-            ocr_confidence=avg_confidence,
-            failed_stage="extraction",
-        )
+        # 2. Extract structured data
+        logger.info("Extracting data via LLM", model=settings.llm_model)
+        try:
+            receipt = await extract_receipt(raw_text, settings, client=client)
+        except (TimeoutError, httpx.TimeoutException):
+            error_msg = "LLM extraction stage timed out"
+            logger.error(error_msg, path=file_path)
+            return await send_to_review(
+                file_path,
+                raw_text,
+                [error_msg],
+                settings,
+                ocr_confidence=avg_confidence,
+                failed_stage="extraction",
+            )
+        except Exception as e:
+            logger.error("LLM extraction failed", error=str(e))
+            return await send_to_review(
+                file_path,
+                raw_text,
+                [f"LLM extraction failed: {e!s}"],
+                settings,
+                ocr_confidence=avg_confidence,
+                failed_stage="extraction",
+            )
 
     # 3. Validation
     logger.info("Validating extracted data")
