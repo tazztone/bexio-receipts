@@ -20,7 +20,8 @@ async def test_extract_receipt_ollama(test_settings):
     mock_result.output = RawReceipt(
         merchant_name="Mock Coop",
         transaction_date="2023-01-01",
-        total_incl_vat=10.0,
+        total_incl_vat=10.81,
+        vat_rows=[{"rate": 8.1, "col_a": 0.81, "col_b": 10.0, "col_c": 10.81}],
     )
 
     with patch("bexio_receipts.extraction.Agent") as mock_agent_class:
@@ -32,7 +33,7 @@ async def test_extract_receipt_ollama(test_settings):
         )
 
         assert receipt.merchant_name == "Mock Coop"
-        assert receipt.total_incl_vat == 10.0
+        assert receipt.total_incl_vat == 10.81
         mock_agent_instance.run.assert_called_once()
 
 
@@ -80,7 +81,8 @@ async def test_extract_receipt_openai(test_settings):
     mock_result.output = RawReceipt(
         merchant_name="Mock Coop",
         transaction_date="2023-01-01",
-        total_incl_vat=10.0,
+        total_incl_vat=10.81,
+        vat_rows=[{"rate": 8.1, "col_a": 0.81, "col_b": 10.0, "col_c": 10.81}],
     )
 
     with patch("bexio_receipts.extraction.Agent") as mock_agent_class:
@@ -92,7 +94,7 @@ async def test_extract_receipt_openai(test_settings):
         )
 
         assert receipt.merchant_name == "Mock Coop"
-        assert receipt.total_incl_vat == 10.0
+        assert receipt.total_incl_vat == 10.81
 
     from bexio_receipts.models import RawVatRow
     mock_result = MagicMock()
