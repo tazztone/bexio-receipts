@@ -3,7 +3,7 @@ Logic for extracting structured receipt data from OCR text using Pydantic AI.
 """
 
 import re
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 import structlog
@@ -240,6 +240,9 @@ def _is_rate_limit(exc: BaseException) -> bool:
     return "429" in str(exc) or "rate" in str(exc).lower()
 
 
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
+
 def _build_model(
     settings: Settings, client: httpx.AsyncClient
 ) -> tuple[OpenAIChatModel, Any]:
@@ -427,7 +430,10 @@ async def extract_receipt(
             raise ExtractionError(f"VAT assembly failed: {ve!s}", trace=trace) from ve
     finally:
         if or_client is not None:
-            await or_client.close()
+            if hasattr(or_client, "aclose"):
+                await or_client.aclose()
+            else:
+                await or_client.close()
 
 
 async def classify_accounts(
@@ -482,4 +488,7 @@ async def classify_accounts(
         return []
     finally:
         if or_client is not None:
-            await or_client.close()
+            if hasattr(or_client, "aclose"):
+                await or_client.aclose()
+            else:
+                await or_client.close()

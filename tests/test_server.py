@@ -69,10 +69,10 @@ def test_setup_checks(test_settings):
     with patch("bexio_receipts.server.BexioClient") as mock_bexio:
         mock_inst = MagicMock()
         mock_bexio.return_value.__aenter__.return_value = mock_inst
-        mock_inst.client.get = AsyncMock()
-        mock_inst.client.get.return_value.json = MagicMock(
-            return_value={"name": "Test Co"}
-        )
+        mock_bexio_resp = MagicMock()
+        mock_bexio_resp.json.return_value = {"name": "Test Co"}
+        mock_bexio_resp.raise_for_status = MagicMock()
+        mock_inst.client.get = AsyncMock(return_value=mock_bexio_resp)
 
         response = client.get("/setup/check/bexio", auth=("admin", "test_password"))
         assert "OK (Test Co)" in response.text
@@ -323,3 +323,135 @@ def test_corrupt_review_json(tmp_path, test_settings):
     assert "corrupt" not in response.text
 
     app.dependency_overrides.clear()
+
+def test_thumbnail_success(test_settings, tmp_path):
+    # Mock review and image file
+    review_dir = tmp_path / "reviews"
+    review_dir.mkdir()
+    test_settings.review_dir = str(review_dir)
+    test_settings.inbox_path = str(tmp_path)
+
+    img_path = review_dir / "test_receipt.jpg"
+
+    from PIL import Image
+    # Create fake image
+    img = Image.new("RGB", (400, 400), color="white")
+    img.save(img_path)
+
+    review_id = "test_review_id"
+    import json
+    with open(review_dir / f"{review_id}.json", "w") as f:
+        json.dump({"original_file": str(img_path)}, f)
+
+    app.dependency_overrides[get_settings] = lambda: test_settings
+    response = client.get(f"/thumbnail/{review_id}", auth=("admin", "test_password"))
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/jpeg"
+
+def test_thumbnail_invalid_id(test_settings):
+    app.dependency_overrides[get_settings] = lambda: test_settings
+    response = client.get("/thumbnail/invalid..id!", auth=("admin", "test_password"))
+    assert response.status_code == 400
+    assert "Invalid review ID" in response.text
+
+def test_thumbnail_missing_file(test_settings, tmp_path):
+    review_dir = tmp_path / "reviews"
+    review_dir.mkdir()
+    test_settings.review_dir = str(review_dir)
+
+    review_id = "test_missing_file"
+    import json
+    with open(review_dir / f"{review_id}.json", "w") as f:
+        json.dump({"original_file": "does_not_exist.jpg"}, f)
+
+    app.dependency_overrides[get_settings] = lambda: test_settings
+    response = client.get(f"/thumbnail/{review_id}", auth=("admin", "test_password"))
+    assert response.status_code == 404
+    assert "Image file not found" in response.text
+
+def test_thumbnail_access_denied(test_settings, tmp_path):
+    review_dir = tmp_path / "reviews"
+    review_dir.mkdir()
+    test_settings.review_dir = str(review_dir)
+
+    review_id = "test_access_denied"
+    import json
+    with open(review_dir / f"{review_id}.json", "w") as f:
+        json.dump({"original_file": "/etc/passwd"}, f)
+
+    # /etc/passwd exists but not in allowed roots
+    app.dependency_overrides[get_settings] = lambda: test_settings
+    response = client.get(f"/thumbnail/{review_id}", auth=("admin", "test_password"))
+    assert response.status_code == 403
+    assert "Access denied" in response.text
+
+@patch("bexio_receipts.server.BexioClient")
+def test_history_and_stats_endpoints(mock_bexio, test_settings):
+    app.dependency_overrides[get_settings] = lambda: test_settings
+
+    response = client.get("/history", auth=("admin", "test_password"))
+    assert response.status_code == 200
+
+    response = client.get("/stats", auth=("admin", "test_password"))
+    assert response.status_code == 200
+
+def test_setup_check_llm_missing_model(test_settings):
+    test_settings.llm_provider = "ollama"
+    test_settings.llm_model = "missing_model"
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"models": [{"name": "qwen3.5"}]}
+    mock_resp.raise_for_status = MagicMock()
+
+    app.dependency_overrides[get_settings] = lambda: test_settings
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_resp):
+        response = client.get("/setup/check/llm", auth=("admin", "test_password"))
+        assert "Warning: Model missing_model not found" in response.text
+
+def test_setup_check_llm_openai_key(test_settings):
+    test_settings.llm_provider = "openai"
+    test_settings.openai_api_key = "test_key"
+
+    app.dependency_overrides[get_settings] = lambda: test_settings
+    response = client.get("/setup/check/llm", auth=("admin", "test_password"))
+    assert "OK (Openai API Key set)" in response.text
+@patch("bexio_receipts.server.BexioClient")
+def test_review_endpoint_fallback_assignments(mock_bexio, test_settings, tmp_path):
+    # Test lines 596-615: Step 3 assignment fallback
+    review_dir = tmp_path / "reviews"
+    review_dir.mkdir()
+    test_settings.review_dir = str(review_dir)
+
+    review_id = "test_review_id"
+    import json
+    # trace should have step3_assignments, extracted should have vat_breakdown
+    review_data = {
+        "original_file": "fake.jpg",
+        "extracted": {
+            "merchant_name": "Test Store",
+            "vat_breakdown": [{"rate": 8.1, "base_amount": 100, "vat_amount": 8.1, "total_incl_vat": 108.1}]
+        },
+        "extraction_trace": {
+            "step3_assignments": [{"vat_rate": 8.1, "account_id": "4201"}]
+        }
+    }
+    with open(review_dir / f"{review_id}.json", "w") as f:
+        json.dump(review_data, f)
+
+    app.dependency_overrides[get_settings] = lambda: test_settings
+
+    # We patch db to return None for merchant account so it triggers the fallback loop
+    with patch("bexio_receipts.server.get_db") as mock_db:
+        mock_db_inst = MagicMock()
+        mock_db_inst.get_merchant_vat_account.return_value = None
+        mock_db.return_value = mock_db_inst
+
+        # We need to mock get_accounts since it calls the API
+        async def mock_get_accounts():
+            return [{"id": 4201, "account_no": "4201", "name": "Test Account"}]
+        mock_bexio.return_value.__aenter__.return_value.get_accounts = mock_get_accounts
+
+        response = client.get(f"/review/{review_id}", auth=("admin", "test_password"))
+        assert response.status_code == 200
+        # The HTML should contain the account ID selected from the fallback
+        assert "4201" in response.text
