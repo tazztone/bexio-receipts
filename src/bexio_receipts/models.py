@@ -26,6 +26,12 @@ class RawVatRow(BaseModel):
     col_c: float | None  # third number (may be absent)
 
 
+class RawVatRows(BaseModel):
+    """Wrapper for list[RawVatRow] for consistent LLM responses."""
+
+    rows: list[RawVatRow]
+
+
 class ExtractionTrace(BaseModel):
     ocr_text: str = ""
     step1_intermediate: dict | None = None

@@ -73,9 +73,15 @@ async def test_full_pipeline_offline(mock_settings, temp_db, tmp_path):
 
         from unittest.mock import patch
 
-        with patch(
-            "bexio_receipts.pipeline.async_run_ocr",
-            return_value=("extracted text", 0.9, []),
+        with (
+            patch(
+                "bexio_receipts.pipeline.async_run_ocr",
+                return_value=("extracted text", 0.9, []),
+            ),
+            patch(
+                "bexio_receipts.pipeline.classify_accounts",
+                return_value=[],
+            ),
         ):
             from datetime import date
 
@@ -119,8 +125,11 @@ async def test_push_safety_gate_pipeline(mock_settings, temp_db, tmp_path):
 
     with tempfile.TemporaryDirectory() as review_dir:
         mock_settings.review_dir = review_dir
-        with patch(
-            "bexio_receipts.pipeline.async_run_ocr", return_value=("text", 0.9, [])
+        with (
+            patch(
+                "bexio_receipts.pipeline.async_run_ocr", return_value=("text", 0.9, [])
+            ),
+            patch("bexio_receipts.pipeline.classify_accounts", return_value=[]),
         ):
             from datetime import date
 

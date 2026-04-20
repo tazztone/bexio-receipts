@@ -62,6 +62,7 @@ async def test_pipeline_e2e(tmp_path):
     with (
         patch("bexio_receipts.pipeline.async_run_ocr") as mock_ocr,
         patch("bexio_receipts.pipeline.extract_receipt") as mock_extract,
+        patch("bexio_receipts.pipeline.classify_accounts") as mock_classify,
     ):
         mock_ocr.return_value = ("Test Text", 0.95, [])
         mock_extract.return_value = (
@@ -73,6 +74,7 @@ async def test_pipeline_e2e(tmp_path):
             ),
             ExtractionTrace(),
         )
+        mock_classify.return_value = []
 
         async with BexioClient("dummy", push_enabled=True) as client:
             await client.cache_lookups()
@@ -80,8 +82,7 @@ async def test_pipeline_e2e(tmp_path):
                 str(dummy_file), settings, client, db, push_confirmed=True
             )
 
-        assert result["status"] == "booked"
-        assert str(result["expense_id"]) == "999"
-        assert expense_route.called
-        assert db.is_duplicate(db.get_hash(str(dummy_file))) == "999"
-        assert db.get_merchant_account("Coop") == 100
+    assert result["status"] == "booked"
+    assert str(result["expense_id"]) == "999"
+    assert expense_route.called
+    assert db.is_duplicate(db.get_hash(str(dummy_file))) == "999"

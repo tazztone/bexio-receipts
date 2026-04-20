@@ -331,7 +331,7 @@ async def process_receipt(
         )
 
         # Persist trace on success if debugging
-        if settings.log_level == "debug":
+        if settings.env == "development":
             try:
                 debug_dir = Path("debug")
                 debug_dir.mkdir(exist_ok=True, parents=True)

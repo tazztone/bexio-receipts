@@ -28,6 +28,7 @@ from .models import (
     IntermediateReceipt,
     RawReceipt,
     RawVatRow,
+    RawVatRows,
     Receipt,
     VatEntry,
 )
@@ -373,7 +374,7 @@ async def extract_receipt(
 
             parser_agent = Agent(
                 model,
-                output_type=list[RawVatRow],
+                output_type=RawVatRows,
                 retries=1,
                 system_prompt=(
                     "You are a VAT data entry specialist. I will give you a tiny snippet of a VAT table "
@@ -391,12 +392,13 @@ async def extract_receipt(
             )
 
             cleaned_snippet = clean_vat_snippet(intermediate.vat_table_raw)
+            trace.error_stage = ""  # clear any previous stage error if retrying
             trace.step2_vat_cleaned = cleaned_snippet
             logger.info("Step 2: VAT parsing started", snippet=cleaned_snippet)
             logger.debug("Step2 cleaned_snippet", snippet=cleaned_snippet)
 
             res2 = await parser_agent.run(f"VAT Table Snippet:\n{cleaned_snippet}")
-            vat_rows = res2.output
+            vat_rows = res2.output.rows
             if not isinstance(vat_rows, list):
                 trace.error_stage = "step2"
                 trace.error_detail = "Unexpected output type from Step 2"

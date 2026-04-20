@@ -65,8 +65,9 @@ async def test_process_receipt_duplicate(mock_db, tmp_path, test_settings):
 @pytest.mark.asyncio
 @patch("bexio_receipts.pipeline.async_run_ocr")
 @patch("bexio_receipts.pipeline.extract_receipt")
+@patch("bexio_receipts.pipeline.classify_accounts")
 async def test_process_receipt_success(
-    mock_extract, mock_ocr, mock_db, tmp_path, test_settings
+    mock_classify, mock_extract, mock_ocr, mock_db, tmp_path, test_settings
 ):
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
@@ -82,6 +83,7 @@ async def test_process_receipt_success(
         ),
         ExtractionTrace(),
     )
+    mock_classify.return_value = []
 
     result = await process_receipt(
         str(test_file), test_settings, bexio_client, mock_db, push_confirmed=True
@@ -114,8 +116,9 @@ async def test_process_receipt_low_confidence(
 @pytest.mark.asyncio
 @patch("bexio_receipts.pipeline.async_run_ocr")
 @patch("bexio_receipts.pipeline.extract_receipt")
+@patch("bexio_receipts.pipeline.classify_accounts")
 async def test_process_receipt_extraction_failed(
-    mock_extract, mock_ocr, mock_db, tmp_path, test_settings
+    mock_classify, mock_extract, mock_ocr, mock_db, tmp_path, test_settings
 ):
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
@@ -132,8 +135,9 @@ async def test_process_receipt_extraction_failed(
 @pytest.mark.asyncio
 @patch("bexio_receipts.pipeline.async_run_ocr")
 @patch("bexio_receipts.pipeline.extract_receipt")
+@patch("bexio_receipts.pipeline.classify_accounts")
 async def test_process_receipt_validation_failed(
-    mock_extract, mock_ocr, mock_db, tmp_path, test_settings
+    mock_classify, mock_extract, mock_ocr, mock_db, tmp_path, test_settings
 ):
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
@@ -157,8 +161,9 @@ async def test_process_receipt_validation_failed(
 @pytest.mark.asyncio
 @patch("bexio_receipts.pipeline.async_run_ocr")
 @patch("bexio_receipts.pipeline.extract_receipt")
+@patch("bexio_receipts.pipeline.classify_accounts")
 async def test_process_receipt_no_merchant(
-    mock_extract, mock_ocr, mock_db, tmp_path, test_settings
+    mock_classify, mock_extract, mock_ocr, mock_db, tmp_path, test_settings
 ):
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
@@ -197,8 +202,9 @@ async def test_process_receipt_file_not_found(
 @pytest.mark.asyncio
 @patch("bexio_receipts.pipeline.async_run_ocr")
 @patch("bexio_receipts.pipeline.extract_receipt")
+@patch("bexio_receipts.pipeline.classify_accounts")
 async def test_process_receipt_bexio_error(
-    mock_extract, mock_ocr, mock_db, tmp_path, test_settings
+    mock_classify, mock_extract, mock_ocr, mock_db, tmp_path, test_settings
 ):
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")

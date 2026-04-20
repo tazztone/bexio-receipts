@@ -58,8 +58,8 @@ async def test_prodega_extraction_logic(test_settings, prodega_ocr_text, respx_m
                 "message": {
                     "role": "assistant",
                     "content": (
-                        '[{"rate": 2.6, "col_a": 4.59, "col_b": 176.70, "col_c": 181.29}, '
-                        '{"rate": 8.1, "col_a": 2.47, "col_b": 30.45, "col_c": 32.92}]'
+                        '{"rows": [{"rate": 2.6, "col_a": 4.59, "col_b": 176.70, "col_c": 181.29}, '
+                        '{"rate": 8.1, "col_a": 2.47, "col_b": 30.45, "col_c": 32.92}]}'
                     ),
                 },
                 "finish_reason": "stop",
@@ -69,11 +69,16 @@ async def test_prodega_extraction_logic(test_settings, prodega_ocr_text, respx_m
     }
 
     # Mock both sequential LLM calls
+    responses = [
+        httpx.Response(200, json=step1_response),
+        httpx.Response(200, json=step2_response),
+    ]
+
+    def side_effect(request):
+        return responses.pop(0)
+
     respx_mock.post(f"{test_settings.ollama_url.rstrip('/')}/v1/chat/completions").mock(
-        side_effect=[
-            httpx.Response(200, json=step1_response),
-            httpx.Response(200, json=step2_response),
-        ]
+        side_effect=side_effect
     )
 
     async with httpx.AsyncClient() as client:

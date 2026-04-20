@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from bexio_receipts.extraction import extract_receipt, resolve_vat_rows
-from bexio_receipts.models import IntermediateReceipt, RawVatRow, Receipt
+from bexio_receipts.models import IntermediateReceipt, RawVatRow, RawVatRows, Receipt
 
 
 @pytest.mark.asyncio
@@ -23,7 +23,9 @@ async def test_extract_receipt_ollama(test_settings):
     )
 
     res2 = MagicMock()
-    res2.output = [RawVatRow(rate=8.1, col_a=0.81, col_b=10.0, col_c=10.81)]
+    res2.output = RawVatRows(
+        rows=[RawVatRow(rate=8.1, col_a=0.81, col_b=10.0, col_c=10.81)]
+    )
 
     with patch("bexio_receipts.extraction.Agent") as mock_agent_class:
         mock_agent_instance = mock_agent_class.return_value
@@ -65,10 +67,12 @@ async def test_extract_receipt_openai(test_settings):
     )
 
     res2 = MagicMock()
-    res2.output = [
-        RawVatRow(rate=8.1, col_a=100.0, col_b=8.1, col_c=108.1),
-        RawVatRow(rate=2.6, col_a=10.0, col_b=0.26, col_c=10.26),
-    ]
+    res2.output = RawVatRows(
+        rows=[
+            RawVatRow(rate=8.1, col_a=100.0, col_b=8.1, col_c=108.1),
+            RawVatRow(rate=2.6, col_a=10.0, col_b=0.26, col_c=10.26),
+        ]
+    )
 
     with patch("bexio_receipts.extraction.Agent") as mock_agent_class:
         mock_agent_instance = mock_agent_class.return_value
