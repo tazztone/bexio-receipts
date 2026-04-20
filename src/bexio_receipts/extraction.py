@@ -30,7 +30,8 @@ logger = structlog.get_logger(__name__)
 
 
 def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
-    tolerance = 0.05  # covers rounding on all Swiss receipt formats
+    rate_match_tol = 0.01  # rate is a label; must match exactly
+    math_tol = 0.05  # covers rounding on all Swiss receipt formats
 
     entries = []
     for row in rows:
@@ -42,12 +43,12 @@ def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
         # One column equals the rate value itself; remaining two are (vat, base).
         if c is not None:
             for rate_col, x, y in [(a, b, c), (b, a, c), (c, a, b)]:
-                if abs(rate_col - rate) < tolerance:
+                if abs(rate_col - rate) < rate_match_tol:
                     # Determine which of (x, y) is VAT and which is base
                     for vat, base in [(x, y), (y, x)]:
                         if (
                             base > 0
-                            and abs(round(base * rate / 100, 2) - vat) < tolerance
+                            and abs(round(base * rate / 100, 2) - vat) < math_tol
                         ):
                             entries.append(
                                 VatEntry(rate=rate, vat_amount=vat, base_amount=base)
@@ -68,7 +69,7 @@ def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
         )
         for vat, base, total in candidates:
             if total is not None:
-                if abs(round(base + vat, 2) - total) < tolerance:
+                if abs(round(base + vat, 2) - total) < math_tol:
                     entries.append(
                         VatEntry(
                             rate=rate,
@@ -90,6 +91,11 @@ def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
             logger.warning("Skipping unresolvable VAT row", row=row.model_dump())
             continue
 
+    if rows and not entries:
+        raise ValueError(
+            "LLM extracted VAT rows but none could be resolved mathematically"
+        )
+
     return entries
 
 
@@ -98,16 +104,26 @@ def assemble_receipt(raw: RawReceipt) -> Receipt:
 
     total_incl_vat = raw.total_incl_vat
     if total_incl_vat is None and vat_entries:
+        # Note: back-calculated total may differ by ±Rundungsdifferenz (typ. 0.01)
         total_incl_vat = round(
             sum(e.base_amount + e.vat_amount for e in vat_entries), 2
         )
         logger.info("Computed total_incl_vat from VAT breakdown", total=total_incl_vat)
 
-    if total_incl_vat is not None and not vat_entries:
-        logger.warning(
-            "Receipt has a total but no VAT rows were extracted", total=total_incl_vat
+    # Populate dominant VAT rate and aggregates
+    vat_rate_pct = None
+    sum_vat = 0.0
+    sum_base = 0.0
+    if vat_entries:
+        # Sort by total_incl_vat descending to pick dominant rate
+        sorted_entries = sorted(
+            vat_entries,
+            key=lambda e: e.total_incl_vat or (e.base_amount + e.vat_amount),
+            reverse=True,
         )
-        raise ValueError("Receipt has a total but no VAT rows were extracted")
+        vat_rate_pct = sorted_entries[0].rate
+        sum_vat = round(sum(e.vat_amount for e in vat_entries), 2)
+        sum_base = round(sum(e.base_amount for e in vat_entries), 2)
 
     parsed_date = None
     if raw.transaction_date:
@@ -121,15 +137,12 @@ def assemble_receipt(raw: RawReceipt) -> Receipt:
     return Receipt(
         merchant_name=raw.merchant_name,
         transaction_date=parsed_date,
-        currency=raw.currency,
+        currency=raw.currency or "CHF",
         total_incl_vat=total_incl_vat,
+        vat_rate_pct=vat_rate_pct,
+        vat_amount=sum_vat if vat_entries else None,
+        subtotal_excl_vat=sum_base if vat_entries else None,
         vat_breakdown=vat_entries,
-        vat_amount=round(sum(e.vat_amount for e in vat_entries), 2)
-        if vat_entries
-        else None,
-        subtotal_excl_vat=round(sum(e.base_amount for e in vat_entries), 2)
-        if vat_entries
-        else None,
         payment_method=raw.payment_method,
     )
 
