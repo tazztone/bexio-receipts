@@ -18,6 +18,7 @@ from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from tenacity import (
     retry,
+    retry_if_exception,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
@@ -174,6 +175,11 @@ def assemble_receipt(raw: RawReceipt) -> Receipt:
     )
 
 
+def _is_rate_limit(exc: BaseException) -> bool:
+    """Detect 429s regardless of which exception type wraps them."""
+    return "429" in str(exc) or "rate" in str(exc).lower()
+
+
 class ExtractionError(Exception):
     """Custom exception that carries the raw model response for debugging."""
 
@@ -183,13 +189,16 @@ class ExtractionError(Exception):
 
 
 @retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type((
-        httpx.HTTPStatusError,
-        ValidationError,
-        ExtractionError,
-    )),
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=2, min=5, max=60),
+    retry=(
+        retry_if_exception_type((
+            httpx.HTTPStatusError,
+            ValidationError,
+            ExtractionError,
+        ))
+        | retry_if_exception(_is_rate_limit)
+    ),
     reraise=True,
 )
 async def extract_receipt(
@@ -198,111 +207,118 @@ async def extract_receipt(
     """
     Extract receipt data from OCR text using a Two-Step LLM Pipeline.
     """
-    if settings.llm_provider == "ollama":
-        base_url = settings.ollama_url.rstrip("/")
-        if not base_url.endswith("/v1"):
-            base_url = f"{base_url}/v1"
+    or_client = None
+    try:
+        if settings.llm_provider == "ollama":
+            base_url = settings.ollama_url.rstrip("/")
+            if not base_url.endswith("/v1"):
+                base_url = f"{base_url}/v1"
 
-        model = OpenAIChatModel(
-            model_name=settings.llm_model,
-            provider=OllamaProvider(base_url=base_url, http_client=client),
-        )
-    elif settings.llm_provider == "openai":
-        model = OpenAIChatModel(
-            model_name=settings.llm_model,
-            provider=OpenAIProvider(http_client=client),
-        )
-    elif settings.llm_provider == "openrouter":
-        from openai import AsyncOpenAI
+            model = OpenAIChatModel(
+                model_name=settings.llm_model,
+                provider=OllamaProvider(base_url=base_url, http_client=client),
+            )
+        elif settings.llm_provider == "openai":
+            model = OpenAIChatModel(
+                model_name=settings.llm_model,
+                provider=OpenAIProvider(http_client=client),
+            )
+        elif settings.llm_provider == "openrouter":
+            from openai import AsyncOpenAI
 
-        api_key = settings.openrouter_api_key
-        if not api_key:
-            raise ValueError("OPENROUTER_API_KEY is required for OpenRouter provider")
+            api_key = settings.openrouter_api_key
+            if not api_key:
+                raise ValueError(
+                    "OPENROUTER_API_KEY is required for OpenRouter provider"
+                )
 
-        or_client = AsyncOpenAI(
-            base_url=settings.openrouter_url,
-            api_key=api_key,
-            default_headers={
-                "HTTP-Referer": settings.openrouter_site_url,
-                "X-Title": settings.openrouter_site_name,
-            },
-        )
-        model = OpenAIChatModel(
-            model_name=settings.llm_model,
-            provider=OpenAIProvider(openai_client=or_client),
-            profile=OpenAIModelProfile(
-                supports_json_schema_output=True,
-                supports_json_object_output=True,
-                json_schema_transformer=OpenAIJsonSchemaTransformer,
-            ),
-        )
-    else:
-        raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
+            or_client = AsyncOpenAI(
+                base_url=settings.openrouter_url,
+                api_key=api_key,
+                default_headers={
+                    "HTTP-Referer": settings.openrouter_site_url,
+                    "X-Title": settings.openrouter_site_name,
+                },
+            )
+            model = OpenAIChatModel(
+                model_name=settings.llm_model,
+                provider=OpenAIProvider(openai_client=or_client),
+                profile=OpenAIModelProfile(
+                    supports_json_schema_output=True,
+                    supports_json_object_output=True,
+                    json_schema_transformer=OpenAIJsonSchemaTransformer,
+                ),
+            )
+        else:
+            raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
 
-    # STEP 1: Preliminary Extraction (Searcher)
-    searcher_agent = Agent(
-        model,
-        output_type=IntermediateReceipt,
-        retries=1,
-        system_prompt=(
-            "Transcribe basic receipt data and locate the VAT table.\n"
-            "### RULES ###\n"
-            "1. MERCHANT: Extract vendor name. IGNORE customer addresses.\n"
-            "2. DATE: Transcribe exactly (e.g. 31.01.2026).\n"
-            "3. TOTAL: Extract grand total amount.\n"
-            "4. VAT TABLE RAW: Find the VAT summary section (usually at the bottom). "
-            "Copy-paste the lines of that table VERBATIM. Do not process or reformat it."
-        ),
-    )
-
-    logger.info("Step 1: Preliminary extraction started", model=settings.llm_model)
-    res1 = await searcher_agent.run(f"Receipt text:\n{raw_text}")
-    intermediate = res1.output
-    if not isinstance(intermediate, IntermediateReceipt):
-        raise ExtractionError("Step 1 failed: Unexpected output type")
-
-    # STEP 2: VAT Parsing (Assigner)
-    vat_rows = []
-    if intermediate.vat_table_raw and len(intermediate.vat_table_raw.strip()) > 5:
-        parser_agent = Agent(
+        # STEP 1: Preliminary Extraction (Searcher)
+        searcher_agent = Agent(
             model,
-            output_type=list[RawVatRow],
+            output_type=IntermediateReceipt,
             retries=1,
             system_prompt=(
-                "You are a VAT data entry specialist. I will give you a tiny snippet of a VAT table.\n"
-                "Extract the rows. For each row:\n"
-                "- rate: e.g. 2.6, 8.1\n"
-                "- col_a, col_b, col_c: the numbers in that row in order from left to right.\n"
-                "RULES:\n"
-                "1. IGNORE summary rows (Total, Summe, Rundung).\n"
-                "2. IGNORE columns containing savings values or VAT codes (1, 2).\n"
-                "3. ONLY extract rows representing a specific VAT rate."
+                "Transcribe basic receipt data and locate the VAT table.\n"
+                "### RULES ###\n"
+                "1. MERCHANT: Extract vendor name. IGNORE customer addresses.\n"
+                "2. DATE: Transcribe exactly (e.g. 31.01.2026).\n"
+                "3. TOTAL: Extract grand total amount.\n"
+                "4. VAT TABLE RAW: Find the VAT summary section (usually at the bottom). "
+                "Copy-paste the lines of that table VERBATIM. Do not process or reformat it."
             ),
         )
 
-        cleaned_snippet = clean_vat_snippet(intermediate.vat_table_raw)
-        logger.info("Step 2: VAT parsing started", snippet=cleaned_snippet)
-        res2 = await parser_agent.run(f"VAT Table Snippet:\n{cleaned_snippet}")
-        vat_rows = res2.output
-        if not isinstance(vat_rows, list):
-            raise ExtractionError("Step 2 failed: Unexpected output type")
+        logger.info("Step 1: Preliminary extraction started", model=settings.llm_model)
+        res1 = await searcher_agent.run(f"Receipt text:\n{raw_text}")
+        intermediate = res1.output
+        if not isinstance(intermediate, IntermediateReceipt):
+            raise ExtractionError("Step 1 failed: Unexpected output type")
 
-    # Final assembly
-    raw_receipt = RawReceipt(
-        merchant_name=intermediate.merchant_name,
-        transaction_date=intermediate.transaction_date,
-        currency=intermediate.currency,
-        total_incl_vat=intermediate.total_incl_vat,
-        vat_rows=vat_rows,
-        payment_method=intermediate.payment_method,
-    )
+        # STEP 2: VAT Parsing (Assigner)
+        vat_rows = []
+        if intermediate.vat_table_raw and len(intermediate.vat_table_raw.strip()) > 5:
+            parser_agent = Agent(
+                model,
+                output_type=list[RawVatRow],
+                retries=1,
+                system_prompt=(
+                    "You are a VAT data entry specialist. I will give you a tiny snippet of a VAT table.\n"
+                    "Extract the rows. For each row:\n"
+                    "- rate: e.g. 2.6, 8.1\n"
+                    "- col_a, col_b, col_c: the numbers in that row in order from left to right.\n"
+                    "RULES:\n"
+                    "1. IGNORE summary rows (Total, Summe, Rundung).\n"
+                    "2. IGNORE columns containing savings values or VAT codes (1, 2).\n"
+                    "3. ONLY extract rows representing a specific VAT rate."
+                ),
+            )
 
-    try:
-        receipt = assemble_receipt(raw_receipt)
-        # Capture raw text for debugging
-        last_raw = f"Step1: {res1.output}\n\nStep2: {vat_rows if 'res2' in locals() else 'N/A'}"
-        return receipt, last_raw
-    except ValueError as ve:
-        raise ExtractionError(
-            f"VAT assembly failed: {ve!s}", last_raw=str(intermediate)
-        ) from ve
+            cleaned_snippet = clean_vat_snippet(intermediate.vat_table_raw)
+            logger.info("Step 2: VAT parsing started", snippet=cleaned_snippet)
+            res2 = await parser_agent.run(f"VAT Table Snippet:\n{cleaned_snippet}")
+            vat_rows = res2.output
+            if not isinstance(vat_rows, list):
+                raise ExtractionError("Step 2 failed: Unexpected output type")
+
+        # Final assembly
+        raw_receipt = RawReceipt(
+            merchant_name=intermediate.merchant_name,
+            transaction_date=intermediate.transaction_date,
+            currency=intermediate.currency,
+            total_incl_vat=intermediate.total_incl_vat,
+            vat_rows=vat_rows,
+            payment_method=intermediate.payment_method,
+        )
+
+        try:
+            receipt = assemble_receipt(raw_receipt)
+            # Capture raw text for debugging
+            last_raw = f"Step1: {res1.output}\n\nStep2: {vat_rows if 'res2' in locals() else 'N/A'}"
+            return receipt, last_raw
+        except ValueError as ve:
+            raise ExtractionError(
+                f"VAT assembly failed: {ve!s}", last_raw=str(intermediate)
+            ) from ve
+    finally:
+        if or_client is not None:
+            await or_client.close()
