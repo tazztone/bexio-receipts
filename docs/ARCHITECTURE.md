@@ -19,15 +19,18 @@ graph TD
         DB_Hash -- Duplicate --> Skip[Skip]
         DB_Hash -- New --> PDF_Check[PDF Extraction]
         PDF_Check -- Scanned/Image --> OCR[OCR Engine]
-        PDF_Check -- Digital --> LLM[LLM Extraction]
-        OCR -- Markdown Tables --> LLM
-        LLM --> VAL[Validation]
+        PDF_Check -- Digital --> LLM_S1[Step 1: Searcher]
+        OCR -- Markdown Tables --> LLM_S1
+        LLM_S1 --> LLM_S2[Step 2: VAT Assigner]
+        LLM_S2 --> LLM_S3[Step 3: Account Classifier]
+        LLM_S3 --> VAL[Validation]
     end
 
     subgraph Review_and_Integration
         VAL --> Review[Review Queue]
         Review -- HTMX Edit --> Human[Human Reviewer]
         Human -- Approved --> BEX_V4[bexio v4 Expenses/Bills]
+        Human -- Approved --> DB_Learn[DB: Learn Mappings]
     end
 
     BEX_V4 -- 429/5xx --> Retry[Tenacity Retry]
@@ -60,22 +63,26 @@ graph TD
   fine-text legibility for complex VAT summaries.
 
 ### 3. Extraction Layer (`extraction.py`)
-- **Pydantic AI**: Orchestrates the LLM prompt. It enforces a strict schema
-  using the `Receipt` model. The core system prompt is located within
-  `src/bexio_receipts/extraction.py`.
-- **Model Intelligence**: Extracts structured data into Pydantic models. This
-  layer handles merchant identification, date/currency parsing, and Swiss VAT
-  rate detection.
-- **Contract**: Note that the `Receipt` model uses an alias for the transaction
-  date. While the internal field is `transaction_date`, the JSON source must
-  provide the key `date`.
+- **Pydantic AI**: Orchestrates the three-step LLM pipeline:
+  - **Step 1 (Searcher)**: Transcribes basic receipt data (merchant, date, total)
+    and locates the raw VAT table.
+  - **Step 2 (VAT Assigner)**: Parses the raw VAT snippet into structured rows
+    using deterministic math validation to prevent hallucinations.
+  - **Step 3 (Account Classifier)**: Assigns Swiss booking accounts based on the
+    full OCR context (product items) and VAT rates.
+- **Model Intelligence**: Enforces strict schemas using `Receipt` and
+  `AccountAssignment` models. Handles merchant identification, date/currency
+  parsing, and Swiss VAT rate detection.
+- **Contract**: The `Receipt` model uses an alias for the transaction date.
+  While the internal field is `transaction_date`, the JSON source must provide
+  the key `date`.
 
 ### 4. Database Layer (`database.py`)
 A SQLite-backed persistence layer that handles:
 - **Deduplication**: Every file is hashed. If the hash exists in
   `processed_receipts.db`, it is skipped to prevent double bookings.
-- **Merchant Mapping**: Remembers the last used booking account for each
-  merchant to automate future entries.
+- **Merchant Mapping**: Remembers the last used booking account (or specific
+  per-VAT-rate mapping) for each merchant to automate future entries.
 - **Concurrency**: Implements proper connection pooling and transaction
   management for both the pipeline and the dashboard.
 

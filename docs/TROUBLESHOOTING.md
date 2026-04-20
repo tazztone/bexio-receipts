@@ -73,6 +73,17 @@ existing contact in bexio.
 - If the merchant is new, bexio-receipts will attempt to create a contact.
 - If it fails, manually create the contact in bexio and then update the mapping
   in the dashboard.
+### 8. `Account Classification Mismatch`
+**Symptoms**: The suggested booking account is wrong (e.g., 4201 instead of 4200).
+**Fix**:
+- **Manual Override**: Change the account in the Review Dashboard dropdown before
+  pushing.
+- **Learning Loop**: When you push with the corrected account, the system
+  remembers the `(merchant, vat_rate)` pair. Future receipts for this merchant
+  will use your choice automatically.
+- **AI Context**: If the AI reasoning seems confused, check the `BEXIO_ACCOUNTS`
+  descriptions in your `.env`. Clearer descriptions (e.g. "Food only") help the
+  classifier.
 
 ## Ingestion Specific Issues
 

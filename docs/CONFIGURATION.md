@@ -30,6 +30,9 @@ automatically create a `.env` file for you.
   expenses (e.g., `630`).
 - **`DEFAULT_BANK_ACCOUNT_ID`**: (Required) Default bexio bank account ID for
   payments (e.g., `1`).
+- **`BEXIO_ACCOUNTS`**: A dictionary mapping account numbers to descriptions
+  (e.g., `{"4200": "Einkauf Handelsware", "4400": "Dienstleistung"}`). Used by
+  the Step 3 classifier to assign accounts based on product context.
 - **`BEXIO_ALLOWED_SOLL_ACCOUNTS`**: Comma-separated list of account *numbers*
   (e.g., `4200,4400`) allowed in the review UI dropdown.
 - **`BEXIO_HABEN_ACCOUNT_BANK`**: Account *number* used for the "Bank" payment
@@ -58,9 +61,10 @@ complex VAT layouts and low-quality scans.
 
 <!-- prettier-ignore -->
 > [!TIP]
-> The system automatically uses a **Two-Step Extraction** process. The vision
-> model transcribes the receipt into Markdown tables, and the LLM then parses
-> the structured JSON from that Markdown.
+> The system automatically uses a **Three-Step Extraction** process:
+> 1. **Searcher**: Transcribes raw data and locates the VAT table.
+> 2. **VAT Assigner**: Parses the VAT snippet with math validation.
+> 3. **Account Classifier**: Assigns booking accounts based on product context.
 
 
 ### LLM Providers (`LLM_PROVIDER`)

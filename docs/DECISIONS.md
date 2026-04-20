@@ -79,3 +79,19 @@ When adding a new ADR, use the following format:
   - **Security**: Prevents erroneous data from being pushed to the accounting system.
   - **Compliance**: Ensures a human has verified the tax implications (VAT rates) of each transaction.
   - **Usability**: The dashboard provides a high-fidelity environment for correcting minor extraction artifacts before they become permanent records.
+## [ADR-011] Three-Step LLM Pipeline (Searcher -> Assigner -> Classifier)
+- **Status**: Decided (April 2026)
+- **Context**: ADR-005 introduced a two-step process for VAT extraction. However, assigning granular booking accounts (e.g., 4200 vs 4201) requires product-level context that is missing from the isolated VAT snippet.
+- **Decision**: Add a third step: **Step 3 (Account Classifier)**. This step takes the full OCR text and the resolved receipt to assign accounts per VAT rate.
+- **Rationale**:
+- **Accuracy**: Separation of concerns ensures math stability (Step 2) while maintaining semantic context (Step 3).
+- **Efficiency**: Step 3 only runs if Step 2 succeeds, saving LLM tokens on invalid extractions.
+
+## [ADR-012] Per-VAT-Rate Account Mapping & Learning Loop
+- **Status**: Decided (April 2026)
+- **Context**: Standard merchant-level account mapping fails for merchants like Prodega or Coop, where a single receipt can contain both Food (2.6%) and Non-Food (8.1%) items requiring different accounts.
+- **Decision**: Implement a composite mapping key `(merchant_name, vat_rate)`. Trigger database updates only when a human approves the bill in the dashboard.
+- **Rationale**:
+- **Precision**: Enables automatic, high-fidelity booking for complex wholesaler receipts.
+- **Reliability**: Restricting the "learning" to human-verified approvals prevents LLM hallucinations from polluting the mapping database.
+- **Transparency**: The UI displays the AI's reasoning and confidence for its suggested accounts.

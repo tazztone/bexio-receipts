@@ -46,9 +46,13 @@ The `--quickstart` flag will:
     recognition on scanned images.
 - **Intelligent Extraction:** Uses **Pydantic AI** with local LLMs (e.g., Qwen
   3.5) to parse text into structured data.
-- **Swiss Business Rules:** Built-in programmatic validation for Swiss VAT
-  rates (8.1%, 2.6%, 3.8%), 5-rappen rounding, and native support for
-  computing multi-rate `vat_breakdown` arrays.
+- **Swiss Business Rules & Account Classification:**
+  - **VAT Verification**: Built-in validation for Swiss VAT rates (8.1%, 2.6%,
+    3.8%) and 5-rappen rounding.
+  - **Step 3 Classification**: Uses full OCR context to automatically assign
+    booking accounts (e.g., 4200 vs 4201) per VAT rate.
+  - **Learning Loop**: Remembers per-VAT-rate account choices for each merchant,
+    automating future entries with high precision.
 - **bexio Integration:** Automatic file upload and expense creation via the
   bexio API.
 - **Review Dashboard:** A premium web-based interface (FastAPI + HTMX) to
@@ -68,14 +72,17 @@ graph TD
     subgraph Processing
         P --> PDF["PDF Text Extraction"]
         PDF -- Scanned/Image --> OCR["GLM-OCR"]
-        PDF -- Digital --> LLM
-        OCR --> LLM["LLM Extraction"]
-        LLM --> VAL["Validation"]
+        PDF -- Digital --> LLM_S1[Step 1: Searcher]
+        OCR --> LLM_S1
+        LLM_S1 --> LLM_S2[Step 2: Assigner]
+        LLM_S2 --> LLM_S3[Step 3: Classifier]
+        LLM_S3 --> VAL["Validation"]
     end
 
     subgraph Integration
         VAL --> RD["Review Dashboard"]
         RD -- Approved --> BEX["bexio API"]
+        RD -- Approved --> DB_Learn[DB: Learn Mappings]
     end
 
     BEX -- 429/5xx --> Retry["Retry Logic"]

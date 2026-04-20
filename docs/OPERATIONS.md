@@ -60,8 +60,12 @@ financial data.
 
 1. Log in with your `REVIEW_PASSWORD`.
 2. Review the extracted fields against the receipt image.
-3. Correct any minor extraction artifacts (e.g., date format, VAT rate).
-4. Click **"Apply & Push"** to send the verified entry to bexio.
+3. **Check Booking Accounts**: The system automatically suggests accounts
+   per VAT rate based on the last saved mapping or AI classification (Step 3).
+   AI suggestions include a **Reasoning** hint and a **Confidence** level.
+4. Correct any minor extraction artifacts (e.g., date format, VAT rate).
+5. Click **"Apply & Push"** to send the verified entry to bexio. This also
+   persists any account corrections to the learning loop for future automation.
 
 ## Maintenance Tasks
 
