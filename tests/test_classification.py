@@ -3,7 +3,7 @@ from datetime import date
 import httpx
 import pytest
 
-from bexio_receipts.extraction import classify_accounts
+from bexio_receipts.extraction import ExtractionTrace, classify_accounts
 from bexio_receipts.models import Receipt, VatEntry
 
 
@@ -54,8 +54,11 @@ async def test_classify_accounts_logic(test_settings, respx_mock):
         )
     )
 
+    trace = ExtractionTrace(ocr_text=raw_text)
     async with httpx.AsyncClient() as client:
-        assignments = await classify_accounts(receipt, raw_text, test_settings, client)
+        assignments = await classify_accounts(
+            receipt, raw_text, test_settings, client, trace
+        )
 
     assert len(assignments) == 2
     assert assignments[0].account_id == "4200"

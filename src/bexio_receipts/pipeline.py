@@ -186,7 +186,7 @@ async def process_receipt(
         # 3. Step 3: Account Classification (Post-Extraction)
         logger.info("Classifying accounts via LLM", merchant=receipt.merchant_name)
         assignments = await classify_accounts(
-            receipt, raw_text, settings, client=client
+            receipt, raw_text, settings, client=client, trace=trace
         )
         trace.step3_assignments = [a.model_dump() for a in assignments]
 

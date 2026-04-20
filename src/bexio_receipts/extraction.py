@@ -15,8 +15,6 @@ from pydantic_ai.profiles.openai import (
     OpenAIJsonSchemaTransformer,
     OpenAIModelProfile,
 )
-from pydantic_ai.providers.ollama import OllamaProvider
-from pydantic_ai.providers.openai import OpenAIProvider
 from tenacity import (
     retry,
     retry_if_exception,
@@ -46,6 +44,8 @@ class AccountAssignment(BaseModel):
 
 
 class AccountAssignments(BaseModel):
+    """Wrapper for list[AccountAssignment] as pydantic-ai doesn't support bare lists for some models."""
+
     assignments: list[AccountAssignment]
 
 
@@ -87,7 +87,7 @@ def clean_vat_snippet(snippet: str) -> str:
 
 
 def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
-    rate_match_tol = 0.01  # rate is a label; must match exactly
+    rate_match_tol = 0.05  # safe tolerance for float rate-column labels
     math_tol = 0.05  # covers rounding on all Swiss receipt formats
 
     entries = []
@@ -223,6 +223,60 @@ def _is_rate_limit(exc: BaseException) -> bool:
     return "429" in str(exc) or "rate" in str(exc).lower()
 
 
+async def _build_model(
+    settings: Settings, client: httpx.AsyncClient
+) -> tuple[OpenAIChatModel, httpx.AsyncClient | None]:
+    """Helper to build the pydantic-ai model consistently."""
+    or_client = None
+    if settings.llm_provider == "ollama":
+        from pydantic_ai.providers.ollama import OllamaProvider
+
+        base_url = settings.ollama_url.rstrip("/")
+        if not base_url.endswith("/v1"):
+            base_url = f"{base_url}/v1"
+
+        model = OpenAIChatModel(
+            model_name=settings.llm_model,
+            provider=OllamaProvider(base_url=base_url, http_client=client),
+        )
+    elif settings.llm_provider == "openai":
+        from pydantic_ai.providers.openai import OpenAIProvider
+
+        model = OpenAIChatModel(
+            model_name=settings.llm_model,
+            provider=OpenAIProvider(http_client=client),
+        )
+    elif settings.llm_provider == "openrouter":
+        from openai import AsyncOpenAI
+        from pydantic_ai.providers.openai import OpenAIProvider
+
+        api_key = settings.openrouter_api_key
+        if not api_key:
+            raise ValueError("OPENROUTER_API_KEY is required for OpenRouter provider")
+
+        # or_client isn't actually an httpx.AsyncClient but it has a .close()
+        or_client = AsyncOpenAI(
+            base_url=settings.openrouter_url,
+            api_key=api_key,
+            default_headers={
+                "HTTP-Referer": settings.openrouter_site_url,
+                "X-Title": settings.openrouter_site_name,
+            },
+        )
+        model = OpenAIChatModel(
+            model_name=settings.llm_model,
+            provider=OpenAIProvider(openai_client=or_client),
+            profile=OpenAIModelProfile(
+                supports_json_schema_output=True,
+                supports_json_object_output=True,
+                json_schema_transformer=OpenAIJsonSchemaTransformer,
+            ),
+        )
+    else:
+        raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
+    return model, or_client
+
+
 class ExtractionError(Exception):
     """Custom exception that carries the trace for debugging."""
 
@@ -251,51 +305,8 @@ async def extract_receipt(
     Extract receipt data from OCR text using a Two-Step LLM Pipeline.
     """
     trace = ExtractionTrace(ocr_text=raw_text)
-    or_client = None
+    model, or_client = await _build_model(settings, client)
     try:
-        if settings.llm_provider == "ollama":
-            base_url = settings.ollama_url.rstrip("/")
-            if not base_url.endswith("/v1"):
-                base_url = f"{base_url}/v1"
-
-            model = OpenAIChatModel(
-                model_name=settings.llm_model,
-                provider=OllamaProvider(base_url=base_url, http_client=client),
-            )
-        elif settings.llm_provider == "openai":
-            model = OpenAIChatModel(
-                model_name=settings.llm_model,
-                provider=OpenAIProvider(http_client=client),
-            )
-        elif settings.llm_provider == "openrouter":
-            from openai import AsyncOpenAI
-
-            api_key = settings.openrouter_api_key
-            if not api_key:
-                raise ValueError(
-                    "OPENROUTER_API_KEY is required for OpenRouter provider"
-                )
-
-            or_client = AsyncOpenAI(
-                base_url=settings.openrouter_url,
-                api_key=api_key,
-                default_headers={
-                    "HTTP-Referer": settings.openrouter_site_url,
-                    "X-Title": settings.openrouter_site_name,
-                },
-            )
-            model = OpenAIChatModel(
-                model_name=settings.llm_model,
-                provider=OpenAIProvider(openai_client=or_client),
-                profile=OpenAIModelProfile(
-                    supports_json_schema_output=True,
-                    supports_json_object_output=True,
-                    json_schema_transformer=OpenAIJsonSchemaTransformer,
-                ),
-            )
-        else:
-            raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
-
         # STEP 1: Preliminary Extraction (Searcher)
         searcher_agent = Agent(
             model,
@@ -398,52 +409,17 @@ async def extract_receipt(
 
 
 async def classify_accounts(
-    receipt: Receipt, raw_text: str, settings: Settings, client: httpx.AsyncClient
+    receipt: Receipt,
+    raw_text: str,
+    settings: Settings,
+    client: httpx.AsyncClient,
+    trace: ExtractionTrace,
 ) -> list[AccountAssignment]:
     """
     Step 3: Assign Swiss booking accounts based on full OCR context and VAT rates.
     """
-    or_client = None
+    model, or_client = await _build_model(settings, client)
     try:
-        # Reuse provider logic from extract_receipt
-        if settings.llm_provider == "openai":
-            from pydantic_ai.providers.openai import OpenAIProvider
-
-            model = OpenAIChatModel(
-                model_name=settings.llm_model,
-                provider=OpenAIProvider(http_client=client),
-            )
-        elif settings.llm_provider == "openrouter":
-            from openai import AsyncOpenAI
-            from pydantic_ai.providers.openai import OpenAIProvider
-
-            or_client = AsyncOpenAI(
-                base_url=settings.openrouter_url,
-                api_key=settings.openrouter_api_key,
-                default_headers={
-                    "HTTP-Referer": settings.openrouter_site_url,
-                    "X-Title": settings.openrouter_site_name,
-                },
-            )
-            model = OpenAIChatModel(
-                model_name=settings.llm_model,
-                provider=OpenAIProvider(openai_client=or_client),
-            )
-        elif settings.llm_provider == "ollama":
-            from pydantic_ai.providers.ollama import OllamaProvider
-
-            base_url = settings.ollama_url.rstrip("/")
-            if not base_url.endswith("/v1"):
-                base_url = f"{base_url}/v1"
-
-            model = OpenAIChatModel(
-                model_name=settings.llm_model,
-                provider=OllamaProvider(base_url=base_url, http_client=client),
-            )
-        else:
-            # Fallback to default model string
-            model = settings.llm_model
-
         accounts_context = "\n".join([
             f"- {acc_id}: {desc}" for acc_id, desc in settings.bexio_accounts.items()
         ])
@@ -478,6 +454,8 @@ async def classify_accounts(
         return res.output.assignments
     except Exception as e:
         logger.error("Step 3: Account classification failed", error=str(e))
+        trace.error_stage = "step3"
+        trace.error_detail = str(e)
         return []
     finally:
         if or_client is not None:
