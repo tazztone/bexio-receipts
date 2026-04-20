@@ -100,21 +100,21 @@ When adding a new ADR, use the following format:
 - **Transparency**: The UI displays the AI's reasoning and confidence for its suggested accounts.
 
 ## [ADR-013] Two-Pass OCR (Full Text + Table Crop)
-- **Status**: Decided (April 2026)
+- **Status**: Superseded (April 2026)
 - **Context**: Complex Swiss layouts (e.g., Prodega, Coop) contain mixed tables
   where column data (Base, VAT, Total) must be mathematically verified. Standard
   `"Text Recognition:"` on the whole image often merges columns, causing
   Step 2 extraction to fail.
-- **Decision**: Implement a two-pass OCR strategy for image payloads:
-  1. **Pass 1**: Full image OCR using `"Text Recognition:"` to capture header
-     fields.
-  2. **Pass 2**: Targeted OCR on the bottom 40% crop using the specialized
-     `"Table Recognition:"` prompt.
-  Results are merged with a clear `--- VAT TABLE (structured) ---` anchor.
+- **Decision**: Initially implemented a two-pass strategy with manual cropping. Superseded by ADR-014's native SDK layout handling.
+
+---
+
+## [ADR-014] Migration from Ollama to GLM-OCR SDK (vLLM Backend)
+- **Status**: Decided (April 2026)
+- **Context**: While Ollama provided a convenient wrapper for GLM-OCR, it lacked support for the specialized PP-DocLayoutV3 layout analysis and the high-fidelity table parsing required for complex Swiss receipts.
+- **Decision**: Migrate the OCR engine from the legacy Ollama `glm-ocr` model to the official `glmocr` SDK running in `selfhosted` mode (connecting to a vLLM/SGLang backend).
 - **Rationale**:
-  - **Fidelity**: The table prompt activates GLM's cell-aware parsing, producing
-    valid Markdown/HTML tables that preserve math consistency.
-  - **Stability**: Targeted cropping minimizes the distraction of line items
-    while ensuring the critical VAT summary is captured with high confidence.
-  - **Resilience**: The pipeline handles pass failures independently; if the
-    table pass fails, it gracefully falls back to the text-only pass.
+  - **High Fidelity**: PP-DocLayoutV3 enables accurate multi-point bounding boxes and logical reading order, significantly reducing cascading errors in table parsing.
+  - **Native PDF Support**: The SDK handles PDF files natively, removing the need for manual image rendering and external dependencies like `pdf2image`.
+  - **Structural Integrity**: The SDK returns a structured `PipelineResult` with native Markdown and JSON layouts, eliminating the need for the heuristic "Two-Pass OCR" crop strategy (ADR-013).
+  - **Performance**: vLLM backend provides superior inference throughput and lower latency compared to Ollama for the heavy GLM-OCR vision-encoder.

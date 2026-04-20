@@ -48,16 +48,18 @@ automatically create a `.env` file for you.
 
 The system supports two OCR engines and multiple LLM providers.
 
-### OCR Engine (`GLM-OCR`)
+### OCR Engine (`GLM-OCR SDK`)
 
-The system uses **GLM-OCR** as its primary OCR engine. It is a multimodal
-LLM-based engine that runs locally via Ollama. It is highly effective for
-complex VAT layouts and low-quality scans.
+The system uses the **GLM-OCR SDK** with the **PP-DocLayoutV3** layout engine. 
+It runs in `selfhosted` mode, connecting to a vLLM or SGLang backend. 
+This setup provides high-fidelity table parsing and logical reading order.
 
 | Variable | Description | Default |
 |---|---|---|
-| `GLM_OCR_URL` | URL for the Ollama instance running GLM-OCR | `http://localhost:11434` |
-| `GLM_OCR_MODEL` | Model name for GLM-OCR in Ollama | `glm-ocr` |
+| `GLM_OCR_API_HOST` | Hostname of the vLLM/SGLang backend | `localhost` |
+| `GLM_OCR_API_PORT` | Port of the vLLM/SGLang backend | `8080` |
+| `GLM_OCR_LAYOUT_DEVICE` | Device for layout analysis (`cpu`, `cuda`, `mps`) | `cpu` |
+| `GLM_OCR_TIMEOUT` | Seconds to wait for OCR completion | `60` |
 
 <!-- prettier-ignore -->
 > [!TIP]
@@ -81,9 +83,9 @@ complex VAT layouts and low-quality scans.
 
 <!-- prettier-ignore -->
 > [!NOTE]
-> `GLM_OCR_URL` and `OLLAMA_URL` are separate. This allows you to run the heavy
-> OCR model on one host (e.g., with a GPU) and the extraction LLM on another
-> (e.g., a standard CPU host).
+> `GLM_OCR_API_HOST` and `OLLAMA_URL` are separate. This allows you to run the 
+> heavy layout/vision model on one host (e.g., with a GPU) and the extraction 
+> LLM on another (e.g., a standard CPU host).
 
 ## Ingestion Sources
 

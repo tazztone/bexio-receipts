@@ -20,7 +20,7 @@ uv run bexio-receipts init --quickstart
 
 The `--quickstart` flag will:
 1.  **Validate** your Bexio token and display your company name.
-2.  **Configure** default local models (Qwen 3.5 & GLM-OCR).
+2.  **Configure** default local models (Qwen 3.5 & GLM-OCR SDK).
 3.  **Process** a bundled demo receipt to verify your local LLM/OCR stack.
 
 ### What you'll see first
@@ -70,13 +70,14 @@ graph TD
     end
 
     subgraph Processing
-        P --> PDF["PDF Text Extraction"]
-        PDF -- Scanned/Image --> OCR["GLM-OCR"]
-        PDF -- Digital --> LLM_S1[Step 1: Searcher]
-        OCR --> LLM_S1
-        LLM_S1 --> LLM_S2[Step 2: Assigner]
-        LLM_S2 --> LLM_S3[Step 3: Classifier]
-        LLM_S3 --> VAL["Validation"]
+        P --> DB_Hash[SHA-256 Check]
+        DB_Hash -- Duplicate --> Skip[Skip]
+        DB_Hash -- New --> OCR_SDK[GLM-OCR SDK]
+        OCR_SDK -- Layout Analysis --> PP_DocLayout[PP-DocLayoutV3]
+        PP_DocLayout -- PDF/Image --> LLM_S1[Step 1: Searcher]
+        LLM_S1 --> LLM_S2[Step 2: VAT Assigner]
+        LLM_S2 --> LLM_S3[Step 3: Account Classifier]
+        LLM_S3 --> VAL[Validation]
     end
 
     subgraph Integration
@@ -98,7 +99,8 @@ graph TD
 ### Prerequisites
 
 - [uv](https://github.com/astral-sh/uv) installed.
-- [Ollama](https://ollama.com/) (for GLM-OCR and local LLM extraction).
+- [Ollama](https://ollama.com/) (for extraction LLM).
+- [vLLM](https://github.com/vllm-project/vllm) or SGLang (for GLM-OCR SDK backend).
 - A [bexio Personal Access Token](https://docs.bexio.com/#section/Authentication).
 
 ### Installation
@@ -113,8 +115,8 @@ cp .env.example .env
 # Interactive Setup (Recommended)
 uv run bexio-receipts init
 
-ollama pull glm-ocr        # for OCR
-ollama pull qwen3.5:9b     # for extraction
+# Pull extraction model
+ollama pull qwen3.5:9b
 ```
 
 ---

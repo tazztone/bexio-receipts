@@ -93,7 +93,7 @@ If the folder watcher stops picking up files:
 
 ### Moving to a New Server
 1. Copy the `.env` and `processed_receipts.db`.
-2. Ensure Ollama is installed and models are pulled.
+2. Ensure vLLM/SGLang is running and extraction models are pulled.
 3. Run `docker compose up -d`.
    - **Important**: Keeping the database file ensures you don't double-book old
      receipts!

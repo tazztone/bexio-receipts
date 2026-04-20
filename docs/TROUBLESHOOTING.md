@@ -2,13 +2,12 @@
 
 ## Common Errors & Fixes
 
-### 1. `Ollama Connection Error`
-**Symptoms**: `httpx.ConnectError` or 500 errors during extraction.
+### 1. `GLM-OCR SDK Connection Error`
+**Symptoms**: `httpx.ConnectError` or 500 errors during OCR.
 **Fix**:
-- Ensure Ollama is running: `ollama list`.
-- Verify `OLLAMA_URL` in your `.env`.
-- If running in Docker, use `host.docker.internal` or the actual IP of the host
-  machine.
+- Ensure the vLLM/SGLang backend is running.
+- Verify `GLM_OCR_API_HOST` and `GLM_OCR_API_PORT` in your `.env`.
+- Check if the layout analysis device (`GLM_OCR_LAYOUT_DEVICE`) is correct.
 
 ### 3. `bexio 401 Unauthorized`
 **Symptoms**: Receipt extraction works, but pushing to bexio fails with 401.
@@ -29,9 +28,8 @@
 **Symptoms**: Receipt appears in the Review Dashboard with a math validation
 error.
 **Fix**:
-- **Check Column Alignment**: If using `glm-ocr`, ensure the "Two-Step
-  Extraction" (ADR-005) is active. This uses Markdown tables to preserve column
-  structure.
+- **Native Layout**: The GLM-OCR SDK uses PP-DocLayoutV3 to preserve column
+  structure. Ensure your backend has enough memory for the layout analysis.
 - **Swiss Rounding**: If the difference is only 0.01–0.04 CHF, it is likely a
   5-rappen rounding artifact. Correct the value in the dashboard and push.
 - **Resolution**: If text is blurry, ensure the image resolution is high enough
@@ -43,9 +41,9 @@ data".
 **Fix**:
 - **Markdown Tables**: The pipeline now expects Markdown-formatted OCR text for
   GLM. If the vision model fails to provide this, extraction might fail.
-- **Model Choice**: Ensure you are using a vision-capable model (e.g.,
-  `glm-ocr`) for the OCR step and a strong parser (e.g., `qwen3.5:9b`) for
-  extraction.
+- **Model Choice**: Ensure the vLLM backend is using the GLM-OCR model and your
+  extraction provider (Ollama/OpenAI) is using a strong parser (e.g., 
+  `qwen3.5:9b`).
 
 ### VAT Math Mismatch Errors
 If the review queue shows `VAT breakdown total (X) ≠ extracted VAT amount (Y)`:
@@ -59,16 +57,10 @@ If the review queue shows `VAT breakdown total (X) ≠ extracted VAT amount (Y)`
 
 ### GLM-OCR Latency (Timeout)
 If the pipeline hangs or times out during OCR:
-1. **Payload Size**: Large images are resized to 2560px. If still too slow,
-   ensure your Ollama instance is running on a GPU.
-2. **WebP Encoding**: The system uses WebP for speed and sharpness. If your
-   environment lacks `libwebp`, it may fall back to slow JPEG encoding.
-3. **Prompt Strategy**: The system now uses specialized triggers. Ensure you
-   haven't blocked `"Table Recognition:"` or `"Text Recognition:"` in your 
-   Ollama configuration. Do not add natural language instructions to these
-   prompts.
-4. **Inter-Pass Delay**: If your local Ollama instance crashes during Pass 2,
-   increase `GLM_OCR_INTER_PASS_DELAY` in your `.env` (default is 0.5s).
+1. **GPU Acceleration**: GLM-OCR is a heavy model. Ensure the vLLM backend is 
+   running on a GPU.
+2. **WebP Encoding**: The system uses WebP for speed and sharpness.
+3. **Timeout**: Increase `GLM_OCR_TIMEOUT` if processing multi-page PDFs.
 
 ### 7. `Merchant Match Failure`
 **Symptoms**: Extracted merchant name is correct, but it doesn't match an

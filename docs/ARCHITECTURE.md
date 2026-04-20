@@ -17,11 +17,9 @@ graph TD
     subgraph Processing
         P --> DB_Hash[SHA-256 Check]
         DB_Hash -- Duplicate --> Skip[Skip]
-        DB_Hash -- New --> PDF_Check[PDF Extraction]
-        PDF_Check -- Scanned/Image --> OCR[OCR Engine]
-        PDF_Check -- Digital --> LLM_S1[Step 1: Searcher]
-        OCR -- Pass 1: Full Text --> LLM_S1
-        OCR -- Pass 2: Table Crop --> LLM_S1
+        DB_Hash -- New --> OCR_SDK[GLM-OCR SDK]
+        OCR_SDK -- Layout Analysis --> PP_DocLayout[PP-DocLayoutV3]
+        PP_DocLayout -- PDF/Image --> LLM_S1[Step 1: Searcher]
         LLM_S1 --> LLM_S2[Step 2: VAT Assigner]
         LLM_S2 --> LLM_S3[Step 3: Account Classifier]
         LLM_S3 --> VAL[Validation]
@@ -47,29 +45,17 @@ graph TD
 - **GDrive**: Uses Google Drive API (v3) to poll and move files.
 
 ### 2. Text Extraction Layer (`ocr.py`)
-- **PDF Extraction**: Native text extraction via `pdfplumber`. Provides 100%
-  fidelity for digital PDFs and entirely skips the vision models.
-- **GLM-OCR**: Specialized multimodal model (via Ollama) built on the GLM-V
-  architecture. It is the sole OCR engine, utilized through a two-pass
-  orchestration layer.
-- **Two-Pass Strategy**: To resolve complex layouts, the pipeline executes
-  multiple inferences per image:
-  - **Pass 1 (Full)**: Uses `"Text Recognition:"` to capture general headers.
-  - **Pass 2 (Crop)**: Targets the bottom 40% of the image using
-    `"Table Recognition:"` to produce high-fidelity Markdown/HTML tables.
-  The results are merged using a structured anchor to provide the extraction LLM
-  with both global context and localized table precision.
-- **Stability**: Implements `AsyncRetrying` with exponential backoff and a 
-  configurable inter-pass delay to ensure reliable local execution.
-- **Two-Step Extraction**: The OCR path uses a decoupled workflow: (1) GLM-OCR
-  transcribes the receipt into raw text/Markdown, (2) Qwen extracts structured
-  JSON. This prevents the Vision model from hallucinating math to fit a JSON
-  schema.
-- **Image Optimization**: All images are capped at **2560px** (LANCZOS) and
-  converted to **WebP (q90)** before being sent to the vision model. WebP
-  preserves text sharpness better than JPEG while keeping payloads small.
-- **PDF Scans**: Scanned PDFs are converted to images at **300 DPI** to ensure
-  fine-text legibility for complex VAT summaries.
+- **GLM-OCR SDK**: Uses the official `glmocr` SDK with a self-hosted vLLM/SGLang 
+  backend. This replaces the legacy Ollama-based OCR and the manual two-pass 
+  strategy.
+- **PP-DocLayoutV3**: The SDK utilizes high-fidelity layout analysis to capture 
+  multi-point bounding boxes and logical reading order. This ensures that tables 
+  preserve their structural integrity (columns/rows) without manual cropping.
+- **Native PDF Support**: Handles digital and scanned PDFs natively within the 
+  SDK, eliminating the need for manual image rendering or `pdfplumber` 
+  fallbacks.
+- **Image Optimization**: All images are capped at **2560px** and converted to 
+  **WebP (q90)** before processing.
 
 ### 3. Extraction Layer (`extraction.py`)
 - **Pydantic AI**: Orchestrates the three-step LLM pipeline:
