@@ -20,7 +20,8 @@ graph TD
         DB_Hash -- New --> PDF_Check[PDF Extraction]
         PDF_Check -- Scanned/Image --> OCR[OCR Engine]
         PDF_Check -- Digital --> LLM_S1[Step 1: Searcher]
-        OCR -- Markdown Tables --> LLM_S1
+        OCR -- Pass 1: Full Text --> LLM_S1
+        OCR -- Pass 2: Table Crop --> LLM_S1
         LLM_S1 --> LLM_S2[Step 2: VAT Assigner]
         LLM_S2 --> LLM_S3[Step 3: Account Classifier]
         LLM_S3 --> VAL[Validation]
@@ -49,9 +50,17 @@ graph TD
 - **PDF Extraction**: Native text extraction via `pdfplumber`. Provides 100%
   fidelity for digital PDFs and entirely skips the vision models.
 - **GLM-OCR**: Specialized multimodal model (via Ollama) built on the GLM-V
-  architecture. It is the sole OCR engine, triggered using the canonical
-  `"Text Recognition:"` prompt to activate its internal layout analysis
-  pipeline (**PP-DocLayout-V3**).
+  architecture. It is the sole OCR engine, utilized through a two-pass
+  orchestration layer.
+- **Two-Pass Strategy**: To resolve complex layouts, the pipeline executes
+  multiple inferences per image:
+  - **Pass 1 (Full)**: Uses `"Text Recognition:"` to capture general headers.
+  - **Pass 2 (Crop)**: Targets the bottom 40% of the image using
+    `"Table Recognition:"` to produce high-fidelity Markdown/HTML tables.
+  The results are merged using a structured anchor to provide the extraction LLM
+  with both global context and localized table precision.
+- **Stability**: Implements `AsyncRetrying` with exponential backoff and a 
+  configurable inter-pass delay to ensure reliable local execution.
 - **Two-Step Extraction**: The OCR path uses a decoupled workflow: (1) GLM-OCR
   transcribes the receipt into raw text/Markdown, (2) Qwen extracts structured
   JSON. This prevents the Vision model from hallucinating math to fit a JSON

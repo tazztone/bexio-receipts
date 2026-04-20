@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from bexio_receipts.config import Settings
-from bexio_receipts.extraction import extract_receipt
+from bexio_receipts.extraction import classify_accounts, extract_receipt
 from bexio_receipts.ocr import async_run_ocr
 
 
@@ -47,6 +47,14 @@ async def test_prodega_ground_truth_e2e():
             f"[E2E] Extracting data using {settings.llm_model} ({settings.llm_provider})..."
         )
         receipt, trace = await extract_receipt(raw_text, settings, client=client)
+
+        # 3. Classification Stage
+        print("[E2E] Classifying accounts...")
+
+        assignments = await classify_accounts(
+            receipt, raw_text, settings, client=client, trace=trace
+        )
+        trace.step3_assignments = [a.model_dump() for a in assignments]
 
     # 3. Assertions with detailed output on failure
     try:

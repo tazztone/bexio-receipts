@@ -70,8 +70,17 @@ async def send_to_review(
         with open(review_file, "w") as f:
             json.dump(review_data, f, indent=2, default=str)
 
+        # Save raw OCR text for debugging
+        try:
+            ocr_file = review_dir / f"{Path(file_path).stem}.ocr.txt"
+            ocr_file.write_text(raw_text)
+        except Exception as e:
+            logger.warning("Failed to save review OCR file", error=str(e))
+
         logger.warning(
-            "Receipt sent to review", review_file=str(review_file), errors=errors
+            "Receipt sent to review",
+            review_file=str(review_file),
+            errors=errors,
         )
         return {"status": "review", "review_file": str(review_file)}
     except Exception as e:
@@ -143,6 +152,14 @@ async def process_receipt(
 
         # 2. Extract structured data
         logger.info("Extracting data via LLM", model=settings.llm_model)
+
+        # Save OCR text for audit/debugging even on success
+        try:
+            ocr_file = Path(file_path).with_suffix(".ocr.txt")
+            ocr_file.write_text(raw_text)
+        except Exception as e:
+            logger.warning("Failed to save audit OCR file", error=str(e))
+
         receipt = None
         try:
             receipt, trace = await extract_receipt(raw_text, settings, client=client)

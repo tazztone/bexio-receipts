@@ -15,9 +15,10 @@ class Settings(BaseSettings):
     bexio_base_url: str = "https://api.bexio.com"
 
     # OCR Settings
-    glm_ocr_model: str = "glm-ocr"
+    glm_ocr_model: str = "glm-ocr:latest"
     glm_ocr_url: str = "http://localhost:11434"  # Ollama default
     glm_ocr_timeout: int = 25
+    glm_ocr_inter_pass_delay: float = 0.5
 
     # LLM Settings
     llm_provider: str = "ollama"  # or "openai", "openrouter"

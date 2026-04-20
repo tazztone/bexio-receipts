@@ -26,6 +26,16 @@ class RawVatRow(BaseModel):
     col_c: float | None  # third number (may be absent)
 
 
+class ExtractionTrace(BaseModel):
+    ocr_text: str = ""
+    step1_intermediate: dict | None = None
+    step1_vat_raw: str | None = None
+    step2_rows: list[dict] = []
+    step3_assignments: list[dict] = []  # Added for audit visibility
+    error_stage: str = ""
+    error_detail: str = ""
+
+
 class RawReceipt(BaseModel):
     merchant_name: str | None = None
     transaction_date: str | None = None
@@ -38,15 +48,22 @@ class RawReceipt(BaseModel):
 class IntermediateReceipt(BaseModel):
     """Output of Step 1: Preliminary extraction including raw VAT text."""
 
-    merchant_name: str | None = None
-    transaction_date: str | None = None
+    merchant_name: str = Field(..., min_length=1)
+    transaction_date: str
     currency: str = "CHF"
-    total_incl_vat: float | None = None
-    vat_table_raw: str | None = Field(
-        default=None,
-        description="Extract ONLY rows containing a percentage (e.g. 2.6%). Skip headers, rounding, or summary lines.",
+    total_incl_vat: float
+    vat_table_raw: str = Field(
+        ...,
+        description="Copy the raw VAT table (HTML or plain text) verbatim.",
     )
     payment_method: str | None = None
+
+    @field_validator("total_incl_vat")
+    @classmethod
+    def must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("total_incl_vat must be positive")
+        return v
 
 
 class VatEntry(BaseModel):

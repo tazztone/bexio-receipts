@@ -63,13 +63,20 @@ class ExtractionTrace(BaseModel):
 
 
 STRIP_LINES = re.compile(
-    r"^(Total|Rundungsdifferenz|Endbetrag|Summe|Zusammenfassung|Sie sparen|MWST exkl|MWST inkl|Netto)\b",
+    r"^(Total|Rundungsdifferenz|Endbetrag|Summe|Zusammenfassung|Sie sparen|MWST exkl|MWST inkl|Netto|<thead>|<tbody>|<tfoot>|<tr>|<th>)\b",
     re.IGNORECASE | re.MULTILINE,
 )
 
 
 def validate_vat_snippet(snippet: str) -> str | None:
     """Returns error string if snippet is malformed, None if valid."""
+    # Pass-through for structured HTML/Markdown tables from OCR Pass 2
+    if "<table" in snippet.lower() and "</table>" in snippet.lower():
+        # Minimum check: table must contain at least one numeric value to be valid
+        if re.search(r"\d+[.,]\d+", snippet):
+            return None
+        return "HTML table present but contains no numeric values"
+
     number = re.compile(r"\d+[.,]\d+")
     if not any(len(number.findall(line)) >= 2 for line in snippet.splitlines()):
         return (
@@ -80,6 +87,10 @@ def validate_vat_snippet(snippet: str) -> str | None:
 
 def clean_vat_snippet(snippet: str) -> str:
     """Deterministically strip summary and header lines from the VAT snippet."""
+    # If it's an HTML table, don't strip lines yet; the LLM handles it better whole
+    if "<table" in snippet.lower():
+        return snippet.strip()
+
     lines = [
         line for line in snippet.splitlines() if not STRIP_LINES.match(line.strip())
     ]
@@ -88,7 +99,7 @@ def clean_vat_snippet(snippet: str) -> str:
 
 def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
     rate_match_tol = 0.05  # IEEE 754 safe; false-positives rejected by math check below
-    math_tol = 0.05  # covers rounding on all Swiss receipt formats
+    math_tol = 0.02  # covers rounding on all Swiss receipt formats
 
     entries = []
     for row in rows:
@@ -134,17 +145,20 @@ def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
 
         for vat, base, total in candidates:
             if total is not None:
+                # Primary check: VAT + Base = Total
                 if abs(round(base + vat, 2) - total) < math_tol:
-                    entries.append(
-                        VatEntry(
-                            rate=rate,
-                            vat_amount=vat,
-                            base_amount=base,
-                            total_incl_vat=total,
+                    # Secondary check: Base * Rate ≈ VAT (must match within tolerance)
+                    if base > 0 and abs(round(base * rate / 100, 2) - vat) < math_tol:
+                        entries.append(
+                            VatEntry(
+                                rate=rate,
+                                vat_amount=vat,
+                                base_amount=base,
+                                total_incl_vat=total,
+                            )
                         )
-                    )
-                    resolved = True
-                    break
+                        resolved = True
+                        break
             else:
                 # If only two columns, we must rely on rate math
                 if base > 0 and abs(round(base * rate / 100, 2) - vat) < math_tol:
@@ -322,10 +336,9 @@ async def extract_receipt(
                 "(e.g. 'EUR ... zum Kurs ...'). The CHF total is labeled 'Total Rechnung', 'Ihr Betrag', "
                 "or 'Endbetrag'.\n"
                 "4. CURRENCY: Always 'CHF' unless no CHF total exists at all.\n"
-                "5. VAT TABLE RAW: Locate the 'Zusammenfassung gem. MWST' table. "
-                "For each line starting with 'MWST', transcribe the percentage and ALL following numbers "
-                "on that horizontal line verbatim. Example: 'MWST 2.60% 4.59 176.70 181.29'. "
-                "Do NOT include 'Rundungsdifferenz' or 'Total Rechnung' lines."
+                "5. VAT TABLE RAW: Search for the section '--- VAT TABLE (structured) ---'. "
+                "Find the table that summarizes the VAT (Zusammenfassung gem. MWST) and contains "
+                "the rates (8.1%, 2.6%). COPY that table verbatim. IGNORE the line item table."
             ),
         )
 
@@ -360,14 +373,17 @@ async def extract_receipt(
                 output_type=list[RawVatRow],
                 retries=1,
                 system_prompt=(
-                    "You are a VAT data entry specialist. I will give you a tiny snippet of a VAT table.\n"
+                    "You are a VAT data entry specialist. I will give you a tiny snippet of a VAT table "
+                    "(may be plain text, Markdown, or HTML <table>).\n"
                     "Extract the rows. For each row:\n"
                     "- rate: e.g. 2.6, 8.1\n"
                     "- col_a, col_b, col_c: the numbers in that row in order from left to right.\n"
                     "RULES:\n"
-                    "1. IGNORE summary rows (Total, Summe, Rundung).\n"
-                    "2. IGNORE columns containing savings values or VAT codes (1, 2).\n"
-                    "3. ONLY extract rows representing a specific VAT rate."
+                    "1. If HTML, extract the numeric values from the <td> tags in each <tr>.\n"
+                    "2. rate: MUST be one of [8.1, 7.7, 2.6, 3.8, 2.5]. IGNORE any other numbers.\n"
+                    "3. IGNORE summary rows (Total, Summe, Rundung).\n"
+                    "4. IGNORE columns containing savings values.\n"
+                    "5. ONLY extract rows representing a specific VAT rate."
                 ),
             )
 

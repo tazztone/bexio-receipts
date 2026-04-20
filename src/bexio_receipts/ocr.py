@@ -10,6 +10,12 @@ import io
 import httpx
 import structlog
 from PIL import Image, ImageEnhance
+from tenacity import (
+    AsyncRetrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from .config import Settings
 
@@ -30,46 +36,23 @@ def _optimize_image(img: Image.Image, max_long_edge: int = 2560) -> Image.Image:
     return img
 
 
-def extract_pdf_text(file_path: str) -> str | None:
-    """
-    Extract text directly from a digital PDF using pdfplumber.
-    Returns None if the extracted text is too short (likely a scanned image).
-    """
-    try:
-        import pdfplumber
-
-        text_parts = []
-        with pdfplumber.open(file_path) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text_parts.append(page_text)
-
-        full_text = "\n".join(text_parts).strip()
-        # If less than 20 chars, it's likely just an image or garbled
-        if len(full_text) > 20:
-            return full_text
-    except Exception as e:
-        logger.warning("PDF text extraction failed", error=str(e), path=file_path)
-
-    return None
-
-
 async def run_glm_ocr(
     file_path: str | None,
     settings: Settings,
     client: httpx.AsyncClient,
     image_data: bytes | None = None,
     already_optimized: bool = False,
+    prompt: str = "Text Recognition:",
 ) -> tuple[str, float, list[dict]]:
     """
-    Run OCR on a file using GLM-OCR via Ollama.
+    Run OCR using GLM-OCR model via Ollama.
+    Returns (text, average_confidence, line_metadata).
     """
     if already_optimized and image_data:
-        # Caller already optimized and provided bytes (e.g. PDF loop)
+        # Caller already optimized and provided bytes
         img_base64 = base64.b64encode(image_data).decode("utf-8")
     elif image_data:
-        # Decode bytes, optimize, and re-encode to WebP for model
+        # Decode bytes, optimize, and re-encode
         with Image.open(io.BytesIO(image_data)) as img:
             optimized_img = _optimize_image(img)
             buf = io.BytesIO()
@@ -84,101 +67,129 @@ async def run_glm_ocr(
     else:
         raise ValueError("Either file_path or image_data must be provided")
 
-    prompt = "Text Recognition:"
     payload = {
         "model": settings.glm_ocr_model,
-        "messages": [{"role": "user", "content": prompt, "images": [img_base64]}],
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt,
+                "images": [img_base64],
+            }
+        ],
         "stream": False,
     }
 
-    # Use the injected client with its configured timeouts
-    resp = await client.post(f"{settings.glm_ocr_url}/api/chat", json=payload)
-    resp.raise_for_status()
-    data = resp.json()
+    # Use AsyncRetrying to handle transient Ollama failures
+    async for attempt in AsyncRetrying(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.RequestError)),
+        reraise=True,
+    ):
+        with attempt:
+            resp = await client.post(f"{settings.glm_ocr_url}/api/chat", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            raw_text = data["message"]["content"]
 
-    raw_text = data["message"]["content"]
-    # GLM-OCR via Ollama chat API doesn't easily provide confidence per word/line
-    # Using 0.90 as a default, downgrade to 0.50 if output is suspiciously short
-    avg_confidence = 0.90 if len(raw_text) > 50 else 0.50
+    return raw_text, 0.90, [{"text": raw_text, "confidence": 0.90}]
 
-    # We don't have per-line detail here like PaddleOCR
-    lines = [{"text": raw_text, "confidence": avg_confidence}]
 
-    return raw_text, avg_confidence, lines
+async def _do_async_run_ocr(
+    file_path: str, settings: Settings, client: httpx.AsyncClient
+) -> tuple[str, float, list[dict]]:
+    """Internal implementation of OCR runner with pass merging."""
+    # Check if it's a PDF
+    if file_path.lower().endswith(".pdf"):
+        import pymupdf
+
+        try:
+            doc = pymupdf.open(file_path)
+            full_text = ""
+            total_conf = 0.0
+            page_count = 0
+
+            for page in doc:
+                page_count += 1
+                pix = page.get_pixmap(dpi=200)
+                img_data = pix.tobytes("webp")
+                text, conf, _ = await run_glm_ocr(
+                    None, settings, client, image_data=img_data
+                )
+                full_text += text + "\n"
+                total_conf += conf
+
+            avg_conf = total_conf / page_count if page_count > 0 else 0
+            return full_text, avg_conf, [{"text": full_text, "confidence": avg_conf}]
+        except Exception as e2:
+            raise RuntimeError(f"OCR failed for PDF: {e2}") from e2
+
+    # --- TWO-PASS STRATEGY FOR IMAGES (Option B) ---
+    try:
+        with Image.open(file_path) as img:
+            optimized = _optimize_image(img)
+            w, h = optimized.size
+
+            # Pass 1: full image, text recognition
+            logger.info("OCR Pass 1: Full text recognition", path=file_path)
+            buf = io.BytesIO()
+            optimized.save(buf, format="WEBP", quality=90)
+            text_result, conf1, _ = await run_glm_ocr(
+                None,
+                settings,
+                client,
+                image_data=buf.getvalue(),
+                already_optimized=True,
+                prompt="Text Recognition:",
+            )
+            logger.debug("Pass 1 result length", length=len(text_result))
+
+            # Pass 2: bottom 40% crop, table recognition
+            table_result = ""
+            conf2 = conf1
+            try:
+                logger.info("OCR Pass 2: Bottom crop table recognition", path=file_path)
+                if settings.glm_ocr_inter_pass_delay > 0:
+                    await asyncio.sleep(settings.glm_ocr_inter_pass_delay)
+
+                table_region = optimized.crop((0, int(h * 0.60), w, h))
+                buf2 = io.BytesIO()
+                table_region.save(buf2, format="WEBP", quality=90)
+                table_result, conf2, _ = await run_glm_ocr(
+                    None,
+                    settings,
+                    client,
+                    image_data=buf2.getvalue(),
+                    already_optimized=True,
+                    prompt="Table Recognition:",
+                )
+                logger.debug("Pass 2 result length", length=len(table_result))
+            except Exception as e:
+                logger.warning("Pass 2 table OCR failed, using text-only", error=str(e))
+
+            combined_text = (
+                f"{text_result}\n\n--- VAT TABLE (structured) ---\n{table_result}"
+            )
+            avg_conf = (conf1 + conf2) / 2
+            return (
+                combined_text,
+                avg_conf,
+                [{"text": combined_text, "confidence": avg_conf}],
+            )
+    except Exception as e:
+        logger.error("Two-pass OCR failed, falling back to single pass", error=str(e))
+        return await run_glm_ocr(file_path, settings, client)
 
 
 async def async_run_ocr(
     file_path: str, settings: Settings, client: httpx.AsyncClient | None = None
 ) -> tuple[str, float, list[dict]]:
-    is_pdf = str(file_path).lower().endswith(".pdf")
-
+    """
+    Public entry point for OCR.
+    Handles client lifecycle if none provided.
+    """
     if client:
-        return await _do_async_run_ocr(file_path, settings, client, is_pdf)
+        return await _do_async_run_ocr(file_path, settings, client)
 
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(
-            connect=5.0, read=settings.glm_ocr_timeout, write=5.0, pool=2.0
-        )
-    ) as client:
-        return await _do_async_run_ocr(file_path, settings, client, is_pdf)
-
-
-async def _do_async_run_ocr(
-    file_path: str, settings: Settings, client: httpx.AsyncClient, is_pdf: bool
-) -> tuple[str, float, list[dict]]:
-    if is_pdf:
-        extracted_text = extract_pdf_text(file_path)
-        if extracted_text:
-            logger.info("Successfully extracted text directly from PDF", path=file_path)
-            return (
-                extracted_text,
-                1.0,
-                [{"text": extracted_text, "confidence": 1.0}],
-            )
-
-        logger.info("PDF appears to be scanned, using GLM-OCR", path=file_path)
-        from pdf2image import convert_from_path
-
-        # Convert all pages of scanned PDF to images for vision model
-        try:
-            images = convert_from_path(file_path, dpi=300)
-
-            sem = asyncio.Semaphore(2)  # Limit concurrent OCR calls to save RAM
-
-            async def _process_page(img, i):
-                async with sem:
-                    img = _optimize_image(img)
-                    buf = io.BytesIO()
-                    img.save(buf, format="WEBP", quality=90)
-                    logger.info(
-                        f"Processing PDF page {i + 1}/{len(images)}",
-                        path=file_path,
-                    )
-                    page_text, _, _ = await run_glm_ocr(
-                        None,
-                        settings,
-                        client,
-                        image_data=buf.getvalue(),
-                        already_optimized=True,
-                    )
-                    return page_text
-
-            # Parallel processing with asyncio.gather, limited by semaphore
-            texts = await asyncio.gather(*[
-                _process_page(img, i) for i, img in enumerate(images)
-            ])
-
-            combined_text = "\n---PAGE BREAK---\n".join(texts)
-            return (
-                combined_text,
-                0.90,
-                [{"text": combined_text, "confidence": 0.90}],
-            )
-        except Exception as e:
-            logger.warning(f"pdf2image failed, attempting raw GLM fallback: {e}")
-            try:
-                return await run_glm_ocr(file_path, settings, client)
-            except Exception as e2:
-                raise RuntimeError(f"OCR failed for PDF: {e2}") from e2
-
-    return await run_glm_ocr(file_path, settings, client)
+    async with httpx.AsyncClient(timeout=60.0) as new_client:
+        return await _do_async_run_ocr(file_path, settings, new_client)

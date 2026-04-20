@@ -63,8 +63,12 @@ If the pipeline hangs or times out during OCR:
    ensure your Ollama instance is running on a GPU.
 2. **WebP Encoding**: The system uses WebP for speed and sharpness. If your
    environment lacks `libwebp`, it may fall back to slow JPEG encoding.
-3. **Prompt Interference**: Do not add natural language instructions to the GLM
-   prompt. Only use the canonical `"Text Recognition:"` trigger.
+3. **Prompt Strategy**: The system now uses specialized triggers. Ensure you
+   haven't blocked `"Table Recognition:"` or `"Text Recognition:"` in your 
+   Ollama configuration. Do not add natural language instructions to these
+   prompts.
+4. **Inter-Pass Delay**: If your local Ollama instance crashes during Pass 2,
+   increase `GLM_OCR_INTER_PASS_DELAY` in your `.env` (default is 0.5s).
 
 ### 7. `Merchant Match Failure`
 **Symptoms**: Extracted merchant name is correct, but it doesn't match an

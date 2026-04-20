@@ -64,10 +64,13 @@ When adding a new ADR, use the following format:
 - **Rationale**: Better text sharpness at smaller file sizes than JPEG q80.
 
 ## [ADR-008] GLM-OCR Prompt Strategy
-- **Status**: Decided (May 2024)
-- **Context**: GLM-OCR is a specialized model with an internal layout analysis pipeline triggered by specific keywords.
-- **Decision**: Use the canonical `"Text Recognition:"` prompt. Avoid free-form instructions or complex formatting requests.
-- **Rationale**: Faster inference and more stable internal table detection (PP-DocLayout-V3).
+- **Status**: Superseded (April 2026)
+- **Context**: GLM-OCR is a specialized model with an internal layout analysis
+  pipeline triggered by specific keywords.
+- **Decision**: Initially used the canonical `"Text Recognition:"` prompt for the
+  whole document. Superseded by ADR-013's Two-Pass strategy.
+- **Rationale**: Faster inference but failed to preserve column association on
+  complex Swiss wholesaler layouts.
 
 ---
 
@@ -95,3 +98,23 @@ When adding a new ADR, use the following format:
 - **Precision**: Enables automatic, high-fidelity booking for complex wholesaler receipts.
 - **Reliability**: Restricting the "learning" to human-verified approvals prevents LLM hallucinations from polluting the mapping database.
 - **Transparency**: The UI displays the AI's reasoning and confidence for its suggested accounts.
+
+## [ADR-013] Two-Pass OCR (Full Text + Table Crop)
+- **Status**: Decided (April 2026)
+- **Context**: Complex Swiss layouts (e.g., Prodega, Coop) contain mixed tables
+  where column data (Base, VAT, Total) must be mathematically verified. Standard
+  `"Text Recognition:"` on the whole image often merges columns, causing
+  Step 2 extraction to fail.
+- **Decision**: Implement a two-pass OCR strategy for image payloads:
+  1. **Pass 1**: Full image OCR using `"Text Recognition:"` to capture header
+     fields.
+  2. **Pass 2**: Targeted OCR on the bottom 40% crop using the specialized
+     `"Table Recognition:"` prompt.
+  Results are merged with a clear `--- VAT TABLE (structured) ---` anchor.
+- **Rationale**:
+  - **Fidelity**: The table prompt activates GLM's cell-aware parsing, producing
+    valid Markdown/HTML tables that preserve math consistency.
+  - **Stability**: Targeted cropping minimizes the distraction of line items
+    while ensuring the critical VAT summary is captured with high confidence.
+  - **Resilience**: The pipeline handles pass failures independently; if the
+    table pass fails, it gracefully falls back to the text-only pass.
