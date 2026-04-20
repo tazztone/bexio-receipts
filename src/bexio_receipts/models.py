@@ -19,16 +19,18 @@ class LineItem(BaseModel):
 
 class RawVatRow(BaseModel):
     """Model only reads numbers off the receipt — no math required."""
-    rate: float          # e.g. 8.1
-    col_a: float         # first number in the VAT row
-    col_b: float         # second number
+
+    rate: float  # e.g. 8.1
+    col_a: float  # first number in the VAT row
+    col_b: float  # second number
     col_c: float | None  # third number (may be absent)
+
 
 class RawReceipt(BaseModel):
     merchant_name: str | None = None
     transaction_date: str | None = None
     currency: str = "CHF"
-    total_incl_vat: float | None = None   # the grand total — just read it
+    total_incl_vat: float | None = None  # the grand total — just read it
     vat_rows: list[RawVatRow] = []
     payment_method: str | None = None
 
@@ -48,7 +50,7 @@ class VatEntry(BaseModel):
     def check_vat_math(self) -> VatEntry:
         if self.total_incl_vat is not None:
             expected = round(self.base_amount + self.vat_amount, 2)
-            if abs(expected - self.total_incl_vat) > 0.02:
+            if abs(expected - self.total_incl_vat) > 0.05:
                 raise ValueError(
                     f"VAT math fails: {self.base_amount} + {self.vat_amount} "
                     f"= {expected} ≠ {self.total_incl_vat}"

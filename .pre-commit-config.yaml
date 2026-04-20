@@ -9,4 +9,4 @@ repos:
     rev: v1.20.1
     hooks:
       - id: mypy
-        additional_dependencies: [ types-requests, pydantic, google-api-python-client-stubs ]
+        additional_dependencies: [ types-requests, pydantic, google-api-python-client-stubs, types-python-dateutil ]

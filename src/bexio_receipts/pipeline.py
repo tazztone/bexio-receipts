@@ -187,8 +187,8 @@ async def process_receipt(
 
     # 4. Push to bexio
     bexio_action = decide_bexio_action(receipt)
-    if not settings.bexio_push_enabled and not push_confirmed:
-        logger.info("Bexio push disabled, sending to review queue", action=bexio_action)
+    if not push_confirmed:
+        logger.info("Push not confirmed, sending to review queue", action=bexio_action)
         return await send_to_review(
             file_path,
             raw_text,

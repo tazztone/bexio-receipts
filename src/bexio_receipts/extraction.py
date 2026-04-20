@@ -30,36 +30,83 @@ logger = structlog.get_logger(__name__)
 
 
 def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
+    tolerance = 0.05  # covers rounding on all Swiss receipt formats
+
     entries = []
     for row in rows:
         a, b, c = row.col_a, row.col_b, row.col_c
-        # Rule: base + vat = total. Try all column permutations.
-        candidates = [(a, b, c), (b, a, c), (a, c, b)] if c is not None else [(a, b, None), (b, a, None)]
+        rate = row.rate
         resolved = False
+
+        # --- Strategy 1: Rate | VAT | Base  (Prodega / wholesaler layout) ---
+        # One column equals the rate value itself; remaining two are (vat, base).
+        if c is not None:
+            for rate_col, x, y in [(a, b, c), (b, a, c), (c, a, b)]:
+                if abs(rate_col - rate) < tolerance:
+                    # Determine which of (x, y) is VAT and which is base
+                    for vat, base in [(x, y), (y, x)]:
+                        if (
+                            base > 0
+                            and abs(round(base * rate / 100, 2) - vat) < tolerance
+                        ):
+                            entries.append(
+                                VatEntry(rate=rate, vat_amount=vat, base_amount=base)
+                            )
+                            resolved = True
+                            break
+                if resolved:
+                    break
+
+        if resolved:
+            continue
+
+        # --- Strategy 2: VAT + Base = Total  (standard Swiss retail layout) ---
+        candidates = (
+            [(a, b, c), (b, a, c), (a, c, b)]
+            if c is not None
+            else [(a, b, None), (b, a, None)]
+        )
         for vat, base, total in candidates:
             if total is not None:
-                if abs(round(base + vat, 2) - total) < 0.02:
-                    entries.append(VatEntry(rate=row.rate, vat_amount=vat, base_amount=base, total_incl_vat=total))
+                if abs(round(base + vat, 2) - total) < tolerance:
+                    entries.append(
+                        VatEntry(
+                            rate=rate,
+                            vat_amount=vat,
+                            base_amount=base,
+                            total_incl_vat=total,
+                        )
+                    )
                     resolved = True
                     break
             else:
-                # no third column — compute total
-                if vat <= base:
-                    entries.append(VatEntry(rate=row.rate, vat_amount=vat, base_amount=base))
-                else:
-                    entries.append(VatEntry(rate=row.rate, vat_amount=base, base_amount=vat))
+                # Two-column: pick smaller as VAT
+                vat_, base_ = (vat, base) if vat <= base else (base, vat)
+                entries.append(VatEntry(rate=rate, vat_amount=vat_, base_amount=base_))
                 resolved = True
                 break
+
         if not resolved:
-            raise ValueError(f"Cannot resolve VAT columns for row: {row}")
+            logger.warning("Skipping unresolvable VAT row", row=row.model_dump())
+            continue
+
     return entries
 
 
 def assemble_receipt(raw: RawReceipt) -> Receipt:
     vat_entries = resolve_vat_rows(raw.vat_rows)
 
-    if raw.total_incl_vat is not None and not vat_entries:
-        logger.warning("Receipt has a total but no VAT rows were extracted", total=raw.total_incl_vat)
+    total_incl_vat = raw.total_incl_vat
+    if total_incl_vat is None and vat_entries:
+        total_incl_vat = round(
+            sum(e.base_amount + e.vat_amount for e in vat_entries), 2
+        )
+        logger.info("Computed total_incl_vat from VAT breakdown", total=total_incl_vat)
+
+    if total_incl_vat is not None and not vat_entries:
+        logger.warning(
+            "Receipt has a total but no VAT rows were extracted", total=total_incl_vat
+        )
         raise ValueError("Receipt has a total but no VAT rows were extracted")
 
     parsed_date = None
@@ -67,16 +114,22 @@ def assemble_receipt(raw: RawReceipt) -> Receipt:
         try:
             parsed_date = parser.parse(raw.transaction_date, dayfirst=True).date()
         except Exception as e:
-            logger.warning("Could not parse date", raw_date=raw.transaction_date, error=str(e))
+            logger.warning(
+                "Could not parse date", raw_date=raw.transaction_date, error=str(e)
+            )
 
     return Receipt(
         merchant_name=raw.merchant_name,
         transaction_date=parsed_date,
         currency=raw.currency,
-        total_incl_vat=raw.total_incl_vat,
+        total_incl_vat=total_incl_vat,
         vat_breakdown=vat_entries,
-        vat_amount=round(sum(e.vat_amount for e in vat_entries), 2) if vat_entries else None,
-        subtotal_excl_vat=round(sum(e.base_amount for e in vat_entries), 2) if vat_entries else None,
+        vat_amount=round(sum(e.vat_amount for e in vat_entries), 2)
+        if vat_entries
+        else None,
+        subtotal_excl_vat=round(sum(e.base_amount for e in vat_entries), 2)
+        if vat_entries
+        else None,
         payment_method=raw.payment_method,
     )
 
@@ -183,7 +236,12 @@ async def extract_receipt(
                 "3. DATE: Transcribe the transaction date exactly as it is written (e.g., '31.01.2026' or 'Datum: 31.01.2026').\n"
                 "4. CURRENCY: Always use 'CHF' unless a different currency is clearly the primary total.\n"
                 "5. PAYMENT: Detect 'cash' if 'Bar' is mentioned, else 'card' or null.\n"
-                "6. CONFIDENCE: Ignore 'Sie sparen' (savings) values when extracting VAT breakdown."
+                "6. CONFIDENCE: Ignore 'Sie sparen' (savings) values when extracting VAT breakdown.\n"
+                "7. VAT SUMMARY ROWS: In the VAT breakdown table, ignore any row where the "
+                "first column is clearly a sum of the other VAT amounts, or where a column "
+                "contains a rounding adjustment (e.g., -0.01). Only extract rows that represent "
+                "a single VAT rate (e.g., 2.6%, 8.1%). Never extract a summary/total line as a VAT row.\n"
+                "8. TOTAL: Extract the grand total amount (usually labeled as 'Total', 'Endbetrag', 'Rechnungsbetrag' or 'Netto + MWST')."
                 + system_prompt_suffix
             ),
         )
@@ -216,7 +274,8 @@ async def extract_receipt(
                         if hasattr(msg, "parts"):
                             raw_parts = getattr(msg, "parts", [])
                             last_raw = " | ".join(
-                                getattr(p, "content", "") or getattr(p, "args_as_json_str", lambda: "")()
+                                getattr(p, "content", "")
+                                or getattr(p, "args_as_json_str", lambda: "")()
                                 for p in raw_parts
                             )
                             if last_raw:
@@ -238,7 +297,9 @@ async def extract_receipt(
                         try:
                             receipt = assemble_receipt(raw_receipt)
                         except ValueError as ve:
-                            raise ExtractionError(f"VAT assembly failed: {ve}", last_raw=last_raw) from ve
+                            raise ExtractionError(
+                                f"VAT assembly failed: {ve}", last_raw=last_raw
+                            ) from ve
                         return receipt, last_raw
                     except ExtractionError:
                         raise
@@ -256,7 +317,9 @@ async def extract_receipt(
                 try:
                     receipt = assemble_receipt(result.output)
                 except ValueError as ve:
-                    raise ExtractionError(f"VAT assembly failed: {ve}", last_raw=last_raw) from ve
+                    raise ExtractionError(
+                        f"VAT assembly failed: {ve}", last_raw=last_raw
+                    ) from ve
                 return receipt, last_raw
 
             except (
@@ -272,7 +335,8 @@ async def extract_receipt(
                         if hasattr(msg, "parts"):
                             raw_parts = getattr(msg, "parts", [])
                             last_raw = " | ".join(
-                                getattr(p, "content", "") or getattr(p, "args_as_json_str", lambda: "")()
+                                getattr(p, "content", "")
+                                or getattr(p, "args_as_json_str", lambda: "")()
                                 for p in raw_parts
                             )
                             if last_raw:

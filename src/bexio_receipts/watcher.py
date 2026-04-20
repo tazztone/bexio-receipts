@@ -114,7 +114,7 @@ class ReceiptHandler(FileSystemEventHandler):
                     self.settings,
                     self.bexio,
                     self.db,
-                    push_confirmed=True,
+                    push_confirmed=False,
                 )
             self._last_processed[file_path] = time.time()
             logger.info(
@@ -174,7 +174,7 @@ async def watch_folder(path: str, settings: Settings):
                 async def _queued_process(fp=file_path):
                     async with _gpu_semaphore:
                         await process_receipt(
-                            str(fp), settings, bexio, db, push_confirmed=True
+                            str(fp), settings, bexio, db, push_confirmed=False
                         )
                         await asyncio.sleep(0.5)  # Let GPU/Ollama breathe between items
 

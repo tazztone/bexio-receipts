@@ -25,6 +25,7 @@ def test_settings():
         default_booking_account_id=1,
         default_bank_account_id=2,
         glm_ocr_model="glm-ocr",
+        llm_provider="ollama",
         llm_model="qwen3.5",
         bexio_push_enabled=True,
     )
