@@ -87,7 +87,7 @@ def clean_vat_snippet(snippet: str) -> str:
 
 
 def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
-    rate_match_tol = 0.05  # safe tolerance for float rate-column labels
+    rate_match_tol = 0.05  # IEEE 754 safe; false-positives rejected by math check below
     math_tol = 0.05  # covers rounding on all Swiss receipt formats
 
     entries = []
@@ -223,7 +223,7 @@ def _is_rate_limit(exc: BaseException) -> bool:
     return "429" in str(exc) or "rate" in str(exc).lower()
 
 
-async def _build_model(
+def _build_model(
     settings: Settings, client: httpx.AsyncClient
 ) -> tuple[OpenAIChatModel, httpx.AsyncClient | None]:
     """Helper to build the pydantic-ai model consistently."""
@@ -305,7 +305,8 @@ async def extract_receipt(
     Extract receipt data from OCR text using a Two-Step LLM Pipeline.
     """
     trace = ExtractionTrace(ocr_text=raw_text)
-    model, or_client = await _build_model(settings, client)
+    # or_client must be closed by the caller; see finally block below.
+    model, or_client = _build_model(settings, client)
     try:
         # STEP 1: Preliminary Extraction (Searcher)
         searcher_agent = Agent(
@@ -418,7 +419,8 @@ async def classify_accounts(
     """
     Step 3: Assign Swiss booking accounts based on full OCR context and VAT rates.
     """
-    model, or_client = await _build_model(settings, client)
+    # or_client must be closed by the caller; see finally block below.
+    model, or_client = _build_model(settings, client)
     try:
         accounts_context = "\n".join([
             f"- {acc_id}: {desc}" for acc_id, desc in settings.bexio_accounts.items()
