@@ -7,7 +7,7 @@ import re
 import httpx
 import structlog
 from dateutil import parser
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.profiles.openai import (
@@ -25,14 +25,43 @@ from tenacity import (
 )
 
 from .config import Settings
-from .models import IntermediateReceipt, RawReceipt, RawVatRow, Receipt, VatEntry
+from .models import (
+    IntermediateReceipt,
+    RawReceipt,
+    RawVatRow,
+    Receipt,
+    VatEntry,
+)
 
 logger = structlog.get_logger(__name__)
+
+
+class ExtractionTrace(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    ocr_text: str = ""
+    step1_output: dict | None = None  # intermediate.model_dump()
+    step1_vat_raw: str = ""
+    step2_vat_cleaned: str = ""
+    step2_output: list[dict] = []  # [r.model_dump() for r in vat_rows]
+    resolved_rows: list[dict] = []  # [e.model_dump() for e in vat_entries]
+    error_stage: str = ""
+    error_detail: str = ""
+
 
 STRIP_LINES = re.compile(
     r"^(Total|Rundungsdifferenz|Endbetrag|Summe|Zusammenfassung|Sie sparen|MWST exkl|MWST inkl|Netto)\b",
     re.IGNORECASE | re.MULTILINE,
 )
+
+
+def validate_vat_snippet(snippet: str) -> str | None:
+    """Returns error string if snippet is malformed, None if valid."""
+    number = re.compile(r"\d+[.,]\d+")
+    if not any(len(number.findall(line)) >= 2 for line in snippet.splitlines()):
+        return (
+            f"No line has 2+ numeric tokens — likely vertical extraction: {snippet!r}"
+        )
+    return None
 
 
 def clean_vat_snippet(snippet: str) -> str:
@@ -181,11 +210,11 @@ def _is_rate_limit(exc: BaseException) -> bool:
 
 
 class ExtractionError(Exception):
-    """Custom exception that carries the raw model response for debugging."""
+    """Custom exception that carries the trace for debugging."""
 
-    def __init__(self, message: str, last_raw: str | None = None):
+    def __init__(self, message: str, trace: ExtractionTrace | None = None):
         super().__init__(message)
-        self.last_raw = last_raw
+        self.trace = trace
 
 
 @retry(
@@ -203,10 +232,11 @@ class ExtractionError(Exception):
 )
 async def extract_receipt(
     raw_text: str, settings: Settings, client: httpx.AsyncClient
-) -> tuple[Receipt, str | None]:
+) -> tuple[Receipt, ExtractionTrace]:
     """
     Extract receipt data from OCR text using a Two-Step LLM Pipeline.
     """
+    trace = ExtractionTrace(ocr_text=raw_text)
     or_client = None
     try:
         if settings.llm_provider == "ollama":
@@ -262,9 +292,13 @@ async def extract_receipt(
                 "### RULES ###\n"
                 "1. MERCHANT: Extract vendor name. IGNORE customer addresses.\n"
                 "2. DATE: Transcribe exactly (e.g. 31.01.2026).\n"
-                "3. TOTAL: Extract grand total amount.\n"
-                "4. VAT TABLE RAW: Find the VAT summary section (usually at the bottom). "
-                "Copy-paste the lines of that table VERBATIM. Do not process or reformat it."
+                "3. TOTAL: Extract the grand total in CHF only. IGNORE any currency conversion lines "
+                "(e.g. 'EUR ... zum Kurs ...'). The CHF total is labeled 'Total Rechnung', 'Ihr Betrag', "
+                "or 'Endbetrag'.\n"
+                "4. CURRENCY: Always 'CHF' unless no CHF total exists at all.\n"
+                "5. VAT TABLE RAW: Find the VAT summary section. It contains rows like "
+                "'MWST 2.60%  4.59  176.70  181.29'. Copy each ROW on a single line, "
+                "preserving the horizontal order of numbers. Do not split into columns vertically."
             ),
         )
 
@@ -272,11 +306,28 @@ async def extract_receipt(
         res1 = await searcher_agent.run(f"Receipt text:\n{raw_text}")
         intermediate = res1.output
         if not isinstance(intermediate, IntermediateReceipt):
-            raise ExtractionError("Step 1 failed: Unexpected output type")
+            trace.error_stage = "step1"
+            trace.error_detail = "Unexpected output type from Step 1"
+            raise ExtractionError(trace.error_detail, trace=trace)
+
+        trace.step1_output = intermediate.model_dump()
+        trace.step1_vat_raw = intermediate.vat_table_raw or ""
+        logger.debug("Step1 output", intermediate=trace.step1_output)
 
         # STEP 2: VAT Parsing (Assigner)
         vat_rows = []
         if intermediate.vat_table_raw and len(intermediate.vat_table_raw.strip()) > 5:
+            # Pre-Step 2 Guard
+            validation_error = validate_vat_snippet(intermediate.vat_table_raw)
+            if validation_error:
+                logger.warning(
+                    "Step 1 produced invalid VAT snippet, retrying",
+                    error=validation_error,
+                )
+                trace.error_stage = "step1_vat_validation"
+                trace.error_detail = validation_error
+                raise ExtractionError(validation_error, trace=trace)
+
             parser_agent = Agent(
                 model,
                 output_type=list[RawVatRow],
@@ -294,11 +345,19 @@ async def extract_receipt(
             )
 
             cleaned_snippet = clean_vat_snippet(intermediate.vat_table_raw)
+            trace.step2_vat_cleaned = cleaned_snippet
             logger.info("Step 2: VAT parsing started", snippet=cleaned_snippet)
+            logger.debug("Step2 cleaned_snippet", snippet=cleaned_snippet)
+
             res2 = await parser_agent.run(f"VAT Table Snippet:\n{cleaned_snippet}")
             vat_rows = res2.output
             if not isinstance(vat_rows, list):
-                raise ExtractionError("Step 2 failed: Unexpected output type")
+                trace.error_stage = "step2"
+                trace.error_detail = "Unexpected output type from Step 2"
+                raise ExtractionError(trace.error_detail, trace=trace)
+
+            trace.step2_output = [r.model_dump() for r in vat_rows]
+            logger.debug("Step2 resolved_rows", rows=trace.step2_output)
 
         # Final assembly
         raw_receipt = RawReceipt(
@@ -312,13 +371,12 @@ async def extract_receipt(
 
         try:
             receipt = assemble_receipt(raw_receipt)
-            # Capture raw text for debugging
-            last_raw = f"Step1: {res1.output}\n\nStep2: {vat_rows if 'res2' in locals() else 'N/A'}"
-            return receipt, last_raw
+            trace.resolved_rows = [e.model_dump() for e in receipt.vat_breakdown]
+            return receipt, trace
         except ValueError as ve:
-            raise ExtractionError(
-                f"VAT assembly failed: {ve!s}", last_raw=str(intermediate)
-            ) from ve
+            trace.error_stage = "assembly"
+            trace.error_detail = str(ve)
+            raise ExtractionError(f"VAT assembly failed: {ve!s}", trace=trace) from ve
     finally:
         if or_client is not None:
             await or_client.close()

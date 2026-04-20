@@ -12,7 +12,7 @@ import structlog
 from .bexio_client import BexioClient
 from .config import Settings
 from .database import DuplicateDetector as Database
-from .extraction import ExtractionError, extract_receipt
+from .extraction import ExtractionError, ExtractionTrace, extract_receipt
 from .models import Receipt
 from .ocr import async_run_ocr
 from .validation import validate_receipt
@@ -41,7 +41,7 @@ async def send_to_review(
     ocr_confidence: float | None = None,
     failed_stage: str = "unknown",
     bexio_action: str | None = None,
-    llm_raw_response: str | None = None,
+    trace: ExtractionTrace | None = None,
 ) -> dict:
     """Save problematic receipts to a review directory."""
     try:
@@ -53,10 +53,12 @@ async def send_to_review(
             "original_file": str(file_path),
             "ocr_text": raw_text,
             "ocr_confidence": ocr_confidence,
-            "failed_stage": failed_stage,
+            "failed_stage": trace.error_stage
+            if trace and trace.error_stage
+            else failed_stage,
             "errors": errors,
             "bexio_action": bexio_action,
-            "llm_raw_response": llm_raw_response,
+            "extraction_trace": trace.model_dump(mode="json") if trace else None,
             "extracted": receipt.model_dump(mode="json") if receipt else None,
         }
 
@@ -131,12 +133,14 @@ async def process_receipt(
                 file_path, "", [error_msg], settings, failed_stage="ocr"
             )
 
+        # Initialize structured trace after OCR
+        trace = ExtractionTrace(ocr_text=raw_text)
+
         # 2. Extract structured data
         logger.info("Extracting data via LLM", model=settings.llm_model)
         receipt = None
-        llm_raw = None
         try:
-            receipt, llm_raw = await extract_receipt(raw_text, settings, client=client)
+            receipt, trace = await extract_receipt(raw_text, settings, client=client)
         except (TimeoutError, httpx.TimeoutException):
             error_msg = "LLM extraction stage timed out"
             logger.error(error_msg, path=file_path)
@@ -149,7 +153,11 @@ async def process_receipt(
                 failed_stage="extraction",
             )
         except ExtractionError as e:
-            logger.error("LLM extraction failed", error=str(e), last_raw=e.last_raw)
+            logger.error(
+                "LLM extraction failed",
+                error=str(e),
+                trace=e.trace.model_dump() if e.trace else None,
+            )
             return await send_to_review(
                 file_path,
                 raw_text,
@@ -157,7 +165,7 @@ async def process_receipt(
                 settings,
                 ocr_confidence=avg_confidence,
                 failed_stage="extraction",
-                llm_raw_response=e.last_raw,
+                trace=e.trace,
             )
         except Exception as e:
             logger.error("Unexpected error during extraction", error=str(e))
@@ -182,7 +190,7 @@ async def process_receipt(
             receipt,
             ocr_confidence=avg_confidence,
             failed_stage="validation",
-            llm_raw_response=llm_raw,
+            trace=trace,
         )
 
     # 4. Push to bexio
@@ -198,7 +206,7 @@ async def process_receipt(
             ocr_confidence=avg_confidence,
             failed_stage="safety_gate",
             bexio_action=bexio_action,
-            llm_raw_response=llm_raw,
+            trace=trace,
         )
 
     logger.info("Pushing to bexio", action=bexio_action)
@@ -217,7 +225,7 @@ async def process_receipt(
                 receipt,
                 ocr_confidence=avg_confidence,
                 failed_stage="bexio",
-                llm_raw_response=llm_raw,
+                trace=trace,
             )
 
         # Prefer Bill (v4) if we have a merchant name or multiple VAT rates.
@@ -249,7 +257,7 @@ async def process_receipt(
                     receipt,
                     ocr_confidence=avg_confidence,
                     failed_stage="bexio",
-                    llm_raw_response=llm_raw,
+                    trace=trace,
                 )
 
             expense = await bexio.create_expense(
@@ -270,6 +278,17 @@ async def process_receipt(
             ocr_confidence=avg_confidence,
         )
 
+        # Persist trace on success if debugging
+        if settings.log_level == "debug":
+            try:
+                debug_dir = Path("debug")
+                debug_dir.mkdir(exist_ok=True, parents=True)
+                (debug_dir / f"{file_path_obj.stem}_trace.json").write_text(
+                    trace.model_dump_json(indent=2)
+                )
+            except Exception as de:
+                logger.warning("Failed to save debug trace", error=str(de))
+
         logger.info(
             "Successfully booked expense in bexio", expense_id=expense.get("id")
         )
@@ -288,5 +307,5 @@ async def process_receipt(
             receipt,
             ocr_confidence=avg_confidence,
             failed_stage="bexio",
-            llm_raw_response=llm_raw,
+            trace=trace,
         )

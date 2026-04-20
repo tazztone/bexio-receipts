@@ -228,3 +228,4 @@ inbox/
 .gemini/
 scratch/
 tests/fixtures/prodega_ocr.txt
+debug/

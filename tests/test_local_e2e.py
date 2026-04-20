@@ -46,7 +46,7 @@ async def test_prodega_ground_truth_e2e():
         print(
             f"[E2E] Extracting data using {settings.llm_model} ({settings.llm_provider})..."
         )
-        receipt, llm_raw = await extract_receipt(raw_text, settings, client=client)
+        receipt, trace = await extract_receipt(raw_text, settings, client=client)
 
     # 3. Assertions with detailed output on failure
     try:
@@ -116,21 +116,36 @@ async def test_prodega_ground_truth_e2e():
     except Exception as e:
         print(f"\n[E2E] FAILURE: {e}")
 
-        # Handle custom ExtractionError which might contain partial results
+        # Handle custom ExtractionError which carries the full trace
         from bexio_receipts.extraction import ExtractionError
 
-        if isinstance(e, ExtractionError) and e.last_raw:
+        if isinstance(e, ExtractionError) and e.trace:
             print("-" * 40)
-            print("EXTRACTION ERROR LAST RAW:")
-            print(e.last_raw)
+            print("EXTRACTION TRACE (from Error):")
+            print(e.trace.model_dump_json(indent=2))
 
-        if "llm_raw" in locals():
+        if "trace" in locals() and trace:
             print("-" * 40)
-            print("LLM RAW RESPONSE:")
-            print(llm_raw)
+            print("EXTRACTION TRACE (from local):")
+            print(trace.model_dump_json(indent=2))
+
         if "receipt" in locals() and receipt:
             print("-" * 40)
             print("EXTRACTED RECEIPT OBJECT:")
             print(receipt.model_dump_json(indent=2))
+
+        # Failure-path assertion: verify trace was saved in review JSON if generated
+        review_file = Path("review_queue") / f"{image_path.stem}.json"
+        if review_file.exists():
+            print(f"\n[E2E] Verifying review file: {review_file}")
+            with open(review_file) as f:
+                data = json.load(f)
+                assert "extraction_trace" in data, (
+                    "Review JSON missing extraction_trace"
+                )
+                assert data["extraction_trace"] is not None
+                assert "step1_vat_raw" in data["extraction_trace"]
+                print("[E2E] Verified: extraction_trace found in review JSON")
+
         print("-" * 40)
         raise e
