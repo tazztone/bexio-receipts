@@ -1,0 +1,21 @@
+{
+  "merchant_name": "PRODEGA",
+  "transaction_date": "2026-01-31",
+  "currency": "CHF",
+  "total_incl_vat": 214.20,
+  "subtotal_excl_vat": 207.15,
+  "vat_amount": 7.06,
+  "payment_method": "Bar",
+  "vat_breakdown": [
+    {
+      "rate": 2.6,
+      "base_amount": 176.70,
+      "vat_amount": 4.59
+    },
+    {
+      "rate": 8.1,
+      "base_amount": 30.45,
+      "vat_amount": 2.47
+    }
+  ]
+}
