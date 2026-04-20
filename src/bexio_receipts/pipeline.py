@@ -72,7 +72,7 @@ async def send_to_review(
 
         # Save raw OCR text for debugging
         try:
-            ocr_file = review_dir / f"{Path(file_path).stem}.ocr.txt"
+            ocr_file = review_dir / f"{Path(file_path).stem}.ocr.md"
             ocr_file.write_text(raw_text)
         except Exception as e:
             logger.warning("Failed to save review OCR file", error=str(e))
@@ -154,7 +154,7 @@ async def process_receipt(
 
         # Save OCR text for audit/debugging even on success
         try:
-            ocr_file = Path(file_path).with_suffix(".ocr.txt")
+            ocr_file = Path(file_path).with_suffix(".ocr.md")
             ocr_file.write_text(raw_text)
         except Exception as e:
             logger.warning("Failed to save audit OCR file", error=str(e))

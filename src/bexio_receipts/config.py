@@ -19,14 +19,21 @@ class Settings(BaseSettings):
     glm_ocr_api_host: str = "localhost"
     glm_ocr_api_port: int = 8080
     glm_ocr_layout_device: str = "cpu"  # "cpu" | "cuda" | "cuda:N"
-    glm_ocr_timeout: int = 60  # total pipeline budget
+    glm_ocr_timeout: int = 300  # total pipeline budget (connect + request)
     glm_ocr_connect_timeout: int = 120  # wait for vLLM to be ready
     glm_ocr_request_timeout: int = 180  # per-image inference budget
+    glm_ocr_max_tokens: int = 4096  # limit output to leave room for prompt
+
+    # vLLM Managed Server Settings
+    glm_ocr_manage_server: bool = True
+    glm_ocr_vllm_gpu_memory_utilization: float = 0.2
+    glm_ocr_vllm_max_num_seqs: int = 1
+    glm_ocr_vllm_max_model_len: int = 8192
 
     # LLM Settings
     llm_provider: str = "ollama"  # or "openai", "openrouter"
     llm_model: str = "qwen3.5:9b"
-    llm_timeout: int = 60
+    llm_timeout: int = 120
     ollama_url: str = "http://localhost:11434"
     openai_api_key: str | None = None
     openrouter_api_key: str | None = None

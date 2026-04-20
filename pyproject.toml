@@ -33,6 +33,7 @@ dependencies = [
     "bcrypt>=5.0.0",
     "pdfplumber>=0.11.9",
     "python-dateutil>=2.9.0.post0",
+    "vllm>=0.19.1",
 ]
 
 [project.scripts]

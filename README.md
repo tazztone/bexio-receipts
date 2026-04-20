@@ -193,6 +193,7 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ### Extended Documentation
 - [Architecture](docs/ARCHITECTURE.md): System flow and engine details.
+- [OCR Deployment](docs/OCR_DEPLOYMENT.md): Guide for self-hosting GLM-OCR via vLLM.
 - [Configuration](docs/CONFIGURATION.md): Detailed environment variable reference.
 - [Development](docs/DEVELOPMENT.md): Setup and contribution guide.
 - [Operations](docs/OPERATIONS.md): Production setup and maintenance.
