@@ -75,9 +75,9 @@ async def test_process_receipt_success(
     bexio_client.create_purchase_bill.return_value = {"id": 100}
 
     mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.return_value = Receipt(
+    mock_extract.return_value = (Receipt(
         merchant_name="Migros", transaction_date=date.today(), total_incl_vat=10.0
-    )
+    ), "raw")
 
     result = await process_receipt(
         str(test_file), test_settings, bexio_client, mock_db, push_confirmed=True
@@ -137,11 +137,11 @@ async def test_process_receipt_validation_failed(
     bexio_client = AsyncMock()
 
     mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.return_value = Receipt(
+    mock_extract.return_value = (Receipt(
         merchant_name="Migros",
         transaction_date=date.today(),
         total_incl_vat=-10.0,  # triggers validation error
-    )
+    ), "raw")
 
     result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
     assert result["status"] == "review"
@@ -161,9 +161,9 @@ async def test_process_receipt_no_merchant(
     bexio_client.create_expense.return_value = {"id": 200}
 
     mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.return_value = Receipt(
+    mock_extract.return_value = (Receipt(
         merchant_name=None, transaction_date=date.today(), total_incl_vat=10.0
-    )
+    ), "raw")
 
     result = await process_receipt(
         str(test_file), test_settings, bexio_client, mock_db, push_confirmed=True
@@ -179,10 +179,11 @@ async def test_process_receipt_file_not_found(
     mock_extract, mock_ocr, mock_db, tmp_path, test_settings
 ):
     bexio_client = AsyncMock()
-    with pytest.raises(FileNotFoundError):
-        await process_receipt(
-            str(tmp_path / "nonexistent.png"), test_settings, bexio_client, mock_db
-        )
+    result = await process_receipt(
+        str(tmp_path / "nonexistent.png"), test_settings, bexio_client, mock_db
+    )
+    assert result["status"] == "error"
+    assert "File not found" in result["message"]
 
 
 @pytest.mark.asyncio
@@ -198,9 +199,9 @@ async def test_process_receipt_bexio_error(
     bexio_client.upload_file.side_effect = Exception("API down")
 
     mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.return_value = Receipt(
+    mock_extract.return_value = (Receipt(
         merchant_name="Migros", transaction_date=date.today(), total_incl_vat=10.0
-    )
+    ), "raw")
 
     result = await process_receipt(
         str(test_file), test_settings, bexio_client, mock_db, push_confirmed=True
@@ -233,19 +234,23 @@ async def test_send_to_review(tmp_path, test_settings):
 
 
 @pytest.mark.asyncio
-async def test_process_receipt_unsupported_mime(tmp_path, test_settings, mock_db):
+@patch("bexio_receipts.pipeline.async_run_ocr")
+async def test_process_receipt_unsupported_mime(mock_ocr, tmp_path, test_settings, mock_db):
     import json
+
 
     test_file = tmp_path / "test.txt"
     test_file.write_text("unsupported")
 
     bexio_client = AsyncMock()
+    mock_ocr.side_effect = Exception("cannot identify image file")
+
     result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
     assert result["status"] == "review"
 
     with open(result["review_file"]) as f:
         review_data = json.load(f)
-        assert "Unsupported file type" in review_data["errors"][0]
+        assert "cannot identify image file" in review_data["errors"][0]
 
 
 @pytest.mark.asyncio

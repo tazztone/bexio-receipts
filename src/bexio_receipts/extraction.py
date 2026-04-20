@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 import structlog
+from dateutil import parser
 from pydantic import ValidationError
 from pydantic_ai import Agent, NativeOutput, capture_run_messages
 from pydantic_ai.exceptions import AgentRunError, UnexpectedModelBehavior
@@ -23,9 +24,54 @@ from tenacity import (
 )
 
 from .config import Settings
-from .models import Receipt
+from .models import RawReceipt, RawVatRow, Receipt, VatEntry
 
 logger = structlog.get_logger(__name__)
+
+
+def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
+    entries = []
+    for row in rows:
+        a, b, c = row.col_a, row.col_b, row.col_c
+        # Rule: base + vat = total. Try all column permutations.
+        candidates = [(a, b, c), (b, a, c), (a, c, b)] if c is not None else [(a, b, None), (b, a, None)]
+        resolved = False
+        for vat, base, total in candidates:
+            if total is not None:
+                if abs(round(base + vat, 2) - total) < 0.02:
+                    entries.append(VatEntry(rate=row.rate, vat_amount=vat, base_amount=base, total_incl_vat=total))
+                    resolved = True
+                    break
+            else:
+                # no third column — compute total
+                entries.append(VatEntry(rate=row.rate, vat_amount=vat, base_amount=base))
+                resolved = True
+                break
+        if not resolved:
+            raise ValueError(f"Cannot resolve VAT columns for row: {row}")
+    return entries
+
+
+def assemble_receipt(raw: RawReceipt) -> Receipt:
+    vat_entries = resolve_vat_rows(raw.vat_rows)
+
+    parsed_date = None
+    if raw.transaction_date:
+        try:
+            parsed_date = parser.parse(raw.transaction_date, dayfirst=True).date()
+        except Exception as e:
+            logger.warning("Could not parse date", raw_date=raw.transaction_date, error=str(e))
+
+    return Receipt(
+        merchant_name=raw.merchant_name,
+        transaction_date=parsed_date,
+        currency=raw.currency,
+        total_incl_vat=raw.total_incl_vat,
+        vat_breakdown=vat_entries,
+        vat_amount=round(sum(e.vat_amount for e in vat_entries), 2) if vat_entries else None,
+        subtotal_excl_vat=round(sum(e.base_amount for e in vat_entries), 2) if vat_entries else None,
+        payment_method=raw.payment_method,
+    )
 
 
 class ExtractionError(Exception):
@@ -108,36 +154,29 @@ async def extract_receipt(
             use_structured = False
             system_prompt_suffix = "\n\nCRITICAL: Return ONLY raw, valid JSON matching the required schema. Do not use markdown blocks (```json)."
 
-        output_type: type[Any] = str
+        output_type: Any = str
         if use_structured:
             output_type = (
-                NativeOutput(Receipt)
+                NativeOutput(RawReceipt)
                 if settings.llm_provider == "openrouter"
-                else Receipt
+                else RawReceipt
             )
 
         agent = Agent(
             model,
             output_type=output_type,
-            retries=0,  # Disabled for development debugging. In production, use 1 or 3.
+            retries=0 if settings.env == "development" else 1,
             system_prompt=(
-                "Extract receipt data from OCR text. Output a structured Receipt model.\n"
+                "Transcribe the receipt data from OCR text into a structured model.\n"
                 "### CRITICAL RULES ###\n"
                 "1. MERCHANT: Extract the STORE or VENDOR name (e.g. 'Prodega Markt', 'Coop', 'Migros'). "
                 "IGNORE the customer/buyer address block (e.g. 'OHNI GmbH').\n"
-                "2. SWISS VAT: Rates are 8.1% (std), 2.6% (red), 3.8% (acc). "
-                "If multiple rates are present, breakdown into 'vat_breakdown'.\n"
-                "3. MATH: 'vat_amount' in breakdown MUST be the difference between inkl. and exkl. MWST. "
-                "'base_amount' is the exkl. MWST value. "
-                "Top-level 'vat_amount' MUST exactly equal the SUM of the breakdown vat_amounts (or Total Inkl - Subtotal Exkl). "
-                "Line item 'total' MUST be the EXKL. MWST amount (Base) to match the subtotal.\n"
-                "4. VAT TABLE MATH (non-negotiable): Column order varies! In Prodega receipts, order is: [VAT_AMOUNT] [BASE_AMOUNT] [TOTAL_INCL]. "
-                "Example: '4.59 176.70 181.29' -> vat=4.59, base=176.70, total=181.29. "
-                "Always verify base_amount + vat_amount = total_incl_vat before assigning. NEVER swap them incorrectly.\n"
-                "5. DATE: The date is often inline (e.g., 'Datum: 31.01.2026 Ihr Betrag: 214.20'). Extract '2026-01-31'.\n"
-                "6. CURRENCY: Always use 'CHF' unless a different currency is clearly the primary total.\n"
-                "7. PAYMENT: Detect 'cash' if 'Bar' is mentioned, else 'card' or null.\n"
-                "8. CONFIDENCE: Ignore 'Sie sparen' (savings) values when calculating VAT breakdown."
+                "2. SWISS VAT: Transcribe VAT rows as you see them. Copy each number in the row in the exact order "
+                "it appears from left to right (col_a, col_b, col_c). Do not compute anything. Do not reorder columns.\n"
+                "3. DATE: Transcribe the transaction date exactly as it is written (e.g., '31.01.2026' or 'Datum: 31.01.2026').\n"
+                "4. CURRENCY: Always use 'CHF' unless a different currency is clearly the primary total.\n"
+                "5. PAYMENT: Detect 'cash' if 'Bar' is mentioned, else 'card' or null.\n"
+                "6. CONFIDENCE: Ignore 'Sie sparen' (savings) values when extracting VAT breakdown."
                 + system_prompt_suffix
             ),
         )
@@ -170,9 +209,8 @@ async def extract_receipt(
                         if hasattr(msg, "parts"):
                             raw_parts = getattr(msg, "parts", [])
                             last_raw = " | ".join(
-                                str(getattr(p, "content", p))
+                                getattr(p, "content", "") or getattr(p, "args_as_json_str", lambda: "")()
                                 for p in raw_parts
-                                if hasattr(p, "content") or isinstance(p, str)
                             )
                             if last_raw:
                                 break
@@ -181,12 +219,16 @@ async def extract_receipt(
                     cleaned = result.output.strip()
                     if cleaned.startswith("```json"):
                         cleaned = cleaned[7:]
+                    cleaned = cleaned.strip()
                     if cleaned.startswith("```"):
                         cleaned = cleaned[3:]
+                    cleaned = cleaned.strip()
                     if cleaned.endswith("```"):
                         cleaned = cleaned[:-3]
+                    cleaned = cleaned.strip()
                     try:
-                        receipt = Receipt.model_validate_json(cleaned.strip())
+                        raw_receipt = RawReceipt.model_validate_json(cleaned.strip())
+                        receipt = assemble_receipt(raw_receipt)
                         return receipt, last_raw
                     except Exception as e:
                         logger.error(
@@ -198,7 +240,9 @@ async def extract_receipt(
                             f"Failed to parse fallback JSON: {e!s}", last_raw=last_raw
                         ) from e
 
-                return result.output, last_raw
+                assert isinstance(result.output, RawReceipt)
+                receipt = assemble_receipt(result.output)
+                return receipt, last_raw
 
             except (
                 AgentRunError,
@@ -212,9 +256,8 @@ async def extract_receipt(
                         if hasattr(msg, "parts"):
                             raw_parts = getattr(msg, "parts", [])
                             last_raw = " | ".join(
-                                str(getattr(p, "content", p))
+                                getattr(p, "content", "") or getattr(p, "args_as_json_str", lambda: "")()
                                 for p in raw_parts
-                                if hasattr(p, "content") or isinstance(p, str)
                             )
                             if last_raw:
                                 break

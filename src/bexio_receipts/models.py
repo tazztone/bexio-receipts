@@ -17,6 +17,22 @@ class LineItem(BaseModel):
     total: float
 
 
+class RawVatRow(BaseModel):
+    """Model only reads numbers off the receipt — no math required."""
+    rate: float          # e.g. 8.1
+    col_a: float         # first number in the VAT row
+    col_b: float         # second number
+    col_c: float | None  # third number (may be absent)
+
+class RawReceipt(BaseModel):
+    merchant_name: str | None = None
+    transaction_date: str | None = None
+    currency: str = "CHF"
+    total_incl_vat: float | None = None   # the grand total — just read it
+    vat_rows: list[RawVatRow] = []
+    payment_method: str | None = None
+
+
 class VatEntry(BaseModel):
     rate: float = Field(..., description="VAT rate in percent (e.g. 8.1, 2.6)")
     base_amount: float = Field(

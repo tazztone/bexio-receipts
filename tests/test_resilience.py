@@ -83,11 +83,11 @@ async def test_full_pipeline_offline(mock_settings, temp_db, tmp_path):
 
             with patch(
                 "bexio_receipts.pipeline.extract_receipt",
-                return_value=Receipt(
+                return_value=(Receipt(
                     merchant_name="Test",
                     total_incl_vat=10.0,
                     transaction_date=date.today(),
-                ),
+                ), "raw"),
             ):
                 # Mock upload_file to fail (simulating no connectivity)
                 mock_bexio.upload_file.side_effect = Exception("No connectivity")
@@ -124,9 +124,9 @@ async def test_push_safety_gate_pipeline(mock_settings, temp_db, tmp_path):
 
             with patch(
                 "bexio_receipts.pipeline.extract_receipt",
-                return_value=Receipt(
+                return_value=(Receipt(
                     merchant_name="T", total_incl_vat=1.0, transaction_date=date.today()
-                ),
+                ), "raw"),
             ):
                 result = await process_receipt(
                     str(receipt_path), mock_settings, mock_bexio, temp_db

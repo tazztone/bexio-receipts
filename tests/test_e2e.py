@@ -63,12 +63,12 @@ async def test_pipeline_e2e(tmp_path):
         patch("bexio_receipts.pipeline.extract_receipt") as mock_extract,
     ):
         mock_ocr.return_value = ("Test Text", 0.95, [])
-        mock_extract.return_value = Receipt(
+        mock_extract.return_value = (Receipt(
             merchant_name="COOP",
             transaction_date=date.today(),
             total_incl_vat=10.80,
             vat_rate_pct=8.1,
-        )
+        ), "raw")
 
         async with BexioClient("dummy", push_enabled=True) as client:
             await client.cache_lookups()
