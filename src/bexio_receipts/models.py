@@ -32,16 +32,6 @@ class RawVatRows(BaseModel):
     rows: list[RawVatRow]
 
 
-class ExtractionTrace(BaseModel):
-    ocr_text: str = ""
-    step1_intermediate: dict | None = None
-    step1_vat_raw: str | None = None
-    step2_rows: list[dict] = []
-    step3_assignments: list[dict] = []  # Added for audit visibility
-    error_stage: str = ""
-    error_detail: str = ""
-
-
 class RawReceipt(BaseModel):
     merchant_name: str | None = None
     transaction_date: str | None = None

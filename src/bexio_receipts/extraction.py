@@ -101,7 +101,7 @@ def clean_vat_snippet(snippet: str) -> str:
 
 
 def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
-    rate_match_tol = 0.05  # IEEE 754 safe; false-positives rejected by math check below
+    rate_match_tol = 0.02  # IEEE 754 safe; false-positives rejected by math check below
     math_tol = 0.02  # covers rounding on all Swiss receipt formats
 
     entries = []

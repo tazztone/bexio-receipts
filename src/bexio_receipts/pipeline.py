@@ -130,6 +130,7 @@ async def process_receipt(
             pool=2.0,
         )
     ) as client:
+        avg_confidence: float = 0.0
         try:
             raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
         except (TimeoutError, httpx.TimeoutException):
@@ -207,7 +208,7 @@ async def process_receipt(
 
     # 3. Validation
     logger.info("Validating extracted data")
-    errors = validate_receipt(receipt, settings)
+    errors, warnings = validate_receipt(receipt, settings)
     if errors:
         return await send_to_review(
             file_path,
@@ -219,6 +220,9 @@ async def process_receipt(
             failed_stage="validation",
             trace=trace,
         )
+
+    if warnings:
+        logger.warning("Receipt has warnings (not blocking booking)", warnings=warnings)
 
     # 4. Push to bexio
     bexio_action = decide_bexio_action(receipt)

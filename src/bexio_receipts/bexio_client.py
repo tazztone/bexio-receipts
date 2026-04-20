@@ -151,13 +151,11 @@ class BexioClient:
         if requested_rate in self._tax_cache:
             return self._tax_cache[requested_rate]
 
-        logger.warning(
-            "VAT rate not in cache — using fallback",
-            requested_rate=rate,
-            fallback_rate=self.default_vat_rate,
-            tenant_rates=list(self._tax_cache.keys()),
+        raise ValueError(
+            f"VAT rate {requested_rate}% not found in tenant tax cache. "
+            f"Available rates: {list(self._tax_cache.keys())}. "
+            "Add this rate in bexio or set a matching default_vat_rate."
         )
-        return self._tax_cache.get(self.default_vat_rate, 1)
 
     @BEXIO_RETRY
     async def upload_file(self, file_path: str, filename: str, mime_type: str) -> str:
@@ -317,8 +315,6 @@ class BexioClient:
             "contact_partner_id": supplier_id,
             "bill_date": bill_date.isoformat(),
             "due_date": due_date.isoformat(),
-            "amount_man": round(receipt.total_incl_vat or 0.0, 2),
-            "manual_amount": True,
             "currency_code": receipt.currency,
             "item_net": True,  # Amounts in line items are net
             "attachment_ids": [file_uuid],

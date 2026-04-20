@@ -55,7 +55,9 @@ class Settings(BaseSettings):
     inbox_path: str = "./inbox"
     review_username: str = "admin"
     review_password: str = "password"
+    review_password_hash: str = ""
     review_users: dict[str, str] = {}  # Multi-user support {"username": "password"}
+    review_users_hashed: dict[str, str] = {}
     secret_key: str = "change-me"
     database_path: str = "processed_receipts.db"
     review_dir: str = "./review_queue"
@@ -107,19 +109,18 @@ class Settings(BaseSettings):
                     "default_bank_account_id is required when offline_mode is False"
                 )
 
-        # Hash passwords if they are not already hashed
+        return self
+
+    @model_validator(mode="after")
+    def hash_passwords_for_auth(self) -> "Settings":
         import bcrypt
 
-        def hash_pwd(pwd: str) -> str:
+        def _hash(pwd: str) -> str:
             if pwd.startswith("$2b$") or pwd.startswith("$2a$"):
                 return pwd
             return bcrypt.hashpw(pwd.encode(), bcrypt.gensalt()).decode()
 
-        self.review_password = hash_pwd(self.review_password)
-
-        hashed_users = {}
-        for user, pwd in self.review_users.items():
-            hashed_users[user] = hash_pwd(pwd)
-        self.review_users = hashed_users
+        self.review_password_hash = _hash(self.review_password)
+        self.review_users_hashed = {u: _hash(p) for u, p in self.review_users.items()}
 
         return self

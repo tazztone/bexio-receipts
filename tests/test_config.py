@@ -7,7 +7,7 @@ from bexio_receipts.config import Settings
 def test_config_security_enforcement():
     # Development mode allows defaults
     s = Settings(env="development", review_password="password", secret_key="change-me")
-    assert s.review_password.startswith("$2")
+    assert s.review_password_hash.startswith("$2")
 
     # Production mode forbids default password
     with pytest.raises(ValidationError, match="review_password must be changed"):

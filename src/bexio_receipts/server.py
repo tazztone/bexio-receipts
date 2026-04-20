@@ -84,8 +84,8 @@ def verify_credentials(
             headers={"WWW-Authenticate": "Basic"},
         )
 
-    valid_users = settings.review_users or {
-        settings.review_username: settings.review_password
+    valid_users = settings.review_users_hashed or {
+        settings.review_username: settings.review_password_hash
     }
 
     is_authorized = False

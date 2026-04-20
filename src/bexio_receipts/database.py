@@ -75,26 +75,26 @@ class DuplicateDetector:
                 except sqlite3.OperationalError:
                     pass
 
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS merchant_accounts (
-                    merchant_name TEXT PRIMARY KEY,
-                    booking_account_id INTEGER
-                )
-            """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS merchant_vat_accounts (
-                    merchant_name TEXT,
-                    vat_rate REAL,
-                    booking_account_id INTEGER,
-                    PRIMARY KEY (merchant_name, vat_rate)
-                )
-            """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS gdrive_seen_files (
-                    file_id TEXT PRIMARY KEY,
-                    seen_at TIMESTAMP
-                )
-            """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS merchant_accounts (
+                        merchant_name TEXT PRIMARY KEY,
+                        booking_account_id INTEGER
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS merchant_vat_accounts (
+                        merchant_name TEXT,
+                        vat_rate REAL,
+                        booking_account_id INTEGER,
+                        PRIMARY KEY (merchant_name, vat_rate)
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS gdrive_seen_files (
+                        file_id TEXT PRIMARY KEY,
+                        seen_at TIMESTAMP
+                    )
+                """)
 
     def __enter__(self):
         return self

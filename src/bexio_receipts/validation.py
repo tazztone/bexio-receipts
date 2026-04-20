@@ -11,12 +11,13 @@ from .models import Receipt
 VALID_CH_VAT = {0.0, 2.6, 3.8, 8.1}
 
 
-def validate_receipt(r: Receipt, settings: Settings) -> list[str]:
+def validate_receipt(r: Receipt, settings: Settings) -> tuple[list[str], list[str]]:
     """
     Validate receipt data against Swiss business rules.
-    Returns a list of error strings.
+    Returns (errors, warnings). Only errors block booking.
     """
     errors = []
+    warnings = []
 
     # 1. Totals integrity (only if both subtotal and vat values present)
     if (
@@ -54,11 +55,11 @@ def validate_receipt(r: Receipt, settings: Settings) -> list[str]:
         errors.append("Missing date")
     else:
         if r.transaction_date > date.today():
-            errors.append(f"[WARNING] Future date: {r.transaction_date}")
+            warnings.append(f"Future date: {r.transaction_date}")
         if r.transaction_date < date.today() - timedelta(
             days=settings.max_receipt_age_days
         ):
-            errors.append(
+            warnings.append(
                 f"Receipt older than {settings.max_receipt_age_days} days: {r.transaction_date}"
             )
 
@@ -122,4 +123,4 @@ def validate_receipt(r: Receipt, settings: Settings) -> list[str]:
                 f"Line items sum ({items_total}) ≠ total incl. VAT ({r.total_incl_vat})"
             )
 
-    return errors
+    return errors, warnings
