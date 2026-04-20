@@ -30,8 +30,21 @@ class RawReceipt(BaseModel):
     merchant_name: str | None = None
     transaction_date: str | None = None
     currency: str = "CHF"
-    total_incl_vat: float | None = None  # the grand total — just read it
+    total_incl_vat: float | None = None
     vat_rows: list[RawVatRow] = []
+    payment_method: str | None = None
+
+
+class IntermediateReceipt(BaseModel):
+    """Output of Step 1: Preliminary extraction including raw VAT text."""
+
+    merchant_name: str | None = None
+    transaction_date: str | None = None
+    currency: str = "CHF"
+    total_incl_vat: float | None = None
+    vat_table_raw: str | None = Field(
+        default=None, description="Verbatim copy-paste of the VAT summary table lines"
+    )
     payment_method: str | None = None
 
 

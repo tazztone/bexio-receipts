@@ -1,19 +1,17 @@
 """
-LLM-powered structured extraction using Pydantic AI.
-Transforms raw OCR text into validated receipt data models.
+Logic for extracting structured receipt data from OCR text using Pydantic AI.
 """
-
-import asyncio
-from typing import Any
 
 import httpx
 import structlog
 from dateutil import parser
 from pydantic import ValidationError
-from pydantic_ai import Agent, NativeOutput, capture_run_messages
-from pydantic_ai.exceptions import AgentRunError, UnexpectedModelBehavior
+from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.profiles.openai import OpenAIJsonSchemaTransformer, OpenAIModelProfile
+from pydantic_ai.profiles.openai import (
+    OpenAIJsonSchemaTransformer,
+    OpenAIModelProfile,
+)
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from tenacity import (
@@ -24,7 +22,7 @@ from tenacity import (
 )
 
 from .config import Settings
-from .models import RawReceipt, RawVatRow, Receipt, VatEntry
+from .models import IntermediateReceipt, RawReceipt, RawVatRow, Receipt, VatEntry
 
 logger = structlog.get_logger(__name__)
 
@@ -35,11 +33,11 @@ def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
 
     entries = []
     for row in rows:
-        a, b, c = row.col_a, row.col_b, row.col_c
         rate = row.rate
+        a, b, c = row.col_a, row.col_b, row.col_c
         resolved = False
 
-        # --- Strategy 1: Rate | VAT | Base  (Prodega / wholesaler layout) ---
+        # Strategy 1: Rate column detection (Prodega style)
         # One column equals the rate value itself; remaining two are (vat, base).
         if c is not None:
             for rate_col, x, y in [(a, b, c), (b, a, c), (c, a, b)]:
@@ -61,12 +59,20 @@ def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
         if resolved:
             continue
 
-        # --- Strategy 2: VAT + Base = Total  (standard Swiss retail layout) ---
-        candidates = (
-            [(a, b, c), (b, a, c), (a, c, b)]
-            if c is not None
-            else [(a, b, None), (b, a, None)]
-        )
+        # Strategy 2: Default additive check (VAT + Base = Total)
+        candidates: list[tuple[float, float, float | None]] = []
+        if c is not None:
+            candidates = [
+                (a, b, c),
+                (a, c, b),
+                (b, a, c),
+                (b, c, a),
+                (c, a, b),
+                (c, b, a),
+            ]
+        else:
+            candidates = [(a, b, None), (b, a, None)]
+
         for vat, base, total in candidates:
             if total is not None:
                 if abs(round(base + vat, 2) - total) < math_tol:
@@ -81,11 +87,13 @@ def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
                     resolved = True
                     break
             else:
-                # Two-column: pick smaller as VAT
-                vat_, base_ = (vat, base) if vat <= base else (base, vat)
-                entries.append(VatEntry(rate=rate, vat_amount=vat_, base_amount=base_))
-                resolved = True
-                break
+                # If only two columns, we must rely on rate math
+                if base > 0 and abs(round(base * rate / 100, 2) - vat) < math_tol:
+                    entries.append(
+                        VatEntry(rate=rate, vat_amount=vat, base_amount=base)
+                    )
+                    resolved = True
+                    break
 
         if not resolved:
             logger.warning("Skipping unresolvable VAT row", row=row.model_dump())
@@ -173,207 +181,111 @@ async def extract_receipt(
     raw_text: str, settings: Settings, client: httpx.AsyncClient
 ) -> tuple[Receipt, str | None]:
     """
-    Extract receipt data from OCR text using Pydantic AI.
-    Returns (Receipt, last_raw_response).
+    Extract receipt data from OCR text using a Two-Step LLM Pipeline.
     """
-    or_client = None
-    try:
-        if settings.llm_provider == "ollama":
-            base_url = settings.ollama_url.rstrip("/")
-            if not base_url.endswith("/v1"):
-                base_url = f"{base_url}/v1"
+    if settings.llm_provider == "ollama":
+        base_url = settings.ollama_url.rstrip("/")
+        if not base_url.endswith("/v1"):
+            base_url = f"{base_url}/v1"
 
-            model = OpenAIChatModel(
-                model_name=settings.llm_model,
-                provider=OllamaProvider(base_url=base_url, http_client=client),
-            )
-        elif settings.llm_provider == "openai":
-            model = OpenAIChatModel(
-                model_name=settings.llm_model,
-                provider=OpenAIProvider(http_client=client),
-            )
-        elif settings.llm_provider == "openrouter":
-            from openai import AsyncOpenAI
+        model = OpenAIChatModel(
+            model_name=settings.llm_model,
+            provider=OllamaProvider(base_url=base_url, http_client=client),
+        )
+    elif settings.llm_provider == "openai":
+        model = OpenAIChatModel(
+            model_name=settings.llm_model,
+            provider=OpenAIProvider(http_client=client),
+        )
+    elif settings.llm_provider == "openrouter":
+        from openai import AsyncOpenAI
 
-            api_key = settings.openrouter_api_key
-            if not api_key:
-                raise ValueError(
-                    "OPENROUTER_API_KEY is required for OpenRouter provider"
-                )
+        api_key = settings.openrouter_api_key
+        if not api_key:
+            raise ValueError("OPENROUTER_API_KEY is required for OpenRouter provider")
 
-            or_client = AsyncOpenAI(
-                base_url=settings.openrouter_url,
-                api_key=api_key,
-                default_headers={
-                    "HTTP-Referer": settings.openrouter_site_url,
-                    "X-Title": settings.openrouter_site_name,
-                },
-            )
-            model = OpenAIChatModel(
-                model_name=settings.llm_model,
-                provider=OpenAIProvider(openai_client=or_client),
-                profile=OpenAIModelProfile(
-                    supports_json_schema_output=True,
-                    supports_json_object_output=True,
-                    json_schema_transformer=OpenAIJsonSchemaTransformer,
-                ),
-            )
-        else:
-            raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
+        or_client = AsyncOpenAI(
+            base_url=settings.openrouter_url,
+            api_key=api_key,
+            default_headers={
+                "HTTP-Referer": settings.openrouter_site_url,
+                "X-Title": settings.openrouter_site_name,
+            },
+        )
+        model = OpenAIChatModel(
+            model_name=settings.llm_model,
+            provider=OpenAIProvider(openai_client=or_client),
+            profile=OpenAIModelProfile(
+                supports_json_schema_output=True,
+                supports_json_object_output=True,
+                json_schema_transformer=OpenAIJsonSchemaTransformer,
+            ),
+        )
+    else:
+        raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
 
-        # Structured output strategy
-        use_structured = True
-        system_prompt_suffix = ""
-        if (
-            settings.llm_provider == "openrouter"
-            and not settings.openrouter_use_structured_output
-        ):
-            use_structured = False
-            system_prompt_suffix = "\n\nCRITICAL: Return ONLY raw, valid JSON matching the required schema. Do not use markdown blocks (```json)."
+    # STEP 1: Preliminary Extraction (Searcher)
+    searcher_agent = Agent(
+        model,
+        output_type=IntermediateReceipt,
+        retries=1,
+        system_prompt=(
+            "Transcribe basic receipt data and locate the VAT table.\n"
+            "### RULES ###\n"
+            "1. MERCHANT: Extract vendor name. IGNORE customer addresses.\n"
+            "2. DATE: Transcribe exactly (e.g. 31.01.2026).\n"
+            "3. TOTAL: Extract grand total amount.\n"
+            "4. VAT TABLE RAW: Find the VAT summary section (usually at the bottom). "
+            "Copy-paste the lines of that table VERBATIM. Do not process or reformat it."
+        ),
+    )
 
-        output_type: Any = str
-        if use_structured:
-            output_type = (
-                NativeOutput(RawReceipt)
-                if settings.llm_provider == "openrouter"
-                else RawReceipt
-            )
+    logger.info("Step 1: Preliminary extraction started", model=settings.llm_model)
+    res1 = await searcher_agent.run(f"Receipt text:\n{raw_text}")
+    intermediate = res1.output
+    if not isinstance(intermediate, IntermediateReceipt):
+        raise ExtractionError("Step 1 failed: Unexpected output type")
 
-        agent = Agent(
+    # STEP 2: VAT Parsing (Assigner)
+    vat_rows = []
+    if intermediate.vat_table_raw and len(intermediate.vat_table_raw.strip()) > 5:
+        parser_agent = Agent(
             model,
-            output_type=output_type,
-            retries=0 if settings.env == "development" else 1,
+            output_type=list[RawVatRow],
+            retries=1,
             system_prompt=(
-                "Transcribe the receipt data from OCR text into a structured model.\n"
-                "### CRITICAL RULES ###\n"
-                "1. MERCHANT: Extract the STORE or VENDOR name (e.g. 'Prodega Markt', 'Coop', 'Migros'). "
-                "IGNORE the customer/buyer address block (e.g. 'OHNI GmbH').\n"
-                "2. SWISS VAT: Transcribe VAT rows as you see them. Copy each number in the row in the exact order "
-                "it appears from left to right (col_a, col_b, col_c). Do not compute anything. Do not reorder columns.\n"
-                "3. DATE: Transcribe the transaction date exactly as it is written (e.g., '31.01.2026' or 'Datum: 31.01.2026').\n"
-                "4. CURRENCY: Always use 'CHF' unless a different currency is clearly the primary total.\n"
-                "5. PAYMENT: Detect 'cash' if 'Bar' is mentioned, else 'card' or null.\n"
-                "6. CONFIDENCE: Ignore 'Sie sparen' (savings) values when extracting VAT breakdown.\n"
-                "7. VAT SUMMARY ROWS: In the VAT breakdown table, ignore any row where the "
-                "first column is clearly a sum of the other VAT amounts, or where a column "
-                "contains a rounding adjustment (e.g., -0.01). Only extract rows that represent "
-                "a single VAT rate (e.g., 2.6%, 8.1%). Never extract a summary/total line as a VAT row.\n"
-                "8. TOTAL: Extract the grand total amount (usually labeled as 'Total', 'Endbetrag', 'Rechnungsbetrag' or 'Netto + MWST')."
-                + system_prompt_suffix
+                "You are a VAT data entry specialist. I will give you a tiny snippet of a VAT table.\n"
+                "Extract the rows. For each row:\n"
+                "- rate: e.g. 2.6, 8.1\n"
+                "- col_a, col_b, col_c: the numbers in that row in order from left to right.\n"
+                "IGNORE summary rows or headers. Return ONLY the data rows."
             ),
         )
 
-        logger.info(
-            "LLM Request started",
-            model=settings.llm_model,
-            text_len=len(raw_text),
-            timeout=settings.llm_timeout,
+        logger.info("Step 2: VAT parsing started", snippet=intermediate.vat_table_raw)
+        res2 = await parser_agent.run(
+            f"VAT Table Snippet:\n{intermediate.vat_table_raw}"
         )
-        start_time = asyncio.get_event_loop().time()
+        vat_rows = res2.output
+        if not isinstance(vat_rows, list):
+            raise ExtractionError("Step 2 failed: Unexpected output type")
 
-        with capture_run_messages() as messages:
-            last_raw = "Unavailable"
-            try:
-                result = await asyncio.wait_for(
-                    agent.run(f"Receipt text:\n{raw_text}"),
-                    timeout=settings.llm_timeout,
-                )
-                duration = asyncio.get_event_loop().time() - start_time
-                logger.info(
-                    "LLM Request completed",
-                    model=settings.llm_model,
-                    duration=round(duration, 2),
-                )
+    # Final assembly
+    raw_receipt = RawReceipt(
+        merchant_name=intermediate.merchant_name,
+        transaction_date=intermediate.transaction_date,
+        currency=intermediate.currency,
+        total_incl_vat=intermediate.total_incl_vat,
+        vat_rows=vat_rows,
+        payment_method=intermediate.payment_method,
+    )
 
-                # Capture raw from messages for success as well
-                if messages:
-                    for msg in reversed(messages):
-                        if hasattr(msg, "parts"):
-                            raw_parts = getattr(msg, "parts", [])
-                            last_raw = " | ".join(
-                                getattr(p, "content", "")
-                                or getattr(p, "args_as_json_str", lambda: "")()
-                                for p in raw_parts
-                            )
-                            if last_raw:
-                                break
-
-                if not use_structured:
-                    cleaned = result.output.strip()
-                    if cleaned.startswith("```json"):
-                        cleaned = cleaned[7:]
-                    cleaned = cleaned.strip()
-                    if cleaned.startswith("```"):
-                        cleaned = cleaned[3:]
-                    cleaned = cleaned.strip()
-                    if cleaned.endswith("```"):
-                        cleaned = cleaned[:-3]
-                    cleaned = cleaned.strip()
-                    try:
-                        raw_receipt = RawReceipt.model_validate_json(cleaned.strip())
-                        try:
-                            receipt = assemble_receipt(raw_receipt)
-                        except ValueError as ve:
-                            raise ExtractionError(
-                                f"VAT assembly failed: {ve}", last_raw=last_raw
-                            ) from ve
-                        return receipt, last_raw
-                    except ExtractionError:
-                        raise
-                    except Exception as e:
-                        logger.error(
-                            "Failed to parse manual JSON fallback",
-                            error=str(e),
-                            raw=cleaned,
-                        )
-                        raise ExtractionError(
-                            f"Failed to parse fallback JSON: {e!s}", last_raw=last_raw
-                        ) from e
-
-                if not isinstance(result.output, RawReceipt):
-                    raise ExtractionError(
-                        f"Unexpected output type from LLM: {type(result.output)}",
-                        last_raw=last_raw,
-                    )
-                try:
-                    receipt = assemble_receipt(result.output)
-                except ValueError as ve:
-                    raise ExtractionError(
-                        f"VAT assembly failed: {ve}", last_raw=last_raw
-                    ) from ve
-                return receipt, last_raw
-
-            except (
-                AgentRunError,
-                UnexpectedModelBehavior,
-                ValidationError,
-                TimeoutError,
-                ValueError,
-            ) as e:
-                if messages:
-                    # Find the last message that has parts (ModelResponse)
-                    for msg in reversed(messages):
-                        if hasattr(msg, "parts"):
-                            raw_parts = getattr(msg, "parts", [])
-                            last_raw = " | ".join(
-                                getattr(p, "content", "")
-                                or getattr(p, "args_as_json_str", lambda: "")()
-                                for p in raw_parts
-                            )
-                            if last_raw:
-                                break
-
-                logger.error(
-                    "LLM extraction failed",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    last_raw=last_raw,
-                    model=settings.llm_model,
-                )
-                raise ExtractionError(
-                    f"LLM extraction failed: {e!s}", last_raw=last_raw
-                ) from e
-
-    finally:
-        if or_client:
-            await or_client.close()
+    try:
+        receipt = assemble_receipt(raw_receipt)
+        # Capture raw text for debugging
+        last_raw = f"Step1: {res1.output}\n\nStep2: {vat_rows if 'res2' in locals() else 'N/A'}"
+        return receipt, last_raw
+    except ValueError as ve:
+        raise ExtractionError(
+            f"VAT assembly failed: {ve!s}", last_raw=str(intermediate)
+        ) from ve
