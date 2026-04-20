@@ -3,7 +3,7 @@ Logic for extracting structured receipt data from OCR text using Pydantic AI.
 """
 
 import re
-from typing import Literal
+from typing import Any, Literal
 
 import httpx
 import structlog
@@ -242,7 +242,7 @@ def _is_rate_limit(exc: BaseException) -> bool:
 
 def _build_model(
     settings: Settings, client: httpx.AsyncClient
-) -> tuple[OpenAIChatModel, httpx.AsyncClient | None]:
+) -> tuple[OpenAIChatModel, Any]:
     """Helper to build the pydantic-ai model consistently."""
     or_client = None
     if settings.llm_provider == "ollama":
