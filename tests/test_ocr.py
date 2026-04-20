@@ -122,8 +122,9 @@ def test_get_ocr_parser(mock_start, mock_glmocr, test_settings):
     mock_glmocr.assert_not_called()
 
 def test_close_ocr_parser():
-    import bexio_receipts.ocr as ocr_module
     import subprocess
+
+    import bexio_receipts.ocr as ocr_module
 
     # Mock active parser and vllm process
     mock_parser = MagicMock()

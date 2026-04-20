@@ -241,7 +241,7 @@ def _is_rate_limit(exc: BaseException) -> bool:
 
 
 if TYPE_CHECKING:
-    from openai import AsyncOpenAI
+    pass
 
 def _build_model(
     settings: Settings, client: httpx.AsyncClient
