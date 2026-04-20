@@ -118,7 +118,11 @@ def assemble_receipt(raw: RawReceipt) -> Receipt:
         # Sort by total_incl_vat descending to pick dominant rate
         sorted_entries = sorted(
             vat_entries,
-            key=lambda e: e.total_incl_vat or (e.base_amount + e.vat_amount),
+            key=lambda e: (
+                e.total_incl_vat
+                if e.total_incl_vat is not None
+                else (e.base_amount + e.vat_amount)
+            ),
             reverse=True,
         )
         vat_rate_pct = sorted_entries[0].rate
@@ -326,7 +330,11 @@ async def extract_receipt(
                             f"Failed to parse fallback JSON: {e!s}", last_raw=last_raw
                         ) from e
 
-                assert isinstance(result.output, RawReceipt)
+                if not isinstance(result.output, RawReceipt):
+                    raise ExtractionError(
+                        f"Unexpected output type from LLM: {type(result.output)}",
+                        last_raw=last_raw,
+                    )
                 try:
                     receipt = assemble_receipt(result.output)
                 except ValueError as ve:

@@ -84,9 +84,9 @@ class ReceiptHandler(FileSystemEventHandler):
     async def _wait_for_file_stabilization(self, file_path: Path, timeout: int = 10):
         """Poll file size until it stops changing."""
         last_size = -1
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
 
-        while asyncio.get_event_loop().time() - start_time < timeout:
+        while asyncio.get_running_loop().time() - start_time < timeout:
             try:
                 current_size = os.path.getsize(file_path)
                 if current_size == last_size and current_size > 0:

@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from bexio_receipts.extraction import extract_receipt
-from bexio_receipts.models import Receipt
+from bexio_receipts.extraction import extract_receipt, resolve_vat_rows
+from bexio_receipts.models import RawReceipt, RawVatRow, Receipt
 
 
 @pytest.mark.asyncio
@@ -15,13 +15,13 @@ async def test_extract_receipt_ollama(test_settings):
 
     # Mocking Agent and result
     mock_result = MagicMock()
-    from bexio_receipts.models import RawReceipt
+
     # Pydantic AI now uses .output instead of .data
     mock_result.output = RawReceipt(
         merchant_name="Mock Coop",
         transaction_date="2023-01-01",
         total_incl_vat=10.81,
-        vat_rows=[{"rate": 8.1, "col_a": 0.81, "col_b": 10.0, "col_c": 10.81}],
+        vat_rows=[RawVatRow(rate=8.1, col_a=0.81, col_b=10.0, col_c=10.81)],
     )
 
     with patch("bexio_receipts.extraction.Agent") as mock_agent_class:
@@ -41,6 +41,7 @@ async def test_extract_receipt_ollama(test_settings):
 async def test_extract_receipt_with_vat_breakdown(test_settings):
     pass
 
+
 @pytest.mark.asyncio
 async def test_extract_receipt_fallback(test_settings):
     test_settings.llm_provider = "openrouter"
@@ -49,7 +50,9 @@ async def test_extract_receipt_fallback(test_settings):
 
     mock_result = MagicMock()
     # Pydantic AI now uses .output instead of .data
-    mock_result.output = '```json\n{"merchant_name": "Fallback", "transaction_date": "2023-01-01"}\n```'
+    mock_result.output = (
+        '```json\n{"merchant_name": "Fallback", "transaction_date": "2023-01-01"}\n```'
+    )
 
     with patch("bexio_receipts.extraction.Agent") as mock_agent_class:
         mock_agent_instance = mock_agent_class.return_value
@@ -69,20 +72,22 @@ async def test_extract_receipt_openrouter_missing_key(test_settings):
     with pytest.raises(ValueError, match="OPENROUTER_API_KEY is required"):
         await extract_receipt("Dummy text", test_settings, httpx.AsyncClient())
 
+
 @pytest.mark.asyncio
 async def test_extract_receipt_openai(test_settings):
     test_settings.llm_provider = "openai"
     test_settings.openai_api_key = "dummy_key"
     import os
+
     os.environ["OPENAI_API_KEY"] = "dummy_key"
 
     mock_result = MagicMock()
-    from bexio_receipts.models import RawReceipt
+
     mock_result.output = RawReceipt(
         merchant_name="Mock Coop",
         transaction_date="2023-01-01",
         total_incl_vat=10.81,
-        vat_rows=[{"rate": 8.1, "col_a": 0.81, "col_b": 10.0, "col_c": 10.81}],
+        vat_rows=[RawVatRow(rate=8.1, col_a=0.81, col_b=10.0, col_c=10.81)],
     )
 
     with patch("bexio_receipts.extraction.Agent") as mock_agent_class:
@@ -96,7 +101,6 @@ async def test_extract_receipt_openai(test_settings):
         assert receipt.merchant_name == "Mock Coop"
         assert receipt.total_incl_vat == 10.81
 
-    from bexio_receipts.models import RawVatRow
     mock_result = MagicMock()
     mock_result.output = RawReceipt(
         merchant_name="Mock Coop",
@@ -120,6 +124,24 @@ async def test_extract_receipt_openai(test_settings):
         assert receipt.vat_breakdown[0].rate == 8.1
         assert receipt.vat_breakdown[1].rate == 2.6
         mock_agent_instance.run.assert_called_once()
+
+
+def test_resolve_vat_rows_strategy_1():
+    """Test Strategy 1: Rate | VAT | Base (Prodega pattern)"""
+    rows = [
+        # Rate=2.6, col_a=2.6 (matches rate), col_b=4.59 (vat), col_c=176.70 (base)
+        RawVatRow(rate=2.6, col_a=2.6, col_b=4.59, col_c=176.70),
+        # Rate=8.1, col_a=8.1 (matches rate), col_b=2.47 (vat), col_c=30.45 (base)
+        RawVatRow(rate=8.1, col_a=8.1, col_b=2.47, col_c=30.45),
+    ]
+    entries = resolve_vat_rows(rows)
+    assert len(entries) == 2
+    assert entries[0].rate == 2.6
+    assert entries[0].vat_amount == 4.59
+    assert entries[0].base_amount == 176.70
+    assert entries[1].rate == 8.1
+    assert entries[1].vat_amount == 2.47
+    assert entries[1].base_amount == 30.45
 
 
 def test_receipt_normalization():

@@ -68,3 +68,14 @@ When adding a new ADR, use the following format:
 - **Context**: GLM-OCR is a specialized model with an internal layout analysis pipeline triggered by specific keywords.
 - **Decision**: Use the canonical `"Text Recognition:"` prompt. Avoid free-form instructions or complex formatting requests.
 - **Rationale**: Faster inference and more stable internal table detection (PP-DocLayout-V3).
+
+---
+
+## [ADR-010] Mandatory Human-in-the-loop Review
+- **Status**: Decided (April 2026)
+- **Context**: Automated extraction, while accurate, can still make subtle errors in VAT mapping or merchant identification. For financial data, 100% accuracy is required before booking in bexio.
+- **Decision**: Transition the system to a mandatory manual review workflow. All receipts processed by the automated pipeline (Folder Watcher, Google Drive) must be held in the Review Dashboard for human approval.
+- **Rationale**:
+  - **Security**: Prevents erroneous data from being pushed to the accounting system.
+  - **Compliance**: Ensures a human has verified the tax implications (VAT rates) of each transaction.
+  - **Usability**: The dashboard provides a high-fidelity environment for correcting minor extraction artifacts before they become permanent records.
