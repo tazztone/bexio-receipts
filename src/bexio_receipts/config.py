@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     bexio_allowed_soll_accounts: list[int] = [4400, 4200, 4270, 4201, 6460]
     bexio_haben_account_bank: int = 1020
     bexio_haben_account_cash: int = 1000
+    bexio_accounts: dict[str, str] = {
+        "4200": "Einkauf Handelsware (food/resale goods)",
+        "4201": "Einkauf Handelsware Non-Food",
+        "4270": "Gebühren Einkauf Handelswaren (fees/surcharges)",
+        "4400": "Einkauf Dienstleistung (services)",
+        "6460": "Kehrichtabfuhr, Sondermüll (waste disposal)",
+    }
 
     # bexio-receipts specific paths
     inbox_path: str = "./inbox"

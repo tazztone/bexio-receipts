@@ -43,7 +43,8 @@ class IntermediateReceipt(BaseModel):
     currency: str = "CHF"
     total_incl_vat: float | None = None
     vat_table_raw: str | None = Field(
-        default=None, description="Verbatim copy-paste of the VAT summary table lines"
+        default=None,
+        description="Extract ONLY rows containing a percentage (e.g. 2.6%). Skip headers, rounding, or summary lines.",
     )
     payment_method: str | None = None
 

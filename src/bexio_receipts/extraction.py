@@ -3,6 +3,7 @@ Logic for extracting structured receipt data from OCR text using Pydantic AI.
 """
 
 import re
+from typing import Literal
 
 import httpx
 import structlog
@@ -36,6 +37,18 @@ from .models import (
 logger = structlog.get_logger(__name__)
 
 
+class AccountAssignment(BaseModel):
+    vat_rate: float  # 2.6 or 8.1
+    account_id: str  # "4200"
+    account_name: str  # "Einkauf Handelsware"
+    confidence: Literal["high", "medium", "low"]
+    reasoning: str  # one sentence — for review queue visibility
+
+
+class AccountAssignments(BaseModel):
+    assignments: list[AccountAssignment]
+
+
 class ExtractionTrace(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     ocr_text: str = ""
@@ -44,6 +57,7 @@ class ExtractionTrace(BaseModel):
     step2_vat_cleaned: str = ""
     step2_output: list[dict] = []  # [r.model_dump() for r in vat_rows]
     resolved_rows: list[dict] = []  # [e.model_dump() for e in vat_entries]
+    step3_assignments: list[dict] = []  # [a.model_dump() for a in assignments]
     error_stage: str = ""
     error_detail: str = ""
 
@@ -296,9 +310,10 @@ async def extract_receipt(
                 "(e.g. 'EUR ... zum Kurs ...'). The CHF total is labeled 'Total Rechnung', 'Ihr Betrag', "
                 "or 'Endbetrag'.\n"
                 "4. CURRENCY: Always 'CHF' unless no CHF total exists at all.\n"
-                "5. VAT TABLE RAW: Find the VAT summary section. It contains rows like "
-                "'MWST 2.60%  4.59  176.70  181.29'. Copy each ROW on a single line, "
-                "preserving the horizontal order of numbers. Do not split into columns vertically."
+                "5. VAT TABLE RAW: Locate the 'Zusammenfassung gem. MWST' table. "
+                "For each line starting with 'MWST', transcribe the percentage and ALL following numbers "
+                "on that horizontal line verbatim. Example: 'MWST 2.60% 4.59 176.70 181.29'. "
+                "Do NOT include 'Rundungsdifferenz' or 'Total Rechnung' lines."
             ),
         )
 
@@ -377,6 +392,93 @@ async def extract_receipt(
             trace.error_stage = "assembly"
             trace.error_detail = str(ve)
             raise ExtractionError(f"VAT assembly failed: {ve!s}", trace=trace) from ve
+    finally:
+        if or_client is not None:
+            await or_client.close()
+
+
+async def classify_accounts(
+    receipt: Receipt, raw_text: str, settings: Settings, client: httpx.AsyncClient
+) -> list[AccountAssignment]:
+    """
+    Step 3: Assign Swiss booking accounts based on full OCR context and VAT rates.
+    """
+    or_client = None
+    try:
+        # Reuse provider logic from extract_receipt
+        if settings.llm_provider == "openai":
+            from pydantic_ai.providers.openai import OpenAIProvider
+
+            model = OpenAIChatModel(
+                model_name=settings.llm_model,
+                provider=OpenAIProvider(http_client=client),
+            )
+        elif settings.llm_provider == "openrouter":
+            from openai import AsyncOpenAI
+            from pydantic_ai.providers.openai import OpenAIProvider
+
+            or_client = AsyncOpenAI(
+                base_url=settings.openrouter_url,
+                api_key=settings.openrouter_api_key,
+                default_headers={
+                    "HTTP-Referer": settings.openrouter_site_url,
+                    "X-Title": settings.openrouter_site_name,
+                },
+            )
+            model = OpenAIChatModel(
+                model_name=settings.llm_model,
+                provider=OpenAIProvider(openai_client=or_client),
+            )
+        elif settings.llm_provider == "ollama":
+            from pydantic_ai.providers.ollama import OllamaProvider
+
+            base_url = settings.ollama_url.rstrip("/")
+            if not base_url.endswith("/v1"):
+                base_url = f"{base_url}/v1"
+
+            model = OpenAIChatModel(
+                model_name=settings.llm_model,
+                provider=OllamaProvider(base_url=base_url, http_client=client),
+            )
+        else:
+            # Fallback to default model string
+            model = settings.llm_model
+
+        accounts_context = "\n".join([
+            f"- {acc_id}: {desc}" for acc_id, desc in settings.bexio_accounts.items()
+        ])
+
+        classifier_agent = Agent(
+            model,
+            output_type=AccountAssignments,
+            retries=1,
+            system_prompt=(
+                "You are a Swiss bookkeeper. Given a receipt's OCR text and extracted data, "
+                "assign the correct booking account number for each VAT entry found.\n"
+                "### AVAILABLE ACCOUNTS ###\n"
+                f"{accounts_context}\n\n"
+                "### RULES ###\n"
+                "1. Use product descriptions and categories in the OCR text to determine the account.\n"
+                "2. Food/resale goods → 4200. Non-food consumables → 4201. Services → 4400. "
+                "Waste/disposal → 6460. Fees/Surcharges → 4270.\n"
+                "3. If the receipt mixes categories, assign per VAT rate based on which products "
+                "fall under that rate.\n"
+                "4. If uncertain, default to 4200 and set confidence='low'.\n"
+                "5. IMPORTANT: Swiss VAT rate 2.6% is almost always food (4200). 8.1% is non-food/services (4201/4400)."
+            ),
+        )
+
+        receipt_summary = receipt.model_dump_json()
+        logger.info(
+            "Step 3: Account classification started", merchant=receipt.merchant_name
+        )
+        res = await classifier_agent.run(
+            f"Receipt Summary:\n{receipt_summary}\n\nFull OCR Text:\n{raw_text}"
+        )
+        return res.output.assignments
+    except Exception as e:
+        logger.error("Step 3: Account classification failed", error=str(e))
+        return []
     finally:
         if or_client is not None:
             await or_client.close()

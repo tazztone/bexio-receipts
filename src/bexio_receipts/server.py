@@ -570,12 +570,42 @@ async def get_review_form(
 
     # Get the default account for this merchant if known
     db = DuplicateDetector(settings.database_path)
-    default_account_id = None
-    if receipt.merchant_name:
-        default_account_id = db.get_merchant_account(receipt.merchant_name)
-
+    default_account_id = (
+        db.get_merchant_account(receipt.merchant_name)
+        if receipt.merchant_name
+        else None
+    )
     if not default_account_id:
         default_account_id = settings.default_booking_account_id
+
+    # Map each VAT rate to a default account (Priority: DB > LLM Assignment > Default)
+    vat_account_map = {}
+    assignments = data.get("extraction_trace", {}).get("step3_assignments", [])
+    if receipt.vat_breakdown:
+        for entry in receipt.vat_breakdown:
+            acc_id = None
+            if receipt.merchant_name:
+                acc_id = db.get_merchant_vat_account(receipt.merchant_name, entry.rate)
+
+            if not acc_id:
+                # Fallback to Step 3 assignments from trace
+                match = next(
+                    (a for a in assignments if a.get("vat_rate") == entry.rate), None
+                )
+                if match:
+                    try:
+                        acc_id = int(match.get("account_id"))
+                    except (ValueError, TypeError):
+                        acc_id = None
+
+            if not acc_id:
+                acc_id = default_account_id
+
+            vat_account_map[entry.rate] = {
+                "account_id": acc_id,
+                "reasoning": match.get("reasoning") if match else None,
+                "confidence": match.get("confidence") if match else None,
+            }
 
     if "csrf_token" not in request.session:
         request.session["csrf_token"] = secrets.token_urlsafe()
@@ -591,6 +621,7 @@ async def get_review_form(
             "receipt": receipt,
             "allowed_accounts": allowed_accounts,
             "default_account_id": default_account_id,
+            "vat_account_map": vat_account_map,
             "haben_bank_id": haben_bank_id,
             "haben_cash_id": haben_cash_id,
             "bexio_action": bexio_action,
@@ -726,11 +757,19 @@ async def push_to_bexio(
                 await bexio.create_purchase_bill(
                     receipt, file_uuid, booking_account_ids=booking_account_ids
                 )
-                # Save first account mapping for merchant
+                # Save account mapping for merchant (Learning Loop)
                 if receipt.merchant_name:
-                    db.set_merchant_account(
-                        receipt.merchant_name, booking_account_ids[0]
-                    )
+                    if receipt.vat_breakdown:
+                        for i, entry in enumerate(receipt.vat_breakdown):
+                            db.set_merchant_vat_account(
+                                receipt.merchant_name,
+                                entry.rate,
+                                booking_account_ids[i],
+                            )
+                    else:
+                        db.set_merchant_account(
+                            receipt.merchant_name, booking_account_ids[0]
+                        )
             else:
                 # Single-rate expense
                 await bexio.create_expense(
@@ -739,6 +778,11 @@ async def push_to_bexio(
                     booking_account_id=booking_account_ids[0],
                     bank_account_id=bank_account_id or settings.default_bank_account_id,
                 )
+                # Learning loop for single-rate
+                if receipt.merchant_name:
+                    db.set_merchant_account(
+                        receipt.merchant_name, booking_account_ids[0]
+                    )
 
         # Success: delete review file
         p.unlink()

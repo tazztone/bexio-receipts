@@ -12,7 +12,12 @@ import structlog
 from .bexio_client import BexioClient
 from .config import Settings
 from .database import DuplicateDetector as Database
-from .extraction import ExtractionError, ExtractionTrace, extract_receipt
+from .extraction import (
+    ExtractionError,
+    ExtractionTrace,
+    classify_accounts,
+    extract_receipt,
+)
 from .models import Receipt
 from .ocr import async_run_ocr
 from .validation import validate_receipt
@@ -178,6 +183,13 @@ async def process_receipt(
                 failed_stage="extraction",
             )
 
+        # 3. Step 3: Account Classification (Post-Extraction)
+        logger.info("Classifying accounts via LLM", merchant=receipt.merchant_name)
+        assignments = await classify_accounts(
+            receipt, raw_text, settings, client=client
+        )
+        trace.step3_assignments = [a.model_dump() for a in assignments]
+
     # 3. Validation
     logger.info("Validating extracted data")
     errors = validate_receipt(receipt, settings)
@@ -230,23 +242,48 @@ async def process_receipt(
 
         # Prefer Bill (v4) if we have a merchant name or multiple VAT rates.
         if bexio_action == "purchase_bill":
-            merchant = receipt.merchant_name or "Unknown Merchant"
-            # Smart Account Mapping: lookup last used account for this merchant
-            booking_account_id = (
-                db.get_merchant_account(merchant) or settings.default_booking_account_id
-            )
+            # Build booking account list based on assignments or database priority
+            booking_account_ids = []
+            if receipt.vat_breakdown:
+                for entry in receipt.vat_breakdown:
+                    acc_id = None
+                    # Priority 1: Database (Learned from human)
+                    if receipt.merchant_name:
+                        acc_id = db.get_merchant_vat_account(
+                            receipt.merchant_name, entry.rate
+                        )
 
-            # If multiple VAT rates, repeat the same account ID for each entry (as default)
-            num_accounts = len(receipt.vat_breakdown) if receipt.vat_breakdown else 1
-            booking_account_ids = [booking_account_id] * num_accounts
+                    # Priority 2: LLM Assignment (Step 3)
+                    if not acc_id:
+                        # Find matching assignment
+                        match = next(
+                            (a for a in assignments if a.vat_rate == entry.rate), None
+                        )
+                        if match:
+                            acc_id = int(match.account_id)
+
+                    # Priority 3: Default fallback
+                    if not acc_id:
+                        logger.warning(
+                            "No account found for VAT rate, using default",
+                            rate=entry.rate,
+                            merchant=receipt.merchant_name,
+                        )
+                        acc_id = settings.default_booking_account_id
+
+                    booking_account_ids.append(acc_id)
+            else:
+                # Single rate or no breakdown
+                acc_id = None
+                if receipt.merchant_name:
+                    acc_id = db.get_merchant_account(receipt.merchant_name)
+                if not acc_id:
+                    acc_id = settings.default_booking_account_id
+                booking_account_ids = [acc_id]
 
             expense = await bexio.create_purchase_bill(
                 receipt, file_uuid, booking_account_ids=booking_account_ids
             )
-
-            # Save mapping for next time if it was a real merchant
-            if receipt.merchant_name:
-                db.set_merchant_account(receipt.merchant_name, booking_account_id)
         else:
             if not settings.default_bank_account_id:
                 return await send_to_review(

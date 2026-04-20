@@ -206,13 +206,22 @@
                                             <td><span class="status-badge status-checking" style="font-size: 0.65rem;">{{ entry.rate }}%</span></td>
                                             <td><strong>{{ "%.2f"|format(entry.vat_amount) }}</strong> <small>({{ "%.2f"|format(entry.base_amount) }} net)</small></td>
                                             <td>
+                                                {% set current_rate = entry.rate %}
+                                                {% set assignment = vat_account_map[current_rate] if vat_account_map else {} %}
+                                                {% set selected_acc = assignment.account_id if assignment else default_account_id %}
                                                 <select name="booking_account_ids" required style="margin-bottom: 0; font-size: 0.8rem; padding: 0.2rem 0.5rem; height: auto;">
                                                     {% for acc in allowed_accounts %}
-                                                    <option value="{{ acc.id }}" {% if acc.id == default_account_id %}selected{% endif %}>
+                                                    <option value="{{ acc.id }}" {% if acc.id == selected_acc %}selected{% endif %}>
                                                         {{ acc.account_no }} - {{ acc.name }}
                                                     </option>
                                                     {% endfor %}
                                                 </select>
+                                                {% if assignment and assignment.reasoning %}
+                                                <div style="font-size: 0.65rem; color: var(--primary); margin-top: 0.2rem; line-height: 1.2;">
+                                                    <strong>AI:</strong> {{ assignment.reasoning }} 
+                                                    <span style="opacity: 0.6;">({{ assignment.confidence }})</span>
+                                                </div>
+                                                {% endif %}
                                             </td>
                                         </tr>
                                         {% endfor %}

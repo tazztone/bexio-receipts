@@ -82,6 +82,14 @@ class DuplicateDetector:
                 )
             """)
             conn.execute("""
+                CREATE TABLE IF NOT EXISTS merchant_vat_accounts (
+                    merchant_name TEXT,
+                    vat_rate REAL,
+                    booking_account_id INTEGER,
+                    PRIMARY KEY (merchant_name, vat_rate)
+                )
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS gdrive_seen_files (
                     file_id TEXT PRIMARY KEY,
                     seen_at TIMESTAMP
@@ -162,6 +170,29 @@ class DuplicateDetector:
                 conn.execute(
                     "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
                     (merchant_name.upper(), account_id),
+                )
+
+    def get_merchant_vat_account(
+        self, merchant_name: str, vat_rate: float
+    ) -> int | None:
+        """Get the last used booking account for a merchant and rate (case-insensitive)."""
+        with closing(self._get_conn()) as conn:
+            cursor = conn.execute(
+                "SELECT booking_account_id FROM merchant_vat_accounts WHERE merchant_name = ? AND vat_rate = ?",
+                (merchant_name.upper(), vat_rate),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def set_merchant_vat_account(
+        self, merchant_name: str, vat_rate: float, account_id: int
+    ):
+        """Save the booking account for a merchant and rate (case-insensitive)."""
+        with closing(self._get_conn()) as conn:
+            with conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO merchant_vat_accounts (merchant_name, vat_rate, booking_account_id) VALUES (?, ?, ?)",
+                    (merchant_name.upper(), vat_rate, account_id),
                 )
 
     def get_all_merchant_accounts(self) -> dict[str, int]:

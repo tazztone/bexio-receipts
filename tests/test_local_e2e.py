@@ -111,6 +111,9 @@ async def test_prodega_ground_truth_e2e():
                 f"Base amount mismatch for {expected['rate']}%: {match.base_amount} vs {expected['base_amount']}"
             )
 
+        assert trace.step3_assignments, "Step 3 assignments missing from trace"
+        print(f"\n[E2E] Step 3 assignments: {trace.step3_assignments}")
+
         print("\n[E2E] SUCCESS: Extraction matches ground truth perfectly!")
 
     except Exception as e:
