@@ -44,7 +44,10 @@ def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
                     break
             else:
                 # no third column — compute total
-                entries.append(VatEntry(rate=row.rate, vat_amount=vat, base_amount=base))
+                if vat <= base:
+                    entries.append(VatEntry(rate=row.rate, vat_amount=vat, base_amount=base))
+                else:
+                    entries.append(VatEntry(rate=row.rate, vat_amount=base, base_amount=vat))
                 resolved = True
                 break
         if not resolved:
@@ -54,6 +57,10 @@ def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
 
 def assemble_receipt(raw: RawReceipt) -> Receipt:
     vat_entries = resolve_vat_rows(raw.vat_rows)
+
+    if raw.total_incl_vat is not None and not vat_entries:
+        logger.warning("Receipt has a total but no VAT rows were extracted", total=raw.total_incl_vat)
+        raise ValueError("Receipt has a total but no VAT rows were extracted")
 
     parsed_date = None
     if raw.transaction_date:
@@ -228,8 +235,13 @@ async def extract_receipt(
                     cleaned = cleaned.strip()
                     try:
                         raw_receipt = RawReceipt.model_validate_json(cleaned.strip())
-                        receipt = assemble_receipt(raw_receipt)
+                        try:
+                            receipt = assemble_receipt(raw_receipt)
+                        except ValueError as ve:
+                            raise ExtractionError(f"VAT assembly failed: {ve}", last_raw=last_raw) from ve
                         return receipt, last_raw
+                    except ExtractionError:
+                        raise
                     except Exception as e:
                         logger.error(
                             "Failed to parse manual JSON fallback",
@@ -241,7 +253,10 @@ async def extract_receipt(
                         ) from e
 
                 assert isinstance(result.output, RawReceipt)
-                receipt = assemble_receipt(result.output)
+                try:
+                    receipt = assemble_receipt(result.output)
+                except ValueError as ve:
+                    raise ExtractionError(f"VAT assembly failed: {ve}", last_raw=last_raw) from ve
                 return receipt, last_raw
 
             except (
@@ -249,6 +264,7 @@ async def extract_receipt(
                 UnexpectedModelBehavior,
                 ValidationError,
                 TimeoutError,
+                ValueError,
             ) as e:
                 if messages:
                     # Find the last message that has parts (ModelResponse)

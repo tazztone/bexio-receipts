@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-04-19
 
+### Fixed
+- **VAT Mathematics and Assignment Checks**: Modified `resolve_vat_rows` to guarantee correct assignments when third VAT column is missing (identifying the smaller value as VAT vs Base), preventing silent validation failures. Added validation that guarantees if total amount is present, VAT entries must also exist. Errors now cascade properly as `ExtractionError` for review.
+
 ### Added
 - **Per-Line Account Mapping**: The review dashboard now supports mapping distinct accounting (SOLL) accounts to individual VAT line items on a single receipt.
 - **HABEN Payment Toggles**: Added support for differentiating Bank vs Cash (HABEN) payments for expenses, complete with intelligent auto-selection based on receipt payment method (e.g. "Zahlungsart: Bar").
