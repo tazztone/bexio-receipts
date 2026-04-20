@@ -19,7 +19,9 @@ class Settings(BaseSettings):
     glm_ocr_api_host: str = "localhost"
     glm_ocr_api_port: int = 8080
     glm_ocr_layout_device: str = "cpu"  # "cpu" | "cuda" | "cuda:N"
-    glm_ocr_timeout: int = 60  # vLLM cold start can take 30-60s
+    glm_ocr_timeout: int = 60  # total pipeline budget
+    glm_ocr_connect_timeout: int = 120  # wait for vLLM to be ready
+    glm_ocr_request_timeout: int = 180  # per-image inference budget
 
     # LLM Settings
     llm_provider: str = "ollama"  # or "openai", "openrouter"

@@ -3,6 +3,7 @@ Dashboard backend powered by FastAPI and HTMX.
 Provides the web interface for receipt review and management.
 """
 
+import contextlib
 import functools
 import json
 import mimetypes
@@ -28,11 +29,21 @@ from .bexio_client import BexioClient
 from .config import Settings
 from .database import DuplicateDetector
 from .models import Receipt
+from .ocr import close_ocr_parser
 from .pipeline import decide_bexio_action
 
 logger = structlog.get_logger(__name__)
 
-app = FastAPI(title="bexio-receipts Review Dashboard")
+
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    yield
+    # Shutdown
+    close_ocr_parser()
+
+
+app = FastAPI(title="bexio-receipts Review Dashboard", lifespan=lifespan)
 
 
 @functools.lru_cache

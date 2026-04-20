@@ -1,6 +1,7 @@
 """OCR layer using GLM-OCR SDK (PP-DocLayoutV3 + GLM-OCR vLLM backend)."""
 
 import asyncio
+import threading
 from functools import partial
 
 import structlog
@@ -10,19 +11,54 @@ from .config import Settings
 
 logger = structlog.get_logger(__name__)
 
+_ocr_parser: GlmOcr | None = None
+_ocr_lock = threading.Lock()
+
+
+def get_ocr_parser(settings: Settings) -> GlmOcr:
+    """Get or create the long-lived GlmOcr parser instance."""
+    global _ocr_parser  # noqa: PLW0603
+    with _ocr_lock:
+        if _ocr_parser is None:
+            logger.info(
+                "Initializing OCR parser (singleton)",
+                host=settings.glm_ocr_api_host,
+                port=settings.glm_ocr_api_port,
+            )
+            _ocr_parser = GlmOcr(
+                mode="selfhosted",
+                ocr_api_host=settings.glm_ocr_api_host,
+                ocr_api_port=settings.glm_ocr_api_port,
+                layout_device=settings.glm_ocr_layout_device,
+                log_level="WARNING",
+                connect_timeout=settings.glm_ocr_connect_timeout,
+                request_timeout=settings.glm_ocr_request_timeout,
+            )
+            # Enter the context once for the lifetime of the process
+            _ocr_parser.__enter__()
+        return _ocr_parser
+
+
+def close_ocr_parser():
+    """Shutdown the OCR parser and release resources."""
+    global _ocr_parser  # noqa: PLW0603
+    with _ocr_lock:
+        if _ocr_parser is not None:
+            logger.info("Closing OCR parser")
+            try:
+                _ocr_parser.__exit__(None, None, None)
+            except Exception as e:
+                logger.error("Error closing OCR parser", error=str(e))
+            finally:
+                _ocr_parser = None
+
 
 def _sync_run_ocr(file_path: str, settings: Settings) -> tuple[str, float, list[dict]]:
     """Blocking GLM-OCR call — runs in thread pool."""
     logger.info("Starting sync OCR run", file=file_path)
     try:
-        with GlmOcr(
-            mode="selfhosted",
-            ocr_api_host=settings.glm_ocr_api_host,
-            ocr_api_port=settings.glm_ocr_api_port,
-            layout_device=settings.glm_ocr_layout_device,
-            log_level="WARNING",
-        ) as parser:
-            result = parser.parse(file_path)
+        parser = get_ocr_parser(settings)
+        result = parser.parse(file_path)
 
         markdown = result.markdown_result or ""
         # json_result: list[list[dict]] — per-page, per-region
