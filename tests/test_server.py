@@ -78,23 +78,20 @@ def test_setup_checks(test_settings):
         assert "OK (Test Co)" in response.text
 
     mock_resp = MagicMock()
-    mock_resp.json.return_value = {"models": [{"name": "glm-ocr"}]}
     mock_resp.raise_for_status = MagicMock()
 
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_resp):
         response = client.get("/setup/check/ocr", auth=("admin", "test_password"))
-        assert "OK (Model glm-ocr loaded)" in response.text
+        assert "OK (vLLM GLM-OCR service reachable)" in response.text
 
-    # OCR Check Error with Copy button
+    # OCR Check Error
     with patch(
         "httpx.AsyncClient.get",
         new_callable=AsyncMock,
-        side_effect=Exception("Ollama Error"),
+        side_effect=Exception("Connection refused"),
     ):
         response = client.get("/setup/check/ocr", auth=("admin", "test_password"))
-        assert "Error connecting to Ollama" in response.text
-        assert "Copy" in response.text
-        assert "ollama serve" in response.text
+        assert "Error connecting to GLM-OCR" in response.text
 
     # LLM Check (Ollama)
     test_settings.llm_provider = "ollama"

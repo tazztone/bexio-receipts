@@ -79,15 +79,19 @@ async def test_full_pipeline_offline(mock_settings, temp_db, tmp_path):
         ):
             from datetime import date
 
+            from bexio_receipts.extraction import ExtractionTrace
             from bexio_receipts.models import Receipt
 
             with patch(
                 "bexio_receipts.pipeline.extract_receipt",
-                return_value=(Receipt(
-                    merchant_name="Test",
-                    total_incl_vat=10.0,
-                    transaction_date=date.today(),
-                ), "raw"),
+                return_value=(
+                    Receipt(
+                        merchant_name="Test",
+                        total_incl_vat=10.0,
+                        transaction_date=date.today(),
+                    ),
+                    ExtractionTrace(),
+                ),
             ):
                 # Mock upload_file to fail (simulating no connectivity)
                 mock_bexio.upload_file.side_effect = Exception("No connectivity")
@@ -120,13 +124,19 @@ async def test_push_safety_gate_pipeline(mock_settings, temp_db, tmp_path):
         ):
             from datetime import date
 
+            from bexio_receipts.extraction import ExtractionTrace
             from bexio_receipts.models import Receipt
 
             with patch(
                 "bexio_receipts.pipeline.extract_receipt",
-                return_value=(Receipt(
-                    merchant_name="T", total_incl_vat=1.0, transaction_date=date.today()
-                ), "raw"),
+                return_value=(
+                    Receipt(
+                        merchant_name="T",
+                        total_incl_vat=1.0,
+                        transaction_date=date.today(),
+                    ),
+                    ExtractionTrace(),
+                ),
             ):
                 result = await process_receipt(
                     str(receipt_path), mock_settings, mock_bexio, temp_db

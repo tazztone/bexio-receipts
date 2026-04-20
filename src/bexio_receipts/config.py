@@ -15,10 +15,11 @@ class Settings(BaseSettings):
     bexio_base_url: str = "https://api.bexio.com"
 
     # OCR Settings
-    glm_ocr_model: str = "glm-ocr:latest"
-    glm_ocr_url: str = "http://localhost:11434"  # Ollama default
-    glm_ocr_timeout: int = 25
-    glm_ocr_inter_pass_delay: float = 0.5
+    # GLM-OCR SDK (self-hosted via vLLM/SGLang)
+    glm_ocr_api_host: str = "localhost"
+    glm_ocr_api_port: int = 8080
+    glm_ocr_layout_device: str = "cpu"  # "cpu" | "cuda" | "cuda:N"
+    glm_ocr_timeout: int = 60  # vLLM cold start can take 30-60s
 
     # LLM Settings
     llm_provider: str = "ollama"  # or "openai", "openrouter"

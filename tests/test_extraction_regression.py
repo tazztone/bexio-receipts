@@ -13,44 +13,67 @@ def prodega_ocr_text():
 async def test_prodega_extraction_logic(test_settings, prodega_ocr_text, respx_mock):
     """
     Regression test for Prodega receipt extraction.
-    Uses respx to mock the Ollama HTTP response while running the real Agent logic.
+    Uses respx to mock the Ollama HTTP responses for the two-step agent pipeline.
+    Step 1 (Searcher) returns IntermediateReceipt with a vat_table_raw Markdown snippet.
+    Step 2 (VAT Parser) returns list[RawVatRow] extracted from that snippet.
     """
     test_settings.llm_provider = "ollama"
 
-    # Mock the Ollama chat response
-    # The JSON structure matches Ollama's /v1/chat/completions (OpenAI compatible)
-    respx_mock.post(f"{test_settings.ollama_url.rstrip('/')}/v1/chat/completions").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "id": "chatcmpl-123",
-                "object": "chat.completion",
-                "created": 1677652288,
-                "model": "test-model",
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": (
-                                '{"merchant_name": "Prodega", "transaction_date": "2026-01-31", '
-                                '"currency": "CHF", "total_incl_vat": 214.20, "subtotal_excl_vat": 207.15, '
-                                    '"total_incl_vat": 214.20, "vat_rows": ['
-                                        '{"rate": 2.6, "col_a": 4.59, "col_b": 176.70, "col_c": 181.29}, '
-                                        '{"rate": 8.1, "col_a": 2.47, "col_b": 30.45, "col_c": 32.92}], '
-                                '"payment_method": "cash"}'
-                            ),
-                        },
-                        "finish_reason": "stop",
-                    }
-                ],
-                "usage": {
-                    "prompt_tokens": 9,
-                    "completion_tokens": 12,
-                    "total_tokens": 21,
+    # Step 1 response: IntermediateReceipt with Markdown VAT table
+    step1_response = {
+        "id": "chatcmpl-step1",
+        "object": "chat.completion",
+        "created": 1677652288,
+        "model": "test-model",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": (
+                        '{"merchant_name": "Prodega", "transaction_date": "31.01.2026", '
+                        '"currency": "CHF", "total_incl_vat": 214.20, '
+                        '"vat_table_raw": "| MwSt | MwSt-Betrag | Netto | Brutto |\\n'
+                        "|------|-------------|-------|--------|\\n"
+                        "| 2.6% | 4.59 | 176.70 | 181.29 |\\n"
+                        '| 8.1% | 2.47 | 30.45 | 32.92 |", '
+                        '"payment_method": "cash"}'
+                    ),
                 },
-            },
-        )
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 9, "completion_tokens": 12, "total_tokens": 21},
+    }
+
+    # Step 2 response: list[RawVatRow]
+    step2_response = {
+        "id": "chatcmpl-step2",
+        "object": "chat.completion",
+        "created": 1677652290,
+        "model": "test-model",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": (
+                        '[{"rate": 2.6, "col_a": 4.59, "col_b": 176.70, "col_c": 181.29}, '
+                        '{"rate": 8.1, "col_a": 2.47, "col_b": 30.45, "col_c": 32.92}]'
+                    ),
+                },
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 9, "completion_tokens": 12, "total_tokens": 21},
+    }
+
+    # Mock both sequential LLM calls
+    respx_mock.post(f"{test_settings.ollama_url.rstrip('/')}/v1/chat/completions").mock(
+        side_effect=[
+            httpx.Response(200, json=step1_response),
+            httpx.Response(200, json=step2_response),
+        ]
     )
 
     async with httpx.AsyncClient() as client:

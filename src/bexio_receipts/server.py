@@ -922,29 +922,17 @@ async def check_ocr_status(
     try:
         import httpx
 
+        url = f"http://{settings.glm_ocr_api_host}:{settings.glm_ocr_api_port}/health"
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{settings.glm_ocr_url}/api/tags")
+            resp = await client.get(url)
             resp.raise_for_status()
-            models = [m["name"] for m in resp.json().get("models", [])]
-            if any(
-                m == settings.glm_ocr_model
-                or m.startswith(f"{settings.glm_ocr_model}:")
-                for m in models
-            ):
-                return HTMLResponse(
-                    f'<span class="status-badge status-ok">OK (Model {settings.glm_ocr_model} loaded)</span>'
-                )
-            else:
-                return HTMLResponse(
-                    f'<span class="status-badge status-warning">Warning: Model {settings.glm_ocr_model} not found. <br>'
-                    f"<small>Run: <code>ollama pull {settings.glm_ocr_model}</code> "
-                    f'<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama pull {settings.glm_ocr_model}\')">Copy</button></small></span>'
-                )
+            return HTMLResponse(
+                '<span class="status-badge status-ok">OK (vLLM GLM-OCR service reachable)</span>'
+            )
     except Exception as e:
         return HTMLResponse(
-            f'<span class="status-badge status-error">Error connecting to Ollama: {e!s}. <br>'
-            "<small>Run: <code>ollama serve</code> "
-            '<button class="outline secondary" style="padding: 0 0.2rem; font-size: 0.6rem;" onclick="navigator.clipboard.writeText(\'ollama serve\')">Copy</button></small></span>'
+            f'<span class="status-badge status-error">Error connecting to GLM-OCR at '
+            f"{settings.glm_ocr_api_host}:{settings.glm_ocr_api_port}: {e!s}</span>"
         )
 
 
@@ -1050,11 +1038,7 @@ async def pull_ollama_model(
     if not re.match(r"^[a-zA-Z0-9._:-]+$", model):
         raise HTTPException(status_code=400, detail="Invalid model name")
 
-    url = (
-        settings.ollama_url
-        if "ollama_url" in Settings.model_fields
-        else settings.glm_ocr_url
-    )
+    url = settings.ollama_url
     try:
         import httpx
 

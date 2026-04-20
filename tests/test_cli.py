@@ -17,15 +17,16 @@ def test_cli_process_dry_run(tmp_path, test_settings):
         with patch(
             "bexio_receipts.ocr.async_run_ocr", new_callable=AsyncMock
         ) as mock_ocr:
-            mock_ocr.return_value = ("raw text", 0.9, {})
+            mock_ocr.return_value = ("raw text", 0.9, [])
             with patch(
                 "bexio_receipts.extraction.extract_receipt", new_callable=AsyncMock
             ) as mock_extract:
                 from bexio_receipts.models import Receipt
 
-                mock_extract.return_value = (Receipt(
-                    merchant_name="Test", total_incl_vat=10.0
-                ), "raw")
+                mock_extract.return_value = (
+                    Receipt(merchant_name="Test", total_incl_vat=10.0),
+                    "raw",
+                )
 
                 result = runner.invoke(app, ["process", str(img_file), "--dry-run"])
                 assert result.exit_code == 0
@@ -149,15 +150,16 @@ def test_cli_init_quickstart(tmp_path, test_settings):
             with patch(
                 "bexio_receipts.ocr.async_run_ocr", new_callable=AsyncMock
             ) as mock_ocr:
-                mock_ocr.return_value = ("raw", 0.9, {})
+                mock_ocr.return_value = ("raw", 0.9, [])
                 with patch(
                     "bexio_receipts.extraction.extract_receipt", new_callable=AsyncMock
                 ) as mock_ext:
                     from bexio_receipts.models import Receipt
 
-                    mock_ext.return_value = (Receipt(
-                        merchant_name="Test", total_incl_vat=10.0
-                    ), "raw")
+                    mock_ext.return_value = (
+                        Receipt(merchant_name="Test", total_incl_vat=10.0),
+                        "raw",
+                    )
 
                     with patch(
                         "bexio_receipts.cli.Settings", return_value=test_settings

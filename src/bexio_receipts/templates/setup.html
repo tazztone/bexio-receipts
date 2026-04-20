@@ -101,13 +101,6 @@
                                 hx-confirm="Download {{ settings.llm_model }}?">
                             Sync LLM ({{ settings.llm_model }})
                         </button>
-                        <button class="outline secondary" style="font-size: 0.85rem;"
-                                hx-post="/setup/pull-model" 
-                                hx-vals='{"model": "{{ settings.glm_ocr_model }}", "csrf_token": "{{ csrf_token }}"}'
-                                hx-target="#pull-status"
-                                hx-confirm="Download {{ settings.glm_ocr_model }}?">
-                            Sync OCR ({{ settings.glm_ocr_model }})
-                        </button>
                     </div>
                 </article>
                 {% endif %}
@@ -143,7 +136,9 @@
         <pre id="config-full" style="display: none;">
 BEXIO_API_TOKEN={{ settings.bexio_api_token }}
 BEXIO_BASE_URL={{ settings.bexio_base_url }}
-OCR_ENGINE=glm-ocr
+GLM_OCR_API_HOST={{ settings.glm_ocr_api_host }}
+GLM_OCR_API_PORT={{ settings.glm_ocr_api_port }}
+GLM_OCR_LAYOUT_DEVICE={{ settings.glm_ocr_layout_device }}
 LLM_PROVIDER={{ settings.llm_provider }}
 LLM_MODEL={{ settings.llm_model }}
 BEXIO_PUSH_ENABLED={{ 'true' if settings.bexio_push_enabled else 'false' }}

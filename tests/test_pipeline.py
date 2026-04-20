@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from bexio_receipts.database import DuplicateDetector
+from bexio_receipts.extraction import ExtractionTrace
 from bexio_receipts.models import Receipt
 from bexio_receipts.pipeline import (
     decide_bexio_action,
@@ -75,9 +76,12 @@ async def test_process_receipt_success(
     bexio_client.create_purchase_bill.return_value = {"id": 100}
 
     mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.return_value = (Receipt(
-        merchant_name="Migros", transaction_date=date.today(), total_incl_vat=10.0
-    ), "raw")
+    mock_extract.return_value = (
+        Receipt(
+            merchant_name="Migros", transaction_date=date.today(), total_incl_vat=10.0
+        ),
+        ExtractionTrace(),
+    )
 
     result = await process_receipt(
         str(test_file), test_settings, bexio_client, mock_db, push_confirmed=True
@@ -137,11 +141,14 @@ async def test_process_receipt_validation_failed(
     bexio_client = AsyncMock()
 
     mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.return_value = (Receipt(
-        merchant_name="Migros",
-        transaction_date=date.today(),
-        total_incl_vat=-10.0,  # triggers validation error
-    ), "raw")
+    mock_extract.return_value = (
+        Receipt(
+            merchant_name="Migros",
+            transaction_date=date.today(),
+            total_incl_vat=-10.0,  # triggers validation error
+        ),
+        ExtractionTrace(),
+    )
 
     result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
     assert result["status"] == "review"
@@ -161,9 +168,10 @@ async def test_process_receipt_no_merchant(
     bexio_client.create_expense.return_value = {"id": 200}
 
     mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.return_value = (Receipt(
-        merchant_name=None, transaction_date=date.today(), total_incl_vat=10.0
-    ), "raw")
+    mock_extract.return_value = (
+        Receipt(merchant_name=None, transaction_date=date.today(), total_incl_vat=10.0),
+        ExtractionTrace(),
+    )
 
     result = await process_receipt(
         str(test_file), test_settings, bexio_client, mock_db, push_confirmed=True
@@ -199,9 +207,12 @@ async def test_process_receipt_bexio_error(
     bexio_client.upload_file.side_effect = Exception("API down")
 
     mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.return_value = (Receipt(
-        merchant_name="Migros", transaction_date=date.today(), total_incl_vat=10.0
-    ), "raw")
+    mock_extract.return_value = (
+        Receipt(
+            merchant_name="Migros", transaction_date=date.today(), total_incl_vat=10.0
+        ),
+        ExtractionTrace(),
+    )
 
     result = await process_receipt(
         str(test_file), test_settings, bexio_client, mock_db, push_confirmed=True
@@ -235,9 +246,10 @@ async def test_send_to_review(tmp_path, test_settings):
 
 @pytest.mark.asyncio
 @patch("bexio_receipts.pipeline.async_run_ocr")
-async def test_process_receipt_unsupported_mime(mock_ocr, tmp_path, test_settings, mock_db):
+async def test_process_receipt_unsupported_mime(
+    mock_ocr, tmp_path, test_settings, mock_db
+):
     import json
-
 
     test_file = tmp_path / "test.txt"
     test_file.write_text("unsupported")

@@ -125,15 +125,13 @@ async def process_receipt(
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(
             connect=5.0,
-            read=max(settings.glm_ocr_timeout, settings.llm_timeout, 60.0),
+            read=max(settings.llm_timeout, 60.0),
             write=5.0,
             pool=2.0,
         )
     ) as client:
         try:
-            raw_text, avg_confidence, _ = await async_run_ocr(
-                file_path, settings, client=client
-            )
+            raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
         except (TimeoutError, httpx.TimeoutException):
             error_msg = "OCR stage timed out"
             logger.error(error_msg, path=file_path)

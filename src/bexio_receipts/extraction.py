@@ -71,11 +71,13 @@ STRIP_LINES = re.compile(
 def validate_vat_snippet(snippet: str) -> str | None:
     """Returns error string if snippet is malformed, None if valid."""
     # Pass-through for structured HTML/Markdown tables from OCR Pass 2
-    if "<table" in snippet.lower() and "</table>" in snippet.lower():
+    if ("<table" in snippet.lower() and "</table>" in snippet.lower()) or (
+        "|" in snippet and snippet.count("|") >= 4
+    ):
         # Minimum check: table must contain at least one numeric value to be valid
         if re.search(r"\d+[.,]\d+", snippet):
             return None
-        return "HTML table present but contains no numeric values"
+        return "Table present but contains no numeric values"
 
     number = re.compile(r"\d+[.,]\d+")
     if not any(len(number.findall(line)) >= 2 for line in snippet.splitlines()):
@@ -336,9 +338,10 @@ async def extract_receipt(
                 "(e.g. 'EUR ... zum Kurs ...'). The CHF total is labeled 'Total Rechnung', 'Ihr Betrag', "
                 "or 'Endbetrag'.\n"
                 "4. CURRENCY: Always 'CHF' unless no CHF total exists at all.\n"
-                "5. VAT TABLE RAW: Search for the section '--- VAT TABLE (structured) ---'. "
-                "Find the table that summarizes the VAT (Zusammenfassung gem. MWST) and contains "
-                "the rates (8.1%, 2.6%). COPY that table verbatim. IGNORE the line item table."
+                "5. VAT TABLE RAW: Find the Markdown table that summarizes VAT "
+                "(Zusammenfassung gem. MWST, MwSt-Übersicht) containing the rates "
+                "(8.1%, 2.6%). COPY that table verbatim as Markdown (with | pipes). "
+                "IGNORE the line item table."
             ),
         )
 
