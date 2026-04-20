@@ -43,6 +43,7 @@ requires = ["uv_build>=0.9.26,<0.11.0"]
 build-backend = "uv_build"
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 addopts = "--cov=bexio_receipts --cov-fail-under=85 -m 'not local_e2e'"
 markers = [
     "local_e2e: end-to-end test requiring live LLM services and real receipt files (deselect by default)"
