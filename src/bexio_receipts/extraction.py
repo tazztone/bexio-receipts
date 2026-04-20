@@ -2,6 +2,8 @@
 Logic for extracting structured receipt data from OCR text using Pydantic AI.
 """
 
+import re
+
 import httpx
 import structlog
 from dateutil import parser
@@ -25,6 +27,19 @@ from .config import Settings
 from .models import IntermediateReceipt, RawReceipt, RawVatRow, Receipt, VatEntry
 
 logger = structlog.get_logger(__name__)
+
+STRIP_LINES = re.compile(
+    r"^(Total|Rundungsdifferenz|Endbetrag|Summe|Zusammenfassung|Sie sparen|MWST exkl|MWST inkl|Netto)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def clean_vat_snippet(snippet: str) -> str:
+    """Deterministically strip summary and header lines from the VAT snippet."""
+    lines = [
+        line for line in snippet.splitlines() if not STRIP_LINES.match(line.strip())
+    ]
+    return "\n".join(lines).strip()
 
 
 def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
@@ -258,14 +273,16 @@ async def extract_receipt(
                 "Extract the rows. For each row:\n"
                 "- rate: e.g. 2.6, 8.1\n"
                 "- col_a, col_b, col_c: the numbers in that row in order from left to right.\n"
-                "IGNORE summary rows or headers. Return ONLY the data rows."
+                "RULES:\n"
+                "1. IGNORE summary rows (Total, Summe, Rundung).\n"
+                "2. IGNORE columns containing savings values or VAT codes (1, 2).\n"
+                "3. ONLY extract rows representing a specific VAT rate."
             ),
         )
 
-        logger.info("Step 2: VAT parsing started", snippet=intermediate.vat_table_raw)
-        res2 = await parser_agent.run(
-            f"VAT Table Snippet:\n{intermediate.vat_table_raw}"
-        )
+        cleaned_snippet = clean_vat_snippet(intermediate.vat_table_raw)
+        logger.info("Step 2: VAT parsing started", snippet=cleaned_snippet)
+        res2 = await parser_agent.run(f"VAT Table Snippet:\n{cleaned_snippet}")
         vat_rows = res2.output
         if not isinstance(vat_rows, list):
             raise ExtractionError("Step 2 failed: Unexpected output type")
