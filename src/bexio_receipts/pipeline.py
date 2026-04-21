@@ -123,7 +123,7 @@ async def process_receipt(
     try:
         result = await processor.process(file_path, settings)
         raw_text = result.raw_text
-        avg_confidence = result.confidence
+        extraction_quality = result.confidence
         trace = result.trace
         assignments = result.account_assignments
     except (TimeoutError, httpx.TimeoutException):
@@ -182,7 +182,7 @@ async def process_receipt(
             errors,
             settings,
             receipt,
-            ocr_confidence=avg_confidence,
+            ocr_confidence=extraction_quality,
             failed_stage="validation",
             trace=trace,
         )
@@ -200,7 +200,7 @@ async def process_receipt(
             [f"Push gate: BEXIO_PUSH_ENABLED=false. Would be: {bexio_action}"],
             settings,
             receipt,
-            ocr_confidence=avg_confidence,
+            ocr_confidence=extraction_quality,
             failed_stage="safety_gate",
             bexio_action=bexio_action,
             trace=trace,
@@ -220,7 +220,7 @@ async def process_receipt(
                 ["Missing default booking account ID in settings"],
                 settings,
                 receipt,
-                ocr_confidence=avg_confidence,
+                ocr_confidence=extraction_quality,
                 failed_stage="bexio",
                 trace=trace,
             )
@@ -277,7 +277,7 @@ async def process_receipt(
                     ["Missing default bank account ID for simple expense"],
                     settings,
                     receipt,
-                    ocr_confidence=avg_confidence,
+                    ocr_confidence=extraction_quality,
                     failed_stage="bexio",
                     trace=trace,
                 )
@@ -297,7 +297,7 @@ async def process_receipt(
             total_incl_vat=receipt.total_incl_vat,
             merchant_name=receipt.merchant_name,
             vat_amount=receipt.vat_amount,
-            ocr_confidence=avg_confidence,
+            ocr_confidence=extraction_quality,
         )
 
         # Persist trace on success if debugging
@@ -327,7 +327,7 @@ async def process_receipt(
             [f"bexio API error: {e!s}"],
             settings,
             receipt,
-            ocr_confidence=avg_confidence,
+            ocr_confidence=extraction_quality,
             failed_stage="bexio",
             trace=trace,
         )

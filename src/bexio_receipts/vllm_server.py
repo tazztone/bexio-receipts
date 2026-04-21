@@ -18,6 +18,48 @@ _vllm_log_file = None
 _vllm_lock: asyncio.Lock | None = None
 
 
+def build_vllm_flags(settings: Settings) -> list[str]:
+    """Build vLLM command line flags from settings."""
+    flags = [
+        "--max-model-len",
+        str(settings.vision_max_model_len),
+        "--gpu-memory-utilization",
+        str(settings.vision_gpu_memory_utilization),
+        "--max-num-seqs",
+        str(settings.vision_max_num_seqs),
+        "--tensor-parallel-size",
+        str(settings.vision_tensor_parallel_size),
+        "--served-model-name",
+        settings.vision_served_name,
+    ]
+
+    if settings.vision_quantization and settings.vision_quantization != "auto":
+        flags.extend(["--quantization", settings.vision_quantization])
+
+    if (
+        settings.vision_reasoning_parser
+        and settings.vision_reasoning_parser.lower() != "none"
+    ):
+        flags.extend([
+            "--reasoning-parser",
+            settings.vision_reasoning_parser,
+        ])
+
+    if (
+        settings.vision_speculative_config
+        and settings.vision_speculative_config.lower() != "none"
+    ):
+        flags.extend([
+            "--speculative-config",
+            settings.vision_speculative_config,
+        ])
+
+    if settings.vision_enable_expert_parallel:
+        flags.append("--enable-expert-parallel")
+
+    return flags
+
+
 def is_port_open(host: str, port: int) -> bool:
     """Check if a port is open and listening."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -62,7 +104,7 @@ async def start_vllm_server(
 
         # Open log file with error handling to avoid handle leaks
         log_path = debug_dir / f"vllm_{port}.log"
-        _vllm_log_file = open(log_path, "ab")
+        _vllm_log_file = open(log_path, "ab")  # noqa: SIM115
 
         try:
             env = os.environ.copy()

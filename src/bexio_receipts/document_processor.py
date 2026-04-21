@@ -20,12 +20,17 @@ from .extraction import (
 )
 from .models import AccountAssignment, RawVatRow
 from .ocr import async_run_ocr
-from .vllm_server import start_vllm_server
+from .vllm_server import build_vllm_flags, start_vllm_server
 
 
 def extract_json_block(text: str) -> dict | None:
     """Extract and parse the first JSON code block or raw JSON string."""
     try:
+        # Pre-strip whitespace and newlines
+        text = text.strip()
+        if not text:
+            return None
+
         # Search for markdown blocks
         if "```json" in text:
             block = text.split("```json")[1].split("```", maxsplit=1)[0].strip()
@@ -35,13 +40,13 @@ def extract_json_block(text: str) -> dict | None:
             # Fallback: look for the first '{' and last '}'
             start = text.find("{")
             end = text.rfind("}") + 1
-            if start != -1 and end > start:
-                block = text[start:end]
-            else:
-                block = text
+            block = text[start:end] if start != -1 and end > start else text
 
         return json.loads(block)
-    except (json.JSONDecodeError, IndexError):
+    except (json.JSONDecodeError, IndexError) as e:
+        logger.debug(
+            "json_block_extraction_failed", error=str(e), text_preview=text[:100]
+        )
         return None
 
 
@@ -60,9 +65,6 @@ class VisionExtraction(BaseModel):
     )
     account_assignments: list[AccountAssignment] = Field(
         default_factory=list, description="Suggested booking accounts per VAT rate"
-    )
-    confidence: float = Field(
-        0.95, ge=0, le=1, description="Estimated extraction confidence"
     )
 
 
@@ -105,8 +107,10 @@ class VisionProcessor(DocumentProcessor):
         with open(file_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode("utf-8")
 
-    def _render_pdf_to_images(self, file_path: str, max_pages: int = 5) -> list[str]:
-        """Render the first few pages of a PDF to base64 images at 150 DPI."""
+    def _render_pdf_to_images(self, file_path: str, settings: Settings) -> list[str]:
+        """Render the first few pages of a PDF to base64 images at configured DPI."""
+        max_pages = settings.vision_pdf_max_pages
+        dpi = settings.vision_pdf_dpi
         images = []
         with pymupdf.open(file_path) as doc:
             if doc.page_count == 0:
@@ -121,8 +125,8 @@ class VisionProcessor(DocumentProcessor):
 
             for i in range(min(doc.page_count, max_pages)):
                 page = doc[i]
-                # 150 DPI (150/72 = 2.0833x zoom)
-                zoom = 150 / 72
+                # Dynamic DPI
+                zoom = dpi / 72
                 matrix = pymupdf.Matrix(zoom, zoom)
                 pix = page.get_pixmap(matrix=matrix)
                 img_data = pix.tobytes("png")
@@ -136,43 +140,7 @@ class VisionProcessor(DocumentProcessor):
         client: httpx.AsyncClient | None = None,
     ) -> ProcessingResult:
         if settings.vision_manage_server:
-            extra_flags = [
-                "--max-model-len",
-                str(settings.vision_max_model_len),
-                "--gpu-memory-utilization",
-                str(settings.vision_gpu_memory_utilization),
-                "--max-num-seqs",
-                str(settings.vision_max_num_seqs),
-                "--tensor-parallel-size",
-                str(settings.vision_tensor_parallel_size),
-                "--served-model-name",
-                settings.vision_served_name,
-            ]
-
-            if settings.vision_quantization and settings.vision_quantization != "auto":
-                extra_flags.extend(["--quantization", settings.vision_quantization])
-
-            if (
-                settings.vision_reasoning_parser
-                and settings.vision_reasoning_parser.lower() != "none"
-            ):
-                extra_flags.extend([
-                    "--reasoning-parser",
-                    settings.vision_reasoning_parser,
-                ])
-
-            if (
-                settings.vision_speculative_config
-                and settings.vision_speculative_config.lower() != "none"
-            ):
-                extra_flags.extend([
-                    "--speculative-config",
-                    settings.vision_speculative_config,
-                ])
-
-            if settings.vision_enable_expert_parallel:
-                extra_flags.append("--enable-expert-parallel")
-
+            extra_flags = build_vllm_flags(settings)
             await start_vllm_server(
                 settings.vision_model,
                 settings.vision_api_port,
@@ -185,7 +153,7 @@ class VisionProcessor(DocumentProcessor):
 
         content: list[Any] = []
         if is_pdf:
-            base64_images = self._render_pdf_to_images(file_path)
+            base64_images = self._render_pdf_to_images(file_path, settings)
             for img in base64_images:
                 content.append({
                     "type": "image_url",
@@ -204,27 +172,9 @@ class VisionProcessor(DocumentProcessor):
             "text": "Extract all structured data from this receipt. If multiple pages, combine into one result.",
         })
 
-        # Prompt Context
-        accounts_context = "\n".join([
-            f"- {acc_id}: {desc}" for acc_id, desc in settings.bexio_accounts.items()
-        ])
+        from .prompts import build_vision_system_prompt
 
-        system_prompt = (
-            "You are a strict JSON data extraction bot. You MUST output ONLY a valid JSON object. "
-            "NEVER output markdown blocks, NEVER output explanations, NEVER output thoughts. "
-            "Start your response with '{' and end with '}'.\n"
-            "Required Schema:\n"
-            "{\n"
-            '  "merchant_name": "string",\n'
-            '  "transaction_date": "YYYY-MM-DD",\n'
-            '  "total_incl_vat": 100.0,\n'
-            '  "vat_rows": [ { "rate": 8.1, "net_amount": 92.5, "vat_amount": 7.5, "total_amount": 100.0 } ],\n'
-            '  "account_assignments": [ { "vat_rate": 8.1, "account_id": "4200", "account_name": "Einkauf", "confidence": 0.95 } ],\n'
-            '  "confidence": 0.95\n'
-            "}\n\n"
-            f"ACCOUNTS:\n{accounts_context}\n"
-            f"VAT: Default is {settings.default_vat_rate}%.\n"
-        )
+        system_prompt = build_vision_system_prompt(settings)
 
         openai_client = AsyncOpenAI(
             base_url=f"http://{settings.vision_api_host}:{settings.vision_api_port}/v1",
@@ -242,9 +192,9 @@ class VisionProcessor(DocumentProcessor):
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": content},
                 ],
-                temperature=0.1,
-                frequency_penalty=0.2,
-                max_tokens=4096,
+                temperature=settings.vision_temperature,
+                frequency_penalty=settings.vision_frequency_penalty,
+                max_tokens=settings.vision_max_tokens,
             )
 
             raw_response_content = response.choices[0].message.content or ""
@@ -281,7 +231,12 @@ class VisionProcessor(DocumentProcessor):
                 total_incl_vat=ext.total_incl_vat,
                 vat_rows=ext.vat_rows,
                 account_assignments=ext.account_assignments,
-                confidence=ext.confidence,
+                confidence=1.0
+                if ext.merchant_name
+                and ext.transaction_date
+                and ext.total_incl_vat
+                and ext.vat_rows
+                else 0.0,
                 trace=trace,
             )
         finally:
@@ -307,10 +262,6 @@ class OcrProcessor(DocumentProcessor):
         assignments = await classify_accounts(
             receipt_obj, raw_text, settings, client=client, trace=trace
         )
-
-        # Convert Receipt back to RawVatRows for unified interface if needed
-        # Actually, extract_receipt already has vat_rows in its intermediate steps
-        # But we can reconstruct it or just pass receipt_obj fields
 
         return ProcessingResult(
             raw_text=raw_text,

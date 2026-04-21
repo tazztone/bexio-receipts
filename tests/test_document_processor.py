@@ -47,7 +47,7 @@ async def test_vision_processor_process_pdf(vision_processor, test_settings, tmp
 
             assert result.merchant_name == "PDF Corp"
             assert result.total_incl_vat == 123.45
-            assert "Vision extraction from" in result.raw_text
+            assert "PDF Corp" in result.raw_text
             mock_client.chat.completions.create.assert_called_once()
 
 
@@ -95,9 +95,11 @@ async def test_vision_processor_parsing_error(
         mock_client.close = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        with patch.object(VisionProcessor, "_encode_image", return_value="base64"):
-            with pytest.raises(ValueError, match="Failed to parse VLM output"):
-                await vision_processor.process(str(img_file), test_settings)
+        with (
+            patch.object(VisionProcessor, "_encode_image", return_value="base64"),
+            pytest.raises(ValueError, match="Failed to parse VLM output"),
+        ):
+            await vision_processor.process(str(img_file), test_settings)
 
 
 @pytest.mark.asyncio

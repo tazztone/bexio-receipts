@@ -98,9 +98,12 @@ def init(
     console.print(Panel.fit("Welcome to bexio-receipts setup! 🧾🚀", style="bold blue"))
 
     env_path = Path(".env")
-    if env_path.exists() and not non_interactive:
-        if not Confirm.ask("An .env file already exists. Overwrite?"):
-            raise typer.Exit()
+    if (
+        env_path.exists()
+        and not non_interactive
+        and not Confirm.ask("An .env file already exists. Overwrite?")
+    ):
+        raise typer.Exit()
 
     if non_interactive:
         import os
@@ -240,8 +243,6 @@ def init(
                 ):
                     result = await processor.process(str(target), settings)
 
-                console.print(f"  - Confidence: [bold]{result.confidence:.1%}[/bold]")
-
                 raw_receipt = RawReceipt(
                     merchant_name=result.merchant_name,
                     transaction_date=result.transaction_date,
@@ -302,7 +303,6 @@ async def _process_interactive(
         with console.status(f"[bold green]Processing via {settings.processor_mode}..."):
             result = await processor.process(file_path, settings)
 
-        console.print(f"\n[bold]Confidence:[/bold] {result.confidence:.1%}")
         console.print(f"\n[bold]Raw Text:[/bold]\n{result.raw_text}\n")
 
         raw_receipt = RawReceipt(
@@ -635,10 +635,10 @@ def start(
         )
         server_task = asyncio.create_task(server.serve())
 
-        try:
+        import contextlib
+
+        with contextlib.suppress(asyncio.CancelledError):
             await asyncio.gather(watcher_task, server_task)
-        except asyncio.CancelledError:
-            pass
 
     asyncio.run(_start_all())
 

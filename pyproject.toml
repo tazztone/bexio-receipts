@@ -58,7 +58,7 @@ exclude = ["*.md", "docs/*", "inbox/*", "review_queue/*"]
 
 [tool.ruff.lint]
 # Comprehensive rules: Errors (E), Pyflakes (F), Bugbear (B), Isort (I), Naming (N), Upgrade (UP), Pylint (PL), etc.
-select = ["E", "F", "B", "I", "N", "UP", "A", "T20", "C4", "RUF", "PLC", "PLE", "PLW"]
+select = ["E", "F", "B", "I", "N", "UP", "A", "T20", "C4", "RUF", "PLC", "PLE", "PLW", "SIM", "TCH"]
 ignore = [
     "E501", # line length handled by formatter
     "B008", # function call in default argument
@@ -66,6 +66,7 @@ ignore = [
     "PLR2004", # magic value used in comparison
     "PLC0415", # allow local imports for CLI/performance
     "RUF001", # allow ambiguous characters (emojis)
+    "ANN401",  # Any usage
 ]
 
 [tool.ruff.lint.per-file-ignores]

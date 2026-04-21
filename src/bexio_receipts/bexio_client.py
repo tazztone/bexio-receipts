@@ -44,7 +44,7 @@ class BexioClient:
         default_vat_rate: float = 8.1,
         default_payment_terms_days: int = 30,
         push_enabled: bool = False,
-    ):
+    ) -> None:
         self.client = httpx.AsyncClient(
             base_url=base_url,
             headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
@@ -94,7 +94,7 @@ class BexioClient:
         return profile
 
     @BEXIO_RETRY
-    async def fetch_taxes(self):
+    async def fetch_taxes(self) -> None:
         """Fetch and cache tax rates."""
         resp = await self.client.get("/3.0/taxes")
         resp.raise_for_status()
@@ -111,7 +111,7 @@ class BexioClient:
         return resp.json()
 
     @BEXIO_RETRY
-    async def fetch_accounts(self):
+    async def fetch_accounts(self) -> None:
         """Fetch and cache accounts."""
         resp = await self.client.get("/2.0/accounts")
         resp.raise_for_status()
@@ -120,7 +120,7 @@ class BexioClient:
             if "account_no" in a:
                 self._account_cache[str(a["account_no"])] = a["id"]
 
-    async def cache_lookups(self):
+    async def cache_lookups(self) -> None:
         """Fetch and cache tenant-specific IDs at startup."""
         # User profile
         if not self._user_id:
@@ -325,11 +325,11 @@ class BexioClient:
         resp.raise_for_status()
         return resp.json()
 
-    async def close(self):
+    async def close(self) -> None:
         await self.client.aclose()
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "BexioClient":
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self.close()

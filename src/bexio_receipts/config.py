@@ -3,6 +3,8 @@ Configuration management using Pydantic Settings.
 Loads and validates environment variables and configuration files.
 """
 
+from typing import Literal
+
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,7 +17,7 @@ class Settings(BaseSettings):
     bexio_base_url: str = "https://api.bexio.com"
 
     # Processor mode
-    processor_mode: str = "vision"  # "vision" or "ocr"
+    processor_mode: Literal["vision", "ocr"] = "vision"
 
     # OCR Settings (Fallback/Legacy)
     # GLM-OCR SDK (self-hosted via vLLM/SGLang)
@@ -50,6 +52,12 @@ class Settings(BaseSettings):
     vision_speculative_config: str = (
         '{"method":"qwen3_next_mtp","num_speculative_tokens":2}'
     )
+    vision_prompt_language: Literal["de", "en", "fr"] = "de"
+    vision_temperature: float = 0.1
+    vision_frequency_penalty: float = 0.2
+    vision_max_tokens: int = 4096
+    vision_pdf_dpi: int = 150
+    vision_pdf_max_pages: int = 5
 
     # LLM Settings
     llm_provider: str = "ollama"  # or "openai", "openrouter"
@@ -114,7 +122,7 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def validate_passwords(self):
+    def validate_passwords(self) -> "Settings":
         is_dev = self.env == "development"
         if not is_dev and self.review_password == "password":
             raise ValueError(
@@ -140,6 +148,21 @@ class Settings(BaseSettings):
                 )
 
         return self
+
+    @field_validator("vision_speculative_config")
+    @classmethod
+    def validate_speculative_config(cls, v: str) -> str:
+        if v.lower() == "none":
+            return v
+        try:
+            import json
+
+            json.loads(v)
+        except Exception as e:
+            raise ValueError(
+                f"vision_speculative_config must be valid JSON or 'none': {e}"
+            ) from e
+        return v
 
     @field_validator("default_booking_account_id", "default_bank_account_id")
     @classmethod
