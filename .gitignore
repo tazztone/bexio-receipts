@@ -229,3 +229,4 @@ inbox/
 scratch/
 tests/fixtures/prodega_ocr.txt
 debug/
+.vscode/

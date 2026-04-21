@@ -45,19 +45,17 @@ graph TD
 - **GDrive**: Uses Google Drive API (v3) to poll and move files.
 
 ### 2. Text Extraction Layer (`ocr.py`)
-- **GLM-OCR SDK**: Uses the official `glmocr` SDK with a self-hosted vLLM/SGLang 
-  backend. This replaces the legacy Ollama-based OCR and the manual two-pass 
-  strategy.
-- **PP-DocLayoutV3**: The SDK utilizes high-fidelity layout analysis to capture 
-  multi-point bounding boxes and logical reading order. This ensures that tables 
-  preserve their structural integrity (columns/rows) without manual cropping.
-- **Native PDF Support**: Handles digital and scanned PDFs natively within the 
-  SDK, eliminating the need for manual image rendering or `pdfplumber` 
-  fallbacks.
-- **Image Optimization**: All images are capped at **2560px** and converted to 
-  **WebP (q90)** before processing.
+- **GLM-OCR SDK**: Uses the official `glmocr` SDK with a self-hosted vLLM backend.
+- **PP-DocLayoutV3**: The SDK utilizes high-fidelity layout analysis locally on the `bexio-receipts` host.
+- **Managed Lifecycle**: The application includes built-in lifecycle management for the OCR server. It automatically starts/stops the vllm process based on port availability (port 8080 by default) and the `GLM_OCR_MANAGE_SERVER` setting.
+- **Native PDF Support**: Handles digital and scanned PDFs natively within the SDK.
 
-### 3. Extraction Layer (`extraction.py`)
+### 3. OCR Inference Backend (vLLM)
+The OCR inference is performed by a separate **vLLM** process running the `zai-org/GLM-OCR` model. This process can be:
+- **Managed**: Automatically started in the background by `bexio-receipts`.
+- **Standalone**: Run manually via Docker or as a system service (recommended for dedicated GPU hosts).
+
+### 4. Extraction Layer (`extraction.py`)
 - **Pydantic AI**: Orchestrates the three-step LLM pipeline:
   - **Step 1 (Searcher)**: Transcribes basic receipt data (merchant, date, total)
     and locates the raw VAT table.

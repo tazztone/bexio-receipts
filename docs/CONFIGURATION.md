@@ -49,17 +49,27 @@ automatically create a `.env` file for you.
 The system supports two OCR engines and multiple LLM providers.
 
 ### OCR Engine (`GLM-OCR SDK`)
-
-The system uses the **GLM-OCR SDK** with the **PP-DocLayoutV3** layout engine. 
-It runs in `selfhosted` mode, connecting to a vLLM or SGLang backend. 
-This setup provides high-fidelity table parsing and logical reading order.
+The system uses the **GLM-OCR SDK** with the **PP-DocLayoutV3** layout engine. It runs in `selfhosted` mode, connecting to a vLLM backend.
 
 | Variable | Description | Default |
 |---|---|---|
-| `GLM_OCR_API_HOST` | Hostname of the vLLM/SGLang backend | `localhost` |
-| `GLM_OCR_API_PORT` | Port of the vLLM/SGLang backend | `8080` |
-| `GLM_OCR_LAYOUT_DEVICE` | Device for layout analysis (`cpu`, `cuda`, `mps`) | `cpu` |
-| `GLM_OCR_TIMEOUT` | Seconds to wait for OCR completion | `60` |
+| `GLM_OCR_API_HOST` | Hostname of the vLLM backend | `localhost` |
+| `GLM_OCR_API_PORT` | Port of the vLLM backend | `8080` |
+| `GLM_OCR_LAYOUT_DEVICE` | Device for layout analysis (`cpu`, `cuda`) | `cpu` |
+| `GLM_OCR_TIMEOUT` | Seconds for the entire OCR stage | `300` |
+| `GLM_OCR_CONNECT_TIMEOUT`| Wait time for vLLM server to warm up | `120` |
+| `GLM_OCR_REQUEST_TIMEOUT`| Budget for a single image inference | `180` |
+| `GLM_OCR_MAX_TOKENS` | Max tokens for the OCR SDK response | `4096` |
+
+#### Managed vLLM Server Settings
+If `GLM_OCR_MANAGE_SERVER=true`, the app will launch vLLM automatically.
+
+| Variable | Description | Default |
+|---|---|---|
+| `GLM_OCR_MANAGE_SERVER` | Start/stop vLLM automatically | `true` |
+| `GLM_OCR_VLLM_GPU_MEMORY_UTILIZATION` | Fraction of VRAM to reserve | `0.2` |
+| `GLM_OCR_VLLM_MAX_NUM_SEQS` | Parallel sequences (keep at 1 for low VRAM) | `1` |
+| `GLM_OCR_VLLM_MAX_MODEL_LEN` | Context window for vLLM | `8192` |
 
 <!-- prettier-ignore -->
 > [!TIP]

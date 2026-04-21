@@ -62,6 +62,15 @@ If the pipeline hangs or times out during OCR:
 2. **WebP Encoding**: The system uses WebP for speed and sharpness.
 3. **Timeout**: Increase `GLM_OCR_TIMEOUT` if processing multi-page PDFs.
 
+### `BadRequestError: This model's maximum context length is 8192`
+This happens if `GLM_OCR_MAX_TOKENS` is too high. Ensure it is significantly lower than `GLM_OCR_VLLM_MAX_MODEL_LEN` (e.g., 4096 vs 8192) to leave room for the image input tokens.
+
+### Out of Memory (OOM) on vLLM Startup
+If the managed server fails to start due to VRAM:
+1. Reduce `GLM_OCR_VLLM_GPU_MEMORY_UTILIZATION` (e.g., to `0.15`).
+2. Ensure no other processes are using the GPU.
+3. Ensure `GLM_OCR_VLLM_MAX_NUM_SEQS` is set to `1`.
+
 ### 7. `Merchant Match Failure`
 **Symptoms**: Extracted merchant name is correct, but it doesn't match an
 existing contact in bexio.
