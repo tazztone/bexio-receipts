@@ -39,7 +39,7 @@ async def test_prodega_ground_truth_e2e():
     ) as client:
         # 1. OCR Stage
         print(f"\n[E2E] Running OCR on {image_path.name}...")
-        raw_text, _, _ = await async_run_ocr(str(image_path), settings, client=client)
+        raw_text, _, _ = await async_run_ocr(str(image_path), settings)
         assert len(raw_text) > 100, "OCR returned suspiciously short text"
 
         # 2. Extraction Stage

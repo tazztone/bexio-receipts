@@ -84,6 +84,7 @@ def test_is_port_open():
         mock_sock_inst.connect_ex.return_value = 1
         assert not _is_port_open("localhost", 1234)
 
+
 def test_get_ocr_parser(test_settings):
     # reset global state
     bexio_receipts.ocr._ocr_parser = None
@@ -93,11 +94,12 @@ def test_get_ocr_parser(test_settings):
     test_settings.glm_ocr_api_host = "localhost"
     test_settings.glm_ocr_api_port = 1234
 
-    with patch("bexio_receipts.ocr._is_port_open", return_value=False), \
-         patch("subprocess.Popen") as mock_popen, \
-         patch("time.sleep"), \
-         patch("bexio_receipts.ocr.GlmOcr") as mock_glm:
-
+    with (
+        patch("bexio_receipts.ocr._is_port_open", return_value=False),
+        patch("subprocess.Popen") as mock_popen,
+        patch("time.sleep"),
+        patch("bexio_receipts.ocr.GlmOcr") as mock_glm,
+    ):
         mock_popen_inst = MagicMock()
         mock_popen.return_value = mock_popen_inst
 
@@ -118,13 +120,17 @@ def test_get_ocr_parser(test_settings):
         mock_glm_inst.__exit__.assert_called_once()
         mock_popen_inst.terminate.assert_called_once()
 
+
 def test_close_ocr_parser_exceptions(test_settings):
     bexio_receipts.ocr._ocr_parser = MagicMock()
     bexio_receipts.ocr._ocr_parser.__exit__.side_effect = Exception("test exit error")
 
     bexio_receipts.ocr._vllm_process = MagicMock()
     import subprocess
-    bexio_receipts.ocr._vllm_process.wait.side_effect = subprocess.TimeoutExpired(cmd="", timeout=5)
+
+    bexio_receipts.ocr._vllm_process.wait.side_effect = subprocess.TimeoutExpired(
+        cmd="", timeout=5
+    )
 
     with patch("bexio_receipts.ocr.logger"):
         close_ocr_parser()
@@ -132,8 +138,10 @@ def test_close_ocr_parser_exceptions(test_settings):
     assert bexio_receipts.ocr._ocr_parser is None
     assert bexio_receipts.ocr._vllm_process is None
 
+
 def test_sync_run_ocr_fallback_metadata(test_settings):
     from bexio_receipts.ocr import _sync_run_ocr
+
     mock_result = MagicMock()
     mock_result.markdown_result = "fallback markdown"
     mock_result.json_result = []

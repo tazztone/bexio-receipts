@@ -8,7 +8,6 @@ from bexio_receipts.server import app, get_db, get_settings
 client = TestClient(app)
 
 
-
 def test_dashboard_unauthorized():
     # Clear any override left by a previous test so auth is actually enforced.
     app.dependency_overrides.clear()
@@ -40,7 +39,9 @@ def test_healthz_ok(test_settings):
             mock_inst = mock_bexio.return_value
             mock_response = MagicMock()
             mock_response.raise_for_status = MagicMock()
-            mock_inst.__aenter__.return_value.client.get = AsyncMock(return_value=mock_response)
+            mock_inst.__aenter__.return_value.client.get = AsyncMock(
+                return_value=mock_response
+            )
             mock_inst.__aenter__.return_value.client.get.return_value.raise_for_status = MagicMock()
             response = client.get("/healthz")
             assert response.status_code == 200
@@ -330,7 +331,6 @@ def test_corrupt_review_json(tmp_path, test_settings):
     app.dependency_overrides.clear()
 
 
-
 def test_history(test_settings):
     app.dependency_overrides[get_settings] = lambda: test_settings
     with patch("bexio_receipts.database.DuplicateDetector") as mock_db:
@@ -343,6 +343,7 @@ def test_history(test_settings):
         assert response.status_code == 200
     app.dependency_overrides.clear()
 
+
 def test_bulk_action_process(test_settings, tmp_path):
     app.dependency_overrides[get_settings] = lambda: test_settings
     review_dir = tmp_path / "review"
@@ -351,11 +352,20 @@ def test_bulk_action_process(test_settings, tmp_path):
     test_settings.bexio_push_enabled = True
 
     review_file1 = review_dir / "test1.json"
-    review_file1.write_text(json.dumps({"original_file": "test1.png", "extracted": {"merchant_name": "Test1", "total_incl_vat": 10.0}}))
+    review_file1.write_text(
+        json.dumps({
+            "original_file": "test1.png",
+            "extracted": {"merchant_name": "Test1", "total_incl_vat": 10.0},
+        })
+    )
 
-    with patch("bexio_receipts.server.Request.session", property(lambda x: {"csrf_token": "test_token"})), \
-         patch("bexio_receipts.server.BexioClient") as mock_bexio:
-
+    with (
+        patch(
+            "bexio_receipts.server.Request.session",
+            property(lambda x: {"csrf_token": "test_token"}),
+        ),
+        patch("bexio_receipts.server.BexioClient") as mock_bexio,
+    ):
         mock_instance = mock_bexio.return_value.__aenter__.return_value
         mock_instance.upload_file = AsyncMock(return_value="uuid-123")
         mock_instance.create_expense = AsyncMock()
@@ -371,6 +381,7 @@ def test_bulk_action_process(test_settings, tmp_path):
         assert not review_file1.exists()
 
     app.dependency_overrides.clear()
+
 
 def test_push_missing_account(test_settings, tmp_path):
     app.dependency_overrides[get_settings] = lambda: test_settings
@@ -389,14 +400,17 @@ def test_push_missing_account(test_settings, tmp_path):
         })
     )
 
-    with patch("bexio_receipts.server.Request.session", property(lambda x: {"csrf_token": "test_token"})):
+    with patch(
+        "bexio_receipts.server.Request.session",
+        property(lambda x: {"csrf_token": "test_token"}),
+    ):
         response = client.post(
             "/push/test_id2",
             data={
                 "merchant_name": "Updated Merchant",
                 "date": "2023-01-01",
                 "total_incl_vat": "15.50",
-                "booking_account_ids": ["100", "200"], # count mismatch
+                "booking_account_ids": ["100", "200"],  # count mismatch
                 "bexio_action": "purchase_bill",
                 "csrf_token": "test_token",
             },
@@ -406,14 +420,17 @@ def test_push_missing_account(test_settings, tmp_path):
         assert response.status_code == 422
     app.dependency_overrides.clear()
 
+
 def test_metrics(test_settings):
     app.dependency_overrides[get_settings] = lambda: test_settings
-    with patch("bexio_receipts.database.DuplicateDetector.get_stats", return_value={"total_processed": 10, "ocr_confidence_avg": 0.95}):
+    with patch(
+        "bexio_receipts.database.DuplicateDetector.get_stats",
+        return_value={"total_processed": 10, "ocr_confidence_avg": 0.95},
+    ):
         response = client.get("/metrics", auth=("admin", "test_password"))
         assert response.status_code == 200
         assert b"receipts_processed_total 10.0" in response.content
     app.dependency_overrides.clear()
-
 
 
 def test_thumbnail_success(test_settings, tmp_path):
@@ -423,11 +440,10 @@ def test_thumbnail_success(test_settings, tmp_path):
     test_settings.review_dir = str(review_dir)
     test_settings.inbox_path = str(tmp_path / "inbox")
 
-
     from PIL import Image
 
     img_path = review_dir / "test_thumb.jpg"
-    img = Image.new('RGB', (10, 10))
+    img = Image.new("RGB", (10, 10))
     img.save(img_path)
 
     review_file = review_dir / "test_id.json"
@@ -437,6 +453,7 @@ def test_thumbnail_success(test_settings, tmp_path):
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/jpeg"
     app.dependency_overrides.clear()
+
 
 def test_thumbnail_404_no_image(test_settings, tmp_path):
     app.dependency_overrides[get_settings] = lambda: test_settings
@@ -450,6 +467,7 @@ def test_thumbnail_404_no_image(test_settings, tmp_path):
     response = client.get("/thumbnail/test_id", auth=("admin", "test_password"))
     assert response.status_code == 404
     app.dependency_overrides.clear()
+
 
 def test_thumbnail_403_outside_root(test_settings, tmp_path):
     app.dependency_overrides[get_settings] = lambda: test_settings
@@ -470,6 +488,7 @@ def test_thumbnail_403_outside_root(test_settings, tmp_path):
     assert response.status_code == 403
     app.dependency_overrides.clear()
 
+
 def test_review_form_success(test_settings, tmp_path):
     app.dependency_overrides[get_settings] = lambda: test_settings
     review_dir = tmp_path / "review"
@@ -480,25 +499,38 @@ def test_review_form_success(test_settings, tmp_path):
     test_settings.bexio_haben_account_cash = 1000
 
     review_file = review_dir / "test_id.json"
-    review_file.write_text(json.dumps({
-        "extracted": {
-            "merchant_name": "Test",
-            "total_incl_vat": 10.0,
-            "currency": "CHF",
-            "vat_breakdown": [{"rate": 8.1, "vat_amount": 0.81, "base_amount": 10.0}]
-        },
-        "extraction_trace": {
-            "step3_assignments": [{"vat_rate": 8.1, "account_id": "1", "confidence": "high", "reasoning": "test"}]
-        }
-    }))
+    review_file.write_text(
+        json.dumps({
+            "extracted": {
+                "merchant_name": "Test",
+                "total_incl_vat": 10.0,
+                "currency": "CHF",
+                "vat_breakdown": [
+                    {"rate": 8.1, "vat_amount": 0.81, "base_amount": 10.0}
+                ],
+            },
+            "extraction_trace": {
+                "step3_assignments": [
+                    {
+                        "vat_rate": 8.1,
+                        "account_id": "1",
+                        "confidence": "high",
+                        "reasoning": "test",
+                    }
+                ]
+            },
+        })
+    )
 
     with patch("bexio_receipts.server.BexioClient") as mock_bexio:
         mock_instance = mock_bexio.return_value.__aenter__.return_value
-        mock_instance.get_accounts = AsyncMock(return_value=[
-            {"id": 1, "account_no": "4200", "name": "Material"},
-            {"id": 2, "account_no": "1020", "name": "Bank"},
-            {"id": 3, "account_no": "1000", "name": "Cash"},
-        ])
+        mock_instance.get_accounts = AsyncMock(
+            return_value=[
+                {"id": 1, "account_no": "4200", "name": "Material"},
+                {"id": 2, "account_no": "1020", "name": "Bank"},
+                {"id": 3, "account_no": "1000", "name": "Cash"},
+            ]
+        )
 
         response = client.get("/review/test_id", auth=("admin", "test_password"))
         assert response.status_code == 200

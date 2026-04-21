@@ -23,9 +23,9 @@ automatically create a `.env` file for you.
 - **`BEXIO_BASE_URL`**: Defaults to `https://api.bexio.com`.
 - **`BEXIO_PUSH_ENABLED`**: Write-gate for the pipeline.
   - If `false` (default): All receipts go to the **Review Dashboard**. This is
-    the recommended "Human-in-the-loop" production workflow.
-  - If `true`: Receipts that pass validation are pushed automatically. Use this
-    only if you fully trust your extraction results.
+    the mandatory "Human-in-the-loop" production workflow for all ingestion 
+    sources, including the local Folder Watcher and Google Drive.
+  - If `true`: Receipts that pass validation are pushed automatically.
 - **`DEFAULT_BOOKING_ACCOUNT_ID`**: (Required) Default bexio account ID for new
   expenses (e.g., `630`).
 - **`DEFAULT_BANK_ACCOUNT_ID`**: (Required) Default bexio bank account ID for
@@ -40,7 +40,7 @@ automatically create a `.env` file for you.
 - **`BEXIO_HABEN_ACCOUNT_CASH`**: Account *number* used for the "Cash" payment
   toggle (e.g., `1000`).
 - **`DEFAULT_VAT_RATE`**: Default Swiss VAT rate (8.1, 2.6, or 3.8). Defaults
-  to `8.1`.
+  to `8.1`. The pipeline also supports legacy rates (7.7 and 2.5).
 - **`DEFAULT_PAYMENT_TERMS_DAYS`**: Number of days for payment terms. Defaults
   to `30`.
 

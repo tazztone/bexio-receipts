@@ -3,7 +3,8 @@
 ## Overview
 bexio-receipts is a modular pipeline for automated bookkeeping. It takes raw
 files from various sources and turns them into verified bexio entries through a
-mandatory human review process.
+mandatory human review process. This "Human-in-the-loop" (HIL) policy applies to
+all ingestion paths, including local folders and Google Drive.
 
 ## Data Flow
 
@@ -95,6 +96,6 @@ A custom async client (using `httpx`) that:
 
 ### 7. Validation Logic (`validation.py`)
 Strict business rules for the Swiss market:
-- VAT rate verification (8.1%, 2.6%, 3.8%).
+- VAT rate verification (8.1%, 2.6%, 3.8% and historical 7.7%, 2.5%).
 - Total/Subtotal cross-checks with 5-rappen Swiss rounding tolerance.
 - Future/Old date warnings.
