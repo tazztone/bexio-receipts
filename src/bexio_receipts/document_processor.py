@@ -23,6 +23,28 @@ from .ocr import async_run_ocr
 from .vllm_server import start_vllm_server
 
 
+def extract_json_block(text: str) -> dict | None:
+    """Extract and parse the first JSON code block or raw JSON string."""
+    try:
+        # Search for markdown blocks
+        if "```json" in text:
+            block = text.split("```json")[1].split("```", maxsplit=1)[0].strip()
+        elif "```" in text:
+            block = text.split("```")[1].split("```", maxsplit=1)[0].strip()
+        else:
+            # Fallback: look for the first '{' and last '}'
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start != -1 and end > start:
+                block = text[start:end]
+            else:
+                block = text
+
+        return json.loads(block)
+    except (json.JSONDecodeError, IndexError):
+        return None
+
+
 class VisionExtraction(BaseModel):
     """Schema for Qwen3.6 vision-language extraction."""
 
@@ -33,7 +55,7 @@ class VisionExtraction(BaseModel):
     vat_rate_pct: float | None = Field(None, description="Primary VAT rate (%)")
     vat_amount: float | None = Field(None, description="Primary VAT amount")
     total_incl_vat: float | None = Field(None, description="Grand total amount")
-    vat_rows: list[dict] = Field(
+    vat_rows: list[RawVatRow] = Field(
         default_factory=list, description="List of all VAT lines"
     )
     account_assignments: list[AccountAssignment] = Field(
@@ -182,24 +204,26 @@ class VisionProcessor(DocumentProcessor):
             "text": "Extract all structured data from this receipt. If multiple pages, combine into one result.",
         })
 
+        # Prompt Context
         accounts_context = "\n".join([
             f"- {acc_id}: {desc}" for acc_id, desc in settings.bexio_accounts.items()
         ])
-        vat_context = f"Default VAT rate is {settings.default_vat_rate}%."
 
         system_prompt = (
-            "You are a Swiss bookkeeping specialist. Extract data from the receipt image. "
-            "Return ONLY a JSON object matching the requested schema.\n\n"
-            "### RULES ###\n"
-            "1. merchant_name: Official vendor name (Prodega, Coop, etc.).\n"
-            "2. transaction_date: YYYY-MM-DD. Look for 'Datum' or 'Date'.\n"
-            "3. total_incl_vat: The final amount to be paid.\n"
-            "4. vat_rows: List of objects with keys: "
-            "rate (float), net_amount (float), vat_amount (float), total_amount (float).\n"
-            "5. account_assignments: Suggest 4200 (Food) or 4201 (Non-food) based on context.\n"
-            f"AVAILABLE ACCOUNTS:\n{accounts_context}\n"
-            f"{vat_context}\n"
-            "6. confidence: 0.0 to 1.0 score based on image legibility.\n"
+            "You are a strict JSON data extraction bot. You MUST output ONLY a valid JSON object. "
+            "NEVER output markdown blocks, NEVER output explanations, NEVER output thoughts. "
+            "Start your response with '{' and end with '}'.\n"
+            "Required Schema:\n"
+            "{\n"
+            '  "merchant_name": "string",\n'
+            '  "transaction_date": "YYYY-MM-DD",\n'
+            '  "total_incl_vat": 100.0,\n'
+            '  "vat_rows": [ { "rate": 8.1, "net_amount": 92.5, "vat_amount": 7.5, "total_amount": 100.0 } ],\n'
+            '  "account_assignments": [ { "vat_rate": 8.1, "account_id": "4200", "account_name": "Einkauf", "confidence": 0.95 } ],\n'
+            '  "confidence": 0.95\n'
+            "}\n\n"
+            f"ACCOUNTS:\n{accounts_context}\n"
+            f"VAT: Default is {settings.default_vat_rate}%.\n"
         )
 
         openai_client = AsyncOpenAI(
@@ -218,28 +242,20 @@ class VisionProcessor(DocumentProcessor):
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": content},
                 ],
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "vision_extraction",
-                        "strict": False,
-                        "schema": VisionExtraction.model_json_schema(),
-                    },
-                },
+                temperature=0.1,
+                frequency_penalty=0.2,
                 max_tokens=4096,
             )
 
             raw_response_content = response.choices[0].message.content or ""
             try:
-                # vLLM with json_schema should return pure JSON, but we guard against preambles
-                json_start = raw_response_content.find("{")
-                json_end = raw_response_content.rfind("}") + 1
-                if json_start != -1 and json_end > json_start:
-                    json_str = raw_response_content[json_start:json_end]
-                else:
-                    json_str = raw_response_content
+                # Use robust extraction logic for markdown blocks
+                logger.debug("vlm_raw_response", content=raw_response_content)
+                data = extract_json_block(raw_response_content)
+                if not data:
+                    # Fallback to direct parse if no block found
+                    data = json.loads(raw_response_content)
 
-                data = json.loads(json_str)
                 ext = VisionExtraction(**data)
             except (json.JSONDecodeError, ValueError) as e:
                 logger.error(
@@ -263,9 +279,7 @@ class VisionProcessor(DocumentProcessor):
                 vat_rate_pct=ext.vat_rate_pct,
                 vat_amount=ext.vat_amount,
                 total_incl_vat=ext.total_incl_vat,
-                vat_rows=[
-                    RawVatRow(**r) if isinstance(r, dict) else r for r in ext.vat_rows
-                ],
+                vat_rows=ext.vat_rows,
                 account_assignments=ext.account_assignments,
                 confidence=ext.confidence,
                 trace=trace,
