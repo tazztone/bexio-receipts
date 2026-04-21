@@ -32,14 +32,18 @@ class ReceiptHandler(FileSystemEventHandler):
     """Handles file creation events in the watched directory."""
 
     def __init__(
-        self, loop: asyncio.AbstractEventLoop, settings: Settings, bexio: BexioClient
+        self,
+        loop: asyncio.AbstractEventLoop,
+        settings: Settings,
+        bexio: BexioClient,
+        db: DuplicateDetector,
     ):
         self.loop = loop
         self.settings = settings
         self.bexio = bexio
         self.processing: set[Path] = set()
         self._last_processed: dict[Path, float] = {}
-        self.db = DuplicateDetector(settings.database_path)
+        self.db = db
 
     def on_created(self, event: FileCreatedEvent | DirCreatedEvent):
         if event.is_directory:
@@ -151,9 +155,10 @@ async def watch_folder(path: str, settings: Settings):
                 error=str(e),
             )
 
+        db = DuplicateDetector(settings.database_path)
+
         # Initial sweep: process existing files
         logger.info("Performing initial sweep of watch directory")
-        db = DuplicateDetector(settings.database_path)
         for file_path in path_obj.glob("*"):
             if file_path.is_file() and file_path.suffix.lower() in [
                 ".png",
@@ -183,7 +188,7 @@ async def watch_folder(path: str, settings: Settings):
                 task.add_done_callback(_background_tasks.discard)
 
         loop = asyncio.get_running_loop()
-        event_handler = ReceiptHandler(loop, settings, bexio)
+        event_handler = ReceiptHandler(loop, settings, bexio, db)
         observer = Observer()
         observer.schedule(event_handler, str(path_obj), recursive=True)
         observer.start()

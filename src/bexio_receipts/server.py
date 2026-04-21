@@ -53,7 +53,13 @@ def get_settings() -> Settings:
     return Settings()
 
 
-app.add_middleware(SessionMiddleware, secret_key=get_settings().secret_key)
+try:
+    _session_secret = get_settings().secret_key
+except Exception:
+    # Fallback to allow module import even if settings are invalid
+    _session_secret = "temporary-secret-for-import"
+
+app.add_middleware(SessionMiddleware, secret_key=_session_secret)
 
 # Setup templates and static files
 BASE_DIR = Path(__file__).resolve().parent
@@ -430,8 +436,26 @@ async def bulk_action(
                         booking_account_id = settings.default_booking_account_id
 
                     if decide_bexio_action(receipt) == "purchase_bill":
+                        # Build account list matching VAT breakdown
+                        booking_account_ids = []
+                        if receipt.vat_breakdown:
+                            for entry in receipt.vat_breakdown:
+                                acc_id = (
+                                    db.get_merchant_vat_account(
+                                        receipt.merchant_name, entry.rate
+                                    )
+                                    if receipt.merchant_name
+                                    else None
+                                )
+                                if not acc_id:
+                                    # Fallback to general merchant account or default
+                                    acc_id = booking_account_id
+                                booking_account_ids.append(acc_id)
+                        else:
+                            booking_account_ids = [booking_account_id]
+
                         await bexio.create_purchase_bill(
-                            receipt, file_uuid, booking_account_ids=[booking_account_id]
+                            receipt, file_uuid, booking_account_ids=booking_account_ids
                         )
                     else:
                         await bexio.create_expense(
@@ -513,6 +537,7 @@ async def get_review_form(
     review_id: str,
     _username: str = Depends(verify_credentials),
     settings: Settings = Depends(get_settings),
+    db: DuplicateDetector = Depends(get_db),
 ):
     """Show review form for a specific receipt."""
 
@@ -576,7 +601,6 @@ async def get_review_form(
         bexio_action = "purchase_bill"
 
     # Get the default account for this merchant if known
-    db = DuplicateDetector(settings.database_path)
     default_account_id = (
         db.get_merchant_account(receipt.merchant_name)
         if receipt.merchant_name
@@ -594,6 +618,7 @@ async def get_review_form(
             if receipt.merchant_name:
                 acc_id = db.get_merchant_vat_account(receipt.merchant_name, entry.rate)
 
+            match = None
             if not acc_id:
                 # Fallback to Step 3 assignments from trace
                 match = next(
@@ -849,8 +874,6 @@ async def bulk_discard_review(
     """Batch remove receipts from the review queue."""
     if not csrf_token or request.session.get("csrf_token") != csrf_token:
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
-
-    import re
 
     review_dir = Path(settings.review_dir)
     count = 0

@@ -6,6 +6,7 @@ import subprocess
 import threading
 import time
 from functools import partial
+from pathlib import Path
 
 import structlog
 from glmocr import GlmOcr
@@ -58,10 +59,13 @@ def _start_vllm_server(settings: Settings):
     ]
 
     logger.info("Starting managed vLLM server", command=" ".join(cmd))
+    debug_dir = Path("debug")
+    debug_dir.mkdir(exist_ok=True)
+    log_file = open(debug_dir / "vllm.log", "ab")
     _vllm_process = subprocess.Popen(
         cmd,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=log_file,
     )
     # Give it a tiny bit of time to at least start the process
     time.sleep(1)
@@ -94,8 +98,13 @@ def get_ocr_parser(settings: Settings) -> GlmOcr:
                     "pipeline.page_loader.max_tokens": settings.glm_ocr_max_tokens,
                 },
             )
-            # Enter the context once for the lifetime of the process
-            _ocr_parser.__enter__()
+            try:
+                # Enter the context once for the lifetime of the process
+                _ocr_parser.__enter__()
+            except Exception as e:
+                logger.error("Failed to initialize OCR parser context", error=str(e))
+                _ocr_parser = None
+                raise
         return _ocr_parser
 
 

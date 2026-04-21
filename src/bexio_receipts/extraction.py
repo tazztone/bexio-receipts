@@ -9,7 +9,7 @@ import httpx
 import structlog
 from dateutil import parser
 from openai import AsyncOpenAI
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.profiles.openai import (
@@ -242,8 +242,8 @@ def _is_rate_limit(exc: BaseException) -> bool:
 
 
 def _build_model(
-    settings: Settings, client: httpx.AsyncClient
-) -> tuple[OpenAIChatModel, httpx.AsyncClient | AsyncOpenAI | None]:
+    settings: Settings, client: httpx.AsyncClient | None = None
+) -> tuple[OpenAIChatModel, AsyncOpenAI | None]:
     """Helper to build the pydantic-ai model consistently."""
     or_client = None
     if settings.llm_provider == "ollama":
@@ -275,6 +275,7 @@ def _build_model(
         or_client = AsyncOpenAI(
             base_url=settings.openrouter_url,
             api_key=api_key,
+            http_client=client,
             default_headers={
                 "HTTP-Referer": settings.openrouter_site_url,
                 "X-Title": settings.openrouter_site_name,
@@ -308,7 +309,6 @@ class ExtractionError(Exception):
     retry=(
         retry_if_exception_type((
             httpx.HTTPStatusError,
-            ValidationError,
             ExtractionError,
         ))
         | retry_if_exception(_is_rate_limit)
@@ -316,7 +316,7 @@ class ExtractionError(Exception):
     reraise=True,
 )
 async def extract_receipt(
-    raw_text: str, settings: Settings, client: httpx.AsyncClient
+    raw_text: str, settings: Settings, client: httpx.AsyncClient | None = None
 ) -> tuple[Receipt, ExtractionTrace]:
     """
     Extract receipt data from OCR text using a Two-Step LLM Pipeline.
@@ -384,7 +384,7 @@ async def extract_receipt(
                     "- col_a, col_b, col_c: the numbers in that row in order from left to right.\n"
                     "RULES:\n"
                     "1. If HTML, extract the numeric values from the <td> tags in each <tr>.\n"
-                    "2. rate: MUST be one of [8.1, 7.7, 2.6, 3.8, 2.5]. IGNORE any other numbers.\n"
+                    "2. rate: MUST be one of [8.1, 7.7, 2.6, 3.8, 2.5, 0.0]. IGNORE any other numbers.\n"
                     "3. IGNORE summary rows (Total, Summe, Rundung).\n"
                     "4. IGNORE columns containing savings values.\n"
                     "5. ONLY extract rows representing a specific VAT rate."
@@ -434,8 +434,8 @@ async def classify_accounts(
     receipt: Receipt,
     raw_text: str,
     settings: Settings,
-    client: httpx.AsyncClient,
-    trace: ExtractionTrace,
+    client: httpx.AsyncClient | None = None,
+    trace: ExtractionTrace | None = None,
 ) -> list[AccountAssignment]:
     """
     Step 3: Assign Swiss booking accounts based on full OCR context and VAT rates.
@@ -477,8 +477,9 @@ async def classify_accounts(
         return res.output.assignments
     except Exception as e:
         logger.error("Step 3: Account classification failed", error=str(e))
-        trace.error_stage = "step3"
-        trace.error_detail = str(e)
+        if trace:
+            trace.error_stage = "step3"
+            trace.error_detail = str(e)
         return []
     finally:
         if or_client is not None:

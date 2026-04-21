@@ -179,9 +179,6 @@ def init(
         f"LLM_PROVIDER={llm_provider}",
     ]
 
-    config.append("GLM_OCR_URL=http://localhost:11434")
-    config.append("GLM_OCR_MODEL=glm-ocr")
-
     if llm_provider == "ollama":
         config.append("OLLAMA_URL=http://localhost:11434")
         config.append("LLM_MODEL=qwen3.5:9b")
@@ -277,83 +274,86 @@ def process(
     """Process a single receipt file."""
     settings = get_settings()
     setup_logging(settings.env, quiet=quiet)
+    asyncio.run(_process_interactive(str(file), settings, push, dry_run))
 
-    async def _run():
-        if dry_run:
-            from .extraction import extract_receipt
-            from .ocr import async_run_ocr
-            from .validation import validate_receipt
 
-            with console.status("[bold green]Running OCR..."):
-                raw_text, avg_confidence, _ = await async_run_ocr(str(file), settings)
-            console.print(f"\n[bold]OCR Confidence:[/bold] {avg_confidence:.1%}")
-            console.print(f"\n[bold]Raw OCR Text:[/bold]\n{raw_text}\n")
+async def _process_interactive(
+    file_path: str, settings: Settings, push: bool, dry_run: bool
+):
+    """Internal helper for CLI processing."""
+    if dry_run:
+        from .extraction import extract_receipt
+        from .ocr import async_run_ocr
+        from .validation import validate_receipt
 
-            import httpx
+        with console.status("[bold green]Running OCR..."):
+            raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
+        console.print(f"\n[bold]OCR Confidence:[/bold] {avg_confidence:.1%}")
+        console.print(f"\n[bold]Raw OCR Text:[/bold]\n{raw_text}\n")
 
-            with console.status("[bold blue]Extracting data via LLM..."):
-                async with httpx.AsyncClient() as client:
-                    receipt, _ = await extract_receipt(raw_text, settings, client)
+        import httpx
 
-            table = Table(title="Extracted Data (Dry Run)", show_header=True)
-            table.add_column("Field", style="cyan")
-            table.add_column("Value", style="magenta")
+        with console.status("[bold blue]Extracting data via LLM..."):
+            async with httpx.AsyncClient() as client:
+                receipt, _ = await extract_receipt(raw_text, settings, client=client)
 
-            for field, value in receipt.model_dump().items():
-                table.add_row(field, str(value))
-            console.print(table)
+        table = Table(title="Extracted Data (Dry Run)", show_header=True)
+        table.add_column("Field", style="cyan")
+        table.add_column("Value", style="magenta")
 
-            with console.status("[bold yellow]Validating..."):
-                errors, warnings = validate_receipt(receipt, settings)
-            if errors:
-                console.print(
-                    "\n[bold red]Validation Errors:[/bold red]\n"
-                    + "\n".join(f"- {e}" for e in errors)
-                )
-            if warnings:
-                console.print(
-                    "\n[bold yellow]Validation Warnings:[/bold yellow]\n"
-                    + "\n".join(f"- {w}" for w in warnings)
-                )
-            if not errors and not warnings:
-                console.print("\n[bold green]Validation Passed[/bold green]")
-            return
+        for field, value in receipt.model_dump().items():
+            table.add_row(field, str(value))
+        console.print(table)
 
-        if push and not settings.bexio_push_enabled:
+        with console.status("[bold yellow]Validating..."):
+            errors, warnings = validate_receipt(receipt, settings)
+        if errors:
             console.print(
-                "[bold red]Error: BEXIO_PUSH_ENABLED=false in configuration.[/bold red]"
+                "\n[bold red]Validation Errors:[/bold red]\n"
+                + "\n".join(f"- {e}" for e in errors)
             )
-            console.print("Set it to true in .env to enable writes via --push.")
-            raise typer.Exit(1)
-
-        from .database import DuplicateDetector
-
-        db = DuplicateDetector(settings.database_path)
-
-        async with BexioClient(
-            token=settings.bexio_api_token,
-            base_url=settings.bexio_base_url,
-            default_vat_rate=settings.default_vat_rate,
-            default_payment_terms_days=settings.default_payment_terms_days,
-            push_enabled=settings.bexio_push_enabled,
-        ) as client:
-            with console.status("[bold blue]Connecting to Bexio..."):
-                try:
-                    await client.cache_lookups()
-                except Exception as e:
-                    console.print(
-                        f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]"
-                    )
-
-            with console.status("[bold green]Processing receipt..."):
-                result = await process_receipt(
-                    str(file), settings, client, db, push_confirmed=push
-                )
+        if warnings:
             console.print(
-                f"\n[bold]Final Result:[/bold]\n{json.dumps(result, indent=2, default=str)}"
+                "\n[bold yellow]Validation Warnings:[/bold yellow]\n"
+                + "\n".join(f"- {w}" for w in warnings)
             )
+        if not errors and not warnings:
+            console.print("\n[bold green]Validation Passed[/bold green]")
+        return
 
-    asyncio.run(_run())
+    if push and not settings.bexio_push_enabled:
+        console.print(
+            "[bold red]Error: BEXIO_PUSH_ENABLED=false in configuration.[/bold red]"
+        )
+        console.print("Set it to true in .env to enable writes via --push.")
+        raise typer.Exit(1)
+
+    from .database import DuplicateDetector
+
+    db = DuplicateDetector(settings.database_path)
+
+    async with BexioClient(
+        token=settings.bexio_api_token,
+        base_url=settings.bexio_base_url,
+        default_vat_rate=settings.default_vat_rate,
+        default_payment_terms_days=settings.default_payment_terms_days,
+        push_enabled=settings.bexio_push_enabled,
+    ) as client:
+        with console.status("[bold blue]Connecting to Bexio..."):
+            try:
+                await client.cache_lookups()
+            except Exception as e:
+                console.print(
+                    f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]"
+                )
+
+        with console.status("[bold green]Processing receipt..."):
+            result = await process_receipt(
+                file_path, settings, client, db, push_confirmed=push
+            )
+        console.print(
+            f"\n[bold]Final Result:[/bold]\n{json.dumps(result, indent=2, default=str)}"
+        )
 
 
 @app.command()
@@ -376,82 +376,7 @@ def reprocess(
         console.print(f"[red]Original file {orig_file} not found.[/red]")
         raise typer.Exit(1)
 
-    async def _run():
-        if dry_run:
-            from .extraction import extract_receipt
-            from .ocr import async_run_ocr
-            from .validation import validate_receipt
-
-            with console.status("[bold green]Running OCR..."):
-                raw_text, avg_confidence, _ = await async_run_ocr(orig_file, settings)
-            console.print(f"\n[bold]OCR Confidence:[/bold] {avg_confidence:.1%}")
-            console.print(f"\n[bold]Raw OCR Text:[/bold]\n{raw_text}\n")
-
-            import httpx
-
-            with console.status("[bold blue]Extracting data via LLM..."):
-                async with httpx.AsyncClient() as client:
-                    receipt, _ = await extract_receipt(raw_text, settings, client)
-
-            table = Table(title="Extracted Data (Dry Run)", show_header=True)
-            table.add_column("Field", style="cyan")
-            table.add_column("Value", style="magenta")
-
-            for field, value in receipt.model_dump().items():
-                table.add_row(field, str(value))
-            console.print(table)
-
-            with console.status("[bold yellow]Validating..."):
-                errors, warnings = validate_receipt(receipt, settings)
-            if errors:
-                console.print(
-                    "\n[bold red]Validation Errors:[/bold red]\n"
-                    + "\n".join(f"- {e}" for e in errors)
-                )
-            if warnings:
-                console.print(
-                    "\n[bold yellow]Validation Warnings:[/bold yellow]\n"
-                    + "\n".join(f"- {w}" for w in warnings)
-                )
-            if not errors and not warnings:
-                console.print("\n[bold green]Validation Passed[/bold green]")
-            return
-
-        if push and not settings.bexio_push_enabled:
-            console.print(
-                "[bold red]Error: BEXIO_PUSH_ENABLED=false in configuration.[/bold red]"
-            )
-            console.print("Set it to true in .env to enable writes via --push.")
-            raise typer.Exit(1)
-
-        from .database import DuplicateDetector
-
-        db = DuplicateDetector(settings.database_path)
-
-        async with BexioClient(
-            token=settings.bexio_api_token,
-            base_url=settings.bexio_base_url,
-            default_vat_rate=settings.default_vat_rate,
-            default_payment_terms_days=settings.default_payment_terms_days,
-            push_enabled=settings.bexio_push_enabled,
-        ) as client:
-            with console.status("[bold blue]Connecting to Bexio..."):
-                try:
-                    await client.cache_lookups()
-                except Exception as e:
-                    console.print(
-                        f"[yellow]Warning: Failed to connect to Bexio ({e}). Proceeding to OCR/Extraction...[/yellow]"
-                    )
-
-            with console.status("[bold green]Processing receipt..."):
-                result = await process_receipt(
-                    orig_file, settings, client, db, push_confirmed=push
-                )
-            console.print(
-                f"\n[bold]Final Result:[/bold]\n{json.dumps(result, indent=2, default=str)}"
-            )
-
-    asyncio.run(_run())
+    asyncio.run(_process_interactive(orig_file, settings, push, dry_run))
 
 
 @app.command()

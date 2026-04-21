@@ -246,7 +246,7 @@ class GoogleDriveIngestor:
 async def watch_gdrive(settings: Settings, folder_id: str | None = None):
     """Periodically check Google Drive for new receipts."""
     if folder_id:
-        settings.gdrive_folder_id = folder_id
+        settings = settings.model_copy(update={"gdrive_folder_id": folder_id})
 
     if not settings.gdrive_credentials_file:
         logger.error("Google Drive credentials file is not set.")

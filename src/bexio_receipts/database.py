@@ -64,7 +64,9 @@ class DuplicateDetector:
                     conn.execute(
                         "ALTER TABLE processed_receipts ADD COLUMN vat_amount REAL"
                     )
-                except sqlite3.OperationalError:
+                except sqlite3.OperationalError as e:
+                    if "duplicate column name" not in str(e).lower():
+                        raise
                     # Column already exists
                     pass
 
@@ -72,7 +74,9 @@ class DuplicateDetector:
                     conn.execute(
                         "ALTER TABLE processed_receipts ADD COLUMN ocr_confidence REAL"
                     )
-                except sqlite3.OperationalError:
+                except sqlite3.OperationalError as e:
+                    if "duplicate column name" not in str(e).lower():
+                        raise
                     pass
 
                 conn.execute("""
