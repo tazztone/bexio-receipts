@@ -95,8 +95,26 @@ def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
     entries = []
     for row in rows:
         rate = row.rate
+
+        # Strategy 0: Semantic data (Vision mode)
+        if row.net_amount is not None and row.vat_amount is not None:
+            entries.append(
+                VatEntry(
+                    rate=rate,
+                    vat_amount=row.vat_amount,
+                    base_amount=row.net_amount,
+                    total_incl_vat=row.total_amount,
+                )
+            )
+            continue
+
         a, b, c = row.col_a, row.col_b, row.col_c
         resolved = False
+
+        if a is None or b is None:
+            # Cannot use legacy strategies without at least two columns
+            logger.warning("Skipping incomplete VAT row", row=row.model_dump())
+            continue
 
         # Strategy 1: Rate column detection (Prodega style)
         # One column equals the rate value itself; remaining two are (vat, base).

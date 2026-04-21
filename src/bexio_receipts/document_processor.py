@@ -59,7 +59,7 @@ class ProcessingResult(BaseModel):
     vat_amount: float | None = None
     total_incl_vat: float | None = None
     payment_method: str | None = None
-    vat_rows: list[RawVatRow] | list[dict] = []
+    vat_rows: list[RawVatRow] = []
     account_assignments: list[AccountAssignment] = []
     confidence: float
     trace: ExtractionTrace
@@ -83,16 +83,29 @@ class VisionProcessor(DocumentProcessor):
         with open(file_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode("utf-8")
 
-    def _render_pdf_to_base64(self, file_path: str) -> str:
-        """Render the first page of a PDF to a base64 image."""
+    def _render_pdf_to_images(self, file_path: str, max_pages: int = 5) -> list[str]:
+        """Render the first few pages of a PDF to base64 images at 150 DPI."""
+        images = []
         with pymupdf.open(file_path) as doc:
             if doc.page_count == 0:
                 raise ValueError("PDF has no pages")
-            page = doc[0]
-            # Standard resolution (150 DPI is usually enough for OCR/Vision)
-            pix = page.get_pixmap(matrix=pymupdf.Matrix(2, 2))
-            img_data = pix.tobytes("png")
-            return base64.b64encode(img_data).decode("utf-8")
+
+            if doc.page_count > max_pages:
+                logger.warning(
+                    "PDF has many pages, only processing the first few",
+                    total=doc.page_count,
+                    limit=max_pages,
+                )
+
+            for i in range(min(doc.page_count, max_pages)):
+                page = doc[i]
+                # 150 DPI (150/72 = 2.0833x zoom)
+                zoom = 150 / 72
+                matrix = pymupdf.Matrix(zoom, zoom)
+                pix = page.get_pixmap(matrix=matrix)
+                img_data = pix.tobytes("png")
+                images.append(base64.b64encode(img_data).decode("utf-8"))
+        return images
 
     async def process(
         self,
@@ -150,19 +163,23 @@ class VisionProcessor(DocumentProcessor):
 
         content: list[Any] = []
         if is_pdf:
-            base64_image = self._render_pdf_to_base64(file_path)
-            mime = "image/png"
+            base64_images = self._render_pdf_to_images(file_path)
+            for img in base64_images:
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{img}"},
+                })
         else:
             base64_image = self._encode_image(file_path)
             mime = "image/jpeg" if file_ext in [".jpg", ".jpeg"] else "image/png"
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{base64_image}"},
+            })
 
         content.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:{mime};base64,{base64_image}"},
-        })
-        content.append({
             "type": "text",
-            "text": "Extract all structured data from this receipt image.",
+            "text": "Extract all structured data from this receipt. If multiple pages, combine into one result.",
         })
 
         accounts_context = "\n".join([
@@ -242,7 +259,9 @@ class VisionProcessor(DocumentProcessor):
                 vat_rate_pct=ext.vat_rate_pct,
                 vat_amount=ext.vat_amount,
                 total_incl_vat=ext.total_incl_vat,
-                vat_rows=ext.vat_rows,
+                vat_rows=[
+                    RawVatRow(**r) if isinstance(r, dict) else r for r in ext.vat_rows
+                ],
                 account_assignments=ext.account_assignments,
                 confidence=ext.confidence,
                 trace=trace,

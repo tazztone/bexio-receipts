@@ -36,9 +36,14 @@ class RawVatRow(BaseModel):
     """Model only reads numbers off the receipt — no math required."""
 
     rate: float  # e.g. 8.1
-    col_a: float  # first number in the VAT row
-    col_b: float  # second number
-    col_c: float | None  # third number (may be absent)
+    # Legacy columns (Step 2 positional data)
+    col_a: float | None = None
+    col_b: float | None = None
+    col_c: float | None = None
+    # Semantic columns (Vision / High-fidelity LLM)
+    net_amount: float | None = None
+    vat_amount: float | None = None
+    total_amount: float | None = None
 
 
 class RawVatRows(BaseModel):

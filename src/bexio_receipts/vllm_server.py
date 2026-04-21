@@ -15,7 +15,7 @@ logger = structlog.get_logger(__name__)
 
 _vllm_process: subprocess.Popen | None = None
 _vllm_log_file = None
-_vllm_lock = asyncio.Lock()
+_vllm_lock: asyncio.Lock | None = None
 
 
 def is_port_open(host: str, port: int) -> bool:
@@ -33,7 +33,10 @@ async def start_vllm_server(
     host: str | None = None,
 ):
     """Start the vLLM server in the background (Async)."""
-    global _vllm_process, _vllm_log_file  # noqa: PLW0603
+    global _vllm_process, _vllm_log_file, _vllm_lock  # noqa: PLW0603
+    if _vllm_lock is None:
+        _vllm_lock = asyncio.Lock()
+
     async with _vllm_lock:
         host = host or settings.vision_api_host
         if is_port_open(host, port):

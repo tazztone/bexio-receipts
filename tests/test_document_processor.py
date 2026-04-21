@@ -41,7 +41,7 @@ async def test_vision_processor_process_pdf(vision_processor, test_settings, tmp
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         with patch.object(
-            VisionProcessor, "_render_pdf_to_base64", return_value="base64data"
+            VisionProcessor, "_render_pdf_to_images", return_value=["base64data"]
         ):
             result = await vision_processor.process(str(pdf_file), test_settings)
 
