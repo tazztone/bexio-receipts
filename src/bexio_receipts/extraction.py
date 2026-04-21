@@ -8,6 +8,7 @@ from typing import Literal
 import httpx
 import structlog
 from dateutil import parser
+from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, ValidationError
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
@@ -242,7 +243,7 @@ def _is_rate_limit(exc: BaseException) -> bool:
 
 def _build_model(
     settings: Settings, client: httpx.AsyncClient
-) -> tuple[OpenAIChatModel, httpx.AsyncClient | None]:
+) -> tuple[OpenAIChatModel, httpx.AsyncClient | AsyncOpenAI | None]:
     """Helper to build the pydantic-ai model consistently."""
     or_client = None
     if settings.llm_provider == "ollama":
@@ -427,7 +428,7 @@ async def extract_receipt(
             raise ExtractionError(f"VAT assembly failed: {ve!s}", trace=trace) from ve
     finally:
         if or_client is not None:
-            await or_client.close()
+            await or_client.close() if hasattr(or_client, 'close') else await or_client.aclose()
 
 
 async def classify_accounts(
@@ -482,4 +483,4 @@ async def classify_accounts(
         return []
     finally:
         if or_client is not None:
-            await or_client.close()
+            await or_client.close() if hasattr(or_client, 'close') else await or_client.aclose()
