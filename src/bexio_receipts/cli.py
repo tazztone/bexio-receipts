@@ -231,17 +231,29 @@ def init(
             settings = Settings()
 
             async def _dry_run():
-                from .extraction import extract_receipt
-                from .ocr import async_run_ocr
+                from .models import RawReceipt, RawVatRow
+                from .pipeline import assemble_receipt, get_processor
 
-                with console.status("[bold green]Running demo OCR..."):
-                    raw_text, conf, _ = await async_run_ocr(str(target), settings)
-                console.print(f"  - OCR Confidence: [bold]{conf:.1%}[/bold]")
-                import httpx
+                processor = get_processor(settings)
+                with console.status(
+                    f"[bold green]Running demo ({settings.processor_mode})..."
+                ):
+                    result = await processor.process(str(target), settings)
 
-                with console.status("[bold blue]Extracting demo data..."):
-                    async with httpx.AsyncClient() as client:
-                        receipt, _ = await extract_receipt(raw_text, settings, client)
+                console.print(f"  - Confidence: [bold]{result.confidence:.1%}[/bold]")
+
+                raw_receipt = RawReceipt(
+                    merchant_name=result.merchant_name,
+                    transaction_date=result.transaction_date,
+                    total_incl_vat=result.total_incl_vat,
+                    currency=result.currency,
+                    vat_rows=[
+                        RawVatRow(**v) if isinstance(v, dict) else v
+                        for v in result.vat_rows
+                    ],
+                    account_assignments=result.account_assignments,
+                )
+                receipt = assemble_receipt(raw_receipt)
                 console.print(
                     f"  - Detected Merchant: [bold]{receipt.merchant_name}[/bold]"
                 )
@@ -282,27 +294,52 @@ async def _process_interactive(
 ):
     """Internal helper for CLI processing."""
     if dry_run:
-        from .extraction import extract_receipt
-        from .ocr import async_run_ocr
+        from .models import RawReceipt, RawVatRow
+        from .pipeline import assemble_receipt, get_processor
         from .validation import validate_receipt
 
-        with console.status("[bold green]Running OCR..."):
-            raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
-        console.print(f"\n[bold]OCR Confidence:[/bold] {avg_confidence:.1%}")
-        console.print(f"\n[bold]Raw OCR Text:[/bold]\n{raw_text}\n")
+        processor = get_processor(settings)
+        with console.status(f"[bold green]Processing via {settings.processor_mode}..."):
+            result = await processor.process(file_path, settings)
 
-        import httpx
+        console.print(f"\n[bold]Confidence:[/bold] {result.confidence:.1%}")
+        console.print(f"\n[bold]Raw Text:[/bold]\n{result.raw_text}\n")
 
-        with console.status("[bold blue]Extracting data via LLM..."):
-            async with httpx.AsyncClient() as client:
-                receipt, _ = await extract_receipt(raw_text, settings, client=client)
+        raw_receipt = RawReceipt(
+            merchant_name=result.merchant_name,
+            transaction_date=result.transaction_date,
+            total_incl_vat=result.total_incl_vat,
+            currency=result.currency,
+            vat_rows=[
+                RawVatRow(**v) if isinstance(v, dict) else v for v in result.vat_rows
+            ],
+            account_assignments=result.account_assignments,
+        )
+        receipt = assemble_receipt(raw_receipt)
 
         table = Table(title="Extracted Data (Dry Run)", show_header=True)
         table.add_column("Field", style="cyan")
         table.add_column("Value", style="magenta")
 
         for field, value in receipt.model_dump().items():
-            table.add_row(field, str(value))
+            if field == "vat_breakdown" and value:
+                table.add_row(
+                    field,
+                    "\n".join([
+                        f"{v['rate']}%: {v['total_incl_vat']} (VAT: {v['vat_amount']})"
+                        for v in value
+                    ]),
+                )
+            elif field == "account_assignments" and value:
+                table.add_row(
+                    field,
+                    "\n".join([
+                        f"{a['vat_rate']}% -> {a['account_id']} ({a['reasoning']})"
+                        for a in value
+                    ]),
+                )
+            else:
+                table.add_row(field, str(value))
         console.print(table)
 
         with console.status("[bold yellow]Validating..."):
@@ -348,11 +385,11 @@ async def _process_interactive(
                 )
 
         with console.status("[bold green]Processing receipt..."):
-            result = await process_receipt(
+            final_result = await process_receipt(
                 file_path, settings, client, db, push_confirmed=push
             )
         console.print(
-            f"\n[bold]Final Result:[/bold]\n{json.dumps(result, indent=2, default=str)}"
+            f"\n[bold]Final Result:[/bold]\n{json.dumps(final_result, indent=2, default=str)}"
         )
 
 

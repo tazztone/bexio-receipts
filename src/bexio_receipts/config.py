@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     bexio_api_token: str = "offline"
     bexio_base_url: str = "https://api.bexio.com"
 
-    # OCR Settings
+    # Processor mode
+    processor_mode: str = "vision"  # "vision" or "ocr"
+
+    # OCR Settings (Fallback/Legacy)
     # GLM-OCR SDK (self-hosted via vLLM/SGLang)
     glm_ocr_api_host: str = "localhost"
     glm_ocr_api_port: int = 8080
@@ -23,12 +26,30 @@ class Settings(BaseSettings):
     glm_ocr_connect_timeout: int = 120  # wait for vLLM to be ready
     glm_ocr_request_timeout: int = 180  # per-image inference budget
     glm_ocr_max_tokens: int = 4096  # limit output to leave room for prompt
-
-    # vLLM Managed Server Settings
     glm_ocr_manage_server: bool = True
     glm_ocr_vllm_gpu_memory_utilization: float = 0.2
     glm_ocr_vllm_max_num_seqs: int = 1
     glm_ocr_vllm_max_model_len: int = 8192
+
+    # Vision Model Settings (Qwen3.6 via vLLM)
+    vision_model: str = "tclf90/Qwen3.6-35B-A3B-AWQ"
+    vision_served_name: str = "qwen3.6"
+    vision_api_host: str = "localhost"
+    vision_api_port: int = 8000
+    vision_manage_server: bool = True
+    vision_timeout: int = 300
+    vision_connect_timeout: int = 120
+    vision_request_timeout: int = 180
+    vision_max_model_len: int = 32768
+    vision_gpu_memory_utilization: float = 0.9
+    vision_max_num_seqs: int = 32
+    vision_quantization: str = "awq"
+    vision_tensor_parallel_size: int = 4
+    vision_enable_expert_parallel: bool = True
+    vision_reasoning_parser: str = "qwen3"
+    vision_speculative_config: str = (
+        '{"method":"qwen3_next_mtp","num_speculative_tokens":2}'
+    )
 
     # LLM Settings
     llm_provider: str = "ollama"  # or "openai", "openrouter"

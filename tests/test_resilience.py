@@ -6,6 +6,7 @@ import pytest
 from bexio_receipts.bexio_client import BexioClient
 from bexio_receipts.config import Settings
 from bexio_receipts.database import DuplicateDetector
+from bexio_receipts.document_processor import ProcessingResult
 from bexio_receipts.pipeline import process_receipt
 
 
@@ -74,41 +75,33 @@ async def test_full_pipeline_offline(mock_settings, temp_db, tmp_path):
         from unittest.mock import patch
 
         with (
-            patch(
-                "bexio_receipts.pipeline.async_run_ocr",
-                return_value=("extracted text", 0.9, []),
-            ),
-            patch(
-                "bexio_receipts.pipeline.classify_accounts",
-                return_value=[],
-            ),
+            patch("bexio_receipts.pipeline.get_processor") as mock_get_processor,
         ):
             from datetime import date
 
             from bexio_receipts.extraction import ExtractionTrace
-            from bexio_receipts.models import Receipt
 
-            with patch(
-                "bexio_receipts.pipeline.extract_receipt",
-                return_value=(
-                    Receipt(
-                        merchant_name="Test",
-                        total_incl_vat=10.0,
-                        transaction_date=date.today(),
-                    ),
-                    ExtractionTrace(),
-                ),
-            ):
-                # Mock upload_file to fail (simulating no connectivity)
-                mock_bexio.upload_file.side_effect = Exception("No connectivity")
+            mock_processor = AsyncMock()
+            mock_get_processor.return_value = mock_processor
+            mock_processor.process.return_value = ProcessingResult(
+                raw_text="extracted text",
+                merchant_name="Test",
+                transaction_date=date.today().isoformat(),
+                total_incl_vat=10.0,
+                confidence=0.9,
+                trace=ExtractionTrace(),
+            )
 
-                result = await process_receipt(
-                    str(receipt_path), mock_settings, mock_bexio, temp_db
-                )
+            # Mock upload_file to fail (simulating no connectivity)
+            mock_bexio.upload_file.side_effect = Exception("No connectivity")
 
-                # Should fallback to review instead of crashing
-                assert result["status"] == "review"
-                assert "review_file" in result
+            result = await process_receipt(
+                str(receipt_path), mock_settings, mock_bexio, temp_db
+            )
+
+            # Should fallback to review instead of crashing
+            assert result["status"] == "review"
+            assert "review_file" in result
 
 
 @pytest.mark.asyncio
@@ -126,42 +119,38 @@ async def test_push_safety_gate_pipeline(mock_settings, temp_db, tmp_path):
     with tempfile.TemporaryDirectory() as review_dir:
         mock_settings.review_dir = review_dir
         with (
-            patch(
-                "bexio_receipts.pipeline.async_run_ocr", return_value=("text", 0.9, [])
-            ),
-            patch("bexio_receipts.pipeline.classify_accounts", return_value=[]),
+            patch("bexio_receipts.pipeline.get_processor") as mock_get_processor,
         ):
             from datetime import date
 
             from bexio_receipts.extraction import ExtractionTrace
-            from bexio_receipts.models import Receipt
 
-            with patch(
-                "bexio_receipts.pipeline.extract_receipt",
-                return_value=(
-                    Receipt(
-                        merchant_name="T",
-                        total_incl_vat=1.0,
-                        transaction_date=date.today(),
-                    ),
-                    ExtractionTrace(),
-                ),
-            ):
-                result = await process_receipt(
-                    str(receipt_path), mock_settings, mock_bexio, temp_db
-                )
+            mock_processor = AsyncMock()
+            mock_get_processor.return_value = mock_processor
+            mock_processor.process.return_value = ProcessingResult(
+                raw_text="text",
+                merchant_name="T",
+                transaction_date=date.today().isoformat(),
+                total_incl_vat=1.0,
+                confidence=0.9,
+                trace=ExtractionTrace(),
+            )
 
-                assert result["status"] == "review"
-                # Check that failed_stage is safety_gate
-                import json
+            result = await process_receipt(
+                str(receipt_path), mock_settings, mock_bexio, temp_db
+            )
 
-                with open(result["review_file"]) as f:
-                    review_data = json.load(f)
-                    assert review_data["failed_stage"] == "safety_gate"
+            assert result["status"] == "review"
+            # Check that failed_stage is safety_gate
+            import json
 
-                # Verify no write calls were made
-                assert mock_bexio.upload_file.call_count == 0
-                assert mock_bexio.create_purchase_bill.call_count == 0
+            with open(result["review_file"]) as f:
+                review_data = json.load(f)
+                assert review_data["failed_stage"] == "safety_gate"
+
+            # Verify no write calls were made
+            assert mock_bexio.upload_file.call_count == 0
+            assert mock_bexio.create_purchase_bill.call_count == 0
 
 
 def test_cli_push_gate_hierarchy():

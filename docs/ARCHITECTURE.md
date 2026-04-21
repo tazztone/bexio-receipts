@@ -18,12 +18,15 @@ graph TD
     subgraph Processing
         P --> DB_Hash[SHA-256 Check]
         DB_Hash -- Duplicate --> Skip[Skip]
-        DB_Hash -- New --> OCR_SDK[GLM-OCR SDK]
-        OCR_SDK -- Layout Analysis --> PP_DocLayout[PP-DocLayoutV3]
-        PP_DocLayout -- PDF/Image --> LLM_S1[Step 1: Searcher]
+        DB_Hash -- New --> DP{DocumentProcessor}
+        DP -- "vision (default)" --> VLM[Qwen3.6 VLM]
+        DP -- "ocr (fallback)" --> OCR_SDK[GLM-OCR SDK]
+        VLM --> PR[ProcessingResult]
+        OCR_SDK --> LLM_S1[Step 1: Searcher]
         LLM_S1 --> LLM_S2[Step 2: VAT Assigner]
         LLM_S2 --> LLM_S3[Step 3: Account Classifier]
-        LLM_S3 --> VAL[Validation]
+        LLM_S3 --> PR
+        PR --> VAL[Validation]
     end
 
     subgraph Review_and_Integration
@@ -45,16 +48,14 @@ graph TD
 - **Watcher**: Uses `watchdog` to monitor filesystem events.
 - **GDrive**: Uses Google Drive API (v3) to poll and move files.
 
-### 2. Text Extraction Layer (`ocr.py`)
-- **GLM-OCR SDK**: Uses the official `glmocr` SDK with a self-hosted vLLM backend.
-- **PP-DocLayoutV3**: The SDK utilizes high-fidelity layout analysis locally on the `bexio-receipts` host.
-- **Managed Lifecycle**: The application includes built-in lifecycle management for the OCR server. It automatically starts/stops the vllm process based on port availability (port 8080 by default) and the `GLM_OCR_MANAGE_SERVER` setting.
-- **Native PDF Support**: Handles digital and scanned PDFs natively within the SDK.
+### 2. Document Processing Layer (`document_processor.py`)
+- **Strategy Pattern**: The pipeline supports multiple extraction strategies, selectable via `processor_mode` ("vision" or "ocr").
+- **Vision Strategy (Default)**: Uses **Qwen3.6-35B-A3B** (multimodal vision-language model) served via vLLM. It performs single-pass extraction of all receipt fields directly from images or PDF text.
+- **OCR Strategy (Fallback)**: Uses the **GLM-OCR SDK** for layout analysis and text extraction, followed by a multi-step LLM pipeline for data structuring.
+- **Native PDF Support**: Digital PDFs have text extracted via `pymupdf` and sent as text input, avoiding lossy image conversion.
 
-### 3. OCR Inference Backend (vLLM)
-The OCR inference is performed by a separate **vLLM** process running the `zai-org/GLM-OCR` model. This process can be:
-- **Managed**: Automatically started in the background by `bexio-receipts`.
-- **Standalone**: Run manually via Docker or as a system service (recommended for dedicated GPU hosts).
+### 3. vLLM Inference Backend (`vllm_server.py`)
+Both strategies utilize a local **vLLM** inference engine. The application provides unified lifecycle management to start/stop the server based on the active strategy and hardware constraints (RTX 3090 optimized).
 
 ### 4. Extraction Layer (`extraction.py`)
 - **Pydantic AI**: Orchestrates the three-step LLM pipeline:

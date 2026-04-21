@@ -4,12 +4,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import bexio_receipts.ocr
+import bexio_receipts.vllm_server
 from bexio_receipts.ocr import (
-    _is_port_open,
     async_run_ocr,
     close_ocr_parser,
     get_ocr_parser,
 )
+from bexio_receipts.vllm_server import is_port_open
 
 
 @pytest.mark.asyncio
@@ -79,64 +80,58 @@ def test_is_port_open():
         mock_sock_inst = MagicMock()
         mock_socket.return_value.__enter__.return_value = mock_sock_inst
         mock_sock_inst.connect_ex.return_value = 0
-        assert _is_port_open("localhost", 1234)
+        assert is_port_open("localhost", 1234)
 
         mock_sock_inst.connect_ex.return_value = 1
-        assert not _is_port_open("localhost", 1234)
+        assert not is_port_open("localhost", 1234)
 
 
 def test_get_ocr_parser(test_settings):
     # reset global state
     bexio_receipts.ocr._ocr_parser = None
-    bexio_receipts.ocr._vllm_process = None
+    bexio_receipts.vllm_server._vllm_process = None
 
     test_settings.glm_ocr_manage_server = True
     test_settings.glm_ocr_api_host = "localhost"
     test_settings.glm_ocr_api_port = 1234
 
     with (
-        patch("bexio_receipts.ocr._is_port_open", return_value=False),
-        patch("subprocess.Popen") as mock_popen,
+        patch("bexio_receipts.ocr.start_vllm_server") as mock_start,
         patch("time.sleep"),
         patch("bexio_receipts.ocr.GlmOcr") as mock_glm,
     ):
-        mock_popen_inst = MagicMock()
-        mock_popen.return_value = mock_popen_inst
-
         mock_glm_inst = MagicMock()
         mock_glm.return_value = mock_glm_inst
 
         parser = get_ocr_parser(test_settings)
         assert parser is mock_glm_inst
         mock_glm_inst.__enter__.assert_called_once()
-        mock_popen.assert_called_once()
+        mock_start.assert_called_once()
 
     # close parser
-    with patch("bexio_receipts.ocr.logger"):
+    with patch("bexio_receipts.ocr.stop_vllm_server") as mock_stop:
         close_ocr_parser()
 
         assert bexio_receipts.ocr._ocr_parser is None
-        assert bexio_receipts.ocr._vllm_process is None
         mock_glm_inst.__exit__.assert_called_once()
-        mock_popen_inst.terminate.assert_called_once()
+        mock_stop.assert_called_once()
 
 
 def test_close_ocr_parser_exceptions(test_settings):
     bexio_receipts.ocr._ocr_parser = MagicMock()
     bexio_receipts.ocr._ocr_parser.__exit__.side_effect = Exception("test exit error")
 
-    bexio_receipts.ocr._vllm_process = MagicMock()
+    bexio_receipts.vllm_server._vllm_process = MagicMock()
     import subprocess
 
-    bexio_receipts.ocr._vllm_process.wait.side_effect = subprocess.TimeoutExpired(
-        cmd="", timeout=5
+    bexio_receipts.vllm_server._vllm_process.wait.side_effect = (
+        subprocess.TimeoutExpired(cmd="", timeout=5)
     )
 
-    with patch("bexio_receipts.ocr.logger"):
+    with patch("bexio_receipts.ocr.stop_vllm_server"):
         close_ocr_parser()
 
     assert bexio_receipts.ocr._ocr_parser is None
-    assert bexio_receipts.ocr._vllm_process is None
 
 
 def test_sync_run_ocr_fallback_metadata(test_settings):

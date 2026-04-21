@@ -12,14 +12,12 @@ import structlog
 from .bexio_client import BexioClient
 from .config import Settings
 from .database import DuplicateDetector as Database
+from .document_processor import get_processor
 from .extraction import (
-    ExtractionError,
     ExtractionTrace,
-    classify_accounts,
-    extract_receipt,
+    assemble_receipt,
 )
-from .models import Receipt
-from .ocr import async_run_ocr
+from .models import RawReceipt, Receipt
 from .validation import validate_receipt
 
 logger = structlog.get_logger(__name__)
@@ -118,83 +116,63 @@ async def process_receipt(
         )
         return {"status": "duplicate", "expense_id": existing_id}
 
-    # 1. OCR / One-shot Extraction
-    logger.info("Running OCR/Extraction", path=file_path)
-    avg_confidence: float = 0.0
+    # 1. Process Receipt (Vision or OCR)
+    logger.info("Processing receipt", path=file_path, mode=settings.processor_mode)
+    processor = get_processor(settings)
+
     try:
-        raw_text, avg_confidence, _ = await async_run_ocr(file_path, settings)
+        result = await processor.process(file_path, settings)
+        raw_text = result.raw_text
+        avg_confidence = result.confidence
+        trace = result.trace
+        assignments = result.account_assignments
     except (TimeoutError, httpx.TimeoutException):
-        error_msg = "OCR stage timed out"
+        error_msg = f"{settings.processor_mode} stage timed out"
         logger.error(error_msg, path=file_path)
         return await send_to_review(
-            file_path, "", [error_msg], settings, failed_stage="ocr"
+            file_path, "", [error_msg], settings, failed_stage=settings.processor_mode
         )
     except Exception as e:
-        error_msg = f"OCR failed: {e!s}"
+        error_msg = f"{settings.processor_mode} failed: {e!s}"
         logger.error(error_msg, path=file_path)
+        # Try to get trace from ExtractionError if it was raised in OcrProcessor
+        trace_obj = getattr(e, "trace", None)
         return await send_to_review(
-            file_path, "", [error_msg], settings, failed_stage="ocr"
+            file_path,
+            "",
+            [error_msg],
+            settings,
+            failed_stage=settings.processor_mode,
+            trace=trace_obj,
         )
 
-    # Initialize structured trace after OCR
-    trace = ExtractionTrace(ocr_text=raw_text)
+    # 2. Assemble Receipt model
+    logger.info("Assembling receipt data")
+    raw_receipt = RawReceipt(
+        merchant_name=result.merchant_name,
+        transaction_date=result.transaction_date,
+        currency=result.currency,
+        total_incl_vat=result.total_incl_vat,
+        vat_rows=result.vat_rows,
+        account_assignments=result.account_assignments,
+        payment_method=result.payment_method,
+    )
 
-    # 2. Extract structured data
-    logger.info("Extracting data via LLM", model=settings.llm_model)
-
-    # Save OCR text for audit/debugging even on success
     try:
-        ocr_file = Path(file_path).with_suffix(".ocr.md")
-        ocr_file.write_text(raw_text)
-    except Exception as e:
-        logger.warning("Failed to save audit OCR file", error=str(e))
-
-    receipt = None
-    try:
-        receipt, trace = await extract_receipt(raw_text, settings)
-    except (TimeoutError, httpx.TimeoutException):
-        error_msg = "LLM extraction stage timed out"
+        receipt = assemble_receipt(raw_receipt)
+    except ValueError as e:
+        error_msg = f"Data assembly failed: {e!s}"
         logger.error(error_msg, path=file_path)
         return await send_to_review(
             file_path,
             raw_text,
             [error_msg],
             settings,
-            ocr_confidence=avg_confidence,
-            failed_stage="extraction",
-        )
-    except ExtractionError as e:
-        logger.error(
-            "LLM extraction failed",
-            error=str(e),
-            trace=e.trace.model_dump() if e.trace else None,
-        )
-        return await send_to_review(
-            file_path,
-            raw_text,
-            [f"LLM extraction failed: {e!s}"],
-            settings,
-            ocr_confidence=avg_confidence,
-            failed_stage="extraction",
-            trace=e.trace,
-        )
-    except Exception as e:
-        logger.error("Unexpected error during extraction", error=str(e))
-        return await send_to_review(
-            file_path,
-            raw_text,
-            [f"Unexpected error: {e!s}"],
-            settings,
-            ocr_confidence=avg_confidence,
-            failed_stage="extraction",
+            failed_stage="assembly",
+            trace=trace,
         )
 
-    # 3. Step 3: Account Classification (Post-Extraction)
-    logger.info("Classifying accounts via LLM", merchant=receipt.merchant_name)
-    assignments = await classify_accounts(receipt, raw_text, settings, trace=trace)
-    trace.step3_assignments = [a.model_dump() for a in assignments]
-
-    # 4. Validation
+    # 3. Validation
     logger.info("Validating extracted data")
     errors, warnings = validate_receipt(receipt, settings)
     if errors:

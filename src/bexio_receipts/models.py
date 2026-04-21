@@ -6,8 +6,23 @@ Defines the structure of receipt data and internal state.
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class AccountAssignment(BaseModel):
+    vat_rate: float  # 2.6 or 8.1
+    account_id: str  # "4200"
+    account_name: str  # "Einkauf Handelsware"
+    confidence: Literal["high", "medium", "low"]
+    reasoning: str  # one sentence — for review queue visibility
+
+
+class AccountAssignments(BaseModel):
+    """Wrapper for list[AccountAssignment] as pydantic-ai doesn't support bare lists for some models."""
+
+    assignments: list[AccountAssignment]
 
 
 class LineItem(BaseModel):
@@ -38,6 +53,7 @@ class RawReceipt(BaseModel):
     currency: str = "CHF"
     total_incl_vat: float | None = None
     vat_rows: list[RawVatRow] = []
+    account_assignments: list[AccountAssignment] = []
     payment_method: str | None = None
 
 
@@ -100,6 +116,9 @@ class Receipt(BaseModel):
     vat_breakdown: list[VatEntry] = Field(
         default_factory=list,
         description="Breakdown of VAT per rate found on the receipt",
+    )
+    account_assignments: list[AccountAssignment] = Field(
+        default_factory=list, description="Suggested booking accounts per VAT rate"
     )
     line_items: list[LineItem] | None = None
     payment_method: str | None = None  # card/cash/twint etc.

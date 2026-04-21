@@ -3,7 +3,6 @@ Logic for extracting structured receipt data from OCR text using Pydantic AI.
 """
 
 import re
-from typing import Literal
 
 import httpx
 import structlog
@@ -26,6 +25,8 @@ from tenacity import (
 
 from .config import Settings
 from .models import (
+    AccountAssignment,
+    AccountAssignments,
     IntermediateReceipt,
     RawReceipt,
     RawVatRow,
@@ -35,20 +36,6 @@ from .models import (
 )
 
 logger = structlog.get_logger(__name__)
-
-
-class AccountAssignment(BaseModel):
-    vat_rate: float  # 2.6 or 8.1
-    account_id: str  # "4200"
-    account_name: str  # "Einkauf Handelsware"
-    confidence: Literal["high", "medium", "low"]
-    reasoning: str  # one sentence — for review queue visibility
-
-
-class AccountAssignments(BaseModel):
-    """Wrapper for list[AccountAssignment] as pydantic-ai doesn't support bare lists for some models."""
-
-    assignments: list[AccountAssignment]
 
 
 class ExtractionTrace(BaseModel):
@@ -232,6 +219,7 @@ def assemble_receipt(raw: RawReceipt) -> Receipt:
         vat_amount=sum_vat if vat_entries else None,
         subtotal_excl_vat=sum_base if vat_entries else None,
         vat_breakdown=vat_entries,
+        account_assignments=raw.account_assignments,
         payment_method=raw.payment_method,
     )
 

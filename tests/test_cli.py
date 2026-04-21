@@ -13,25 +13,24 @@ def test_cli_process_dry_run(tmp_path, test_settings):
     img_file.write_text("fake image content")
 
     with patch("bexio_receipts.cli.Settings", return_value=test_settings):
-        # Patch the underlying functions instead of process_file
-        with patch(
-            "bexio_receipts.ocr.async_run_ocr", new_callable=AsyncMock
-        ) as mock_ocr:
-            mock_ocr.return_value = ("raw text", 0.9, [])
-            with patch(
-                "bexio_receipts.extraction.extract_receipt", new_callable=AsyncMock
-            ) as mock_extract:
-                from bexio_receipts.models import Receipt
+        # Patch the underlying functions via the processor
+        with patch("bexio_receipts.pipeline.get_processor") as mock_get:
+            mock_processor = AsyncMock()
+            mock_get.return_value = mock_processor
+            from bexio_receipts.document_processor import ProcessingResult
+            from bexio_receipts.extraction import ExtractionTrace
 
-                mock_extract.return_value = (
-                    Receipt(merchant_name="Test", total_incl_vat=10.0),
-                    "raw",
-                )
+            mock_processor.process.return_value = ProcessingResult(
+                raw_text="raw text",
+                merchant_name="Test",
+                total_incl_vat=10.0,
+                confidence=0.9,
+                trace=ExtractionTrace(),
+            )
 
-                result = runner.invoke(app, ["process", str(img_file), "--dry-run"])
-                assert result.exit_code == 0
-                mock_ocr.assert_called_once()
-                mock_extract.assert_called_once()
+            result = runner.invoke(app, ["process", str(img_file), "--dry-run"])
+            assert result.exit_code == 0
+            mock_processor.process.assert_called_once()
 
 
 def test_cli_process_real(tmp_path, test_settings):
@@ -147,26 +146,24 @@ def test_cli_init_quickstart(tmp_path, test_settings):
         mock_path.side_effect = path_side_effect
 
         with patch("shutil.copy"):
-            with patch(
-                "bexio_receipts.ocr.async_run_ocr", new_callable=AsyncMock
-            ) as mock_ocr:
-                mock_ocr.return_value = ("raw", 0.9, [])
-                with patch(
-                    "bexio_receipts.extraction.extract_receipt", new_callable=AsyncMock
-                ) as mock_ext:
-                    from bexio_receipts.models import Receipt
+            with patch("bexio_receipts.pipeline.get_processor") as mock_get:
+                mock_processor = AsyncMock()
+                mock_get.return_value = mock_processor
+                from bexio_receipts.document_processor import ProcessingResult
+                from bexio_receipts.extraction import ExtractionTrace
 
-                    mock_ext.return_value = (
-                        Receipt(merchant_name="Test", total_incl_vat=10.0),
-                        "raw",
-                    )
+                mock_processor.process.return_value = ProcessingResult(
+                    raw_text="raw",
+                    merchant_name="Test",
+                    total_incl_vat=10.0,
+                    confidence=0.9,
+                    trace=ExtractionTrace(),
+                )
 
-                    with patch(
-                        "bexio_receipts.cli.Settings", return_value=test_settings
-                    ):
-                        result = runner.invoke(app, ["init", "--quickstart"])
-                        assert result.exit_code == 0
-                        assert "Quickstart complete" in result.stdout
+                with patch("bexio_receipts.cli.Settings", return_value=test_settings):
+                    result = runner.invoke(app, ["init", "--quickstart"])
+                    assert result.exit_code == 0
+                    assert "Quickstart complete" in result.stdout
 
 
 def test_cli_file_not_found(test_settings):

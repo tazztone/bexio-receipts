@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from bexio_receipts.database import DuplicateDetector
+from bexio_receipts.document_processor import ProcessingResult
 from bexio_receipts.extraction import ExtractionTrace
 from bexio_receipts.models import Receipt
 from bexio_receipts.pipeline import (
@@ -63,11 +64,9 @@ async def test_process_receipt_duplicate(mock_db, tmp_path, test_settings):
 
 
 @pytest.mark.asyncio
-@patch("bexio_receipts.pipeline.async_run_ocr")
-@patch("bexio_receipts.pipeline.extract_receipt")
-@patch("bexio_receipts.pipeline.classify_accounts")
+@patch("bexio_receipts.pipeline.get_processor")
 async def test_process_receipt_success(
-    mock_classify, mock_extract, mock_ocr, mock_db, tmp_path, test_settings
+    mock_get_processor, mock_db, tmp_path, test_settings
 ):
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
@@ -76,14 +75,18 @@ async def test_process_receipt_success(
     bexio_client.upload_file.return_value = "file-uuid"
     bexio_client.create_purchase_bill.return_value = {"id": 100}
 
-    mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.return_value = (
-        Receipt(
-            merchant_name="Migros", transaction_date=date.today(), total_incl_vat=10.0
-        ),
-        ExtractionTrace(),
+    mock_processor = AsyncMock()
+    mock_get_processor.return_value = mock_processor
+
+    mock_processor.process.return_value = ProcessingResult(
+        raw_text="Test Text",
+        merchant_name="Migros",
+        transaction_date=date.today().isoformat(),
+        total_incl_vat=10.0,
+        confidence=0.95,
+        trace=ExtractionTrace(),
+        account_assignments=[],
     )
-    mock_classify.return_value = []
 
     result = await process_receipt(
         str(test_file), test_settings, bexio_client, mock_db, push_confirmed=True
@@ -98,60 +101,70 @@ async def test_process_receipt_success(
 
 
 @pytest.mark.asyncio
-@patch("bexio_receipts.pipeline.async_run_ocr")
+@patch("bexio_receipts.pipeline.get_processor")
 async def test_process_receipt_low_confidence(
-    mock_ocr, mock_db, tmp_path, test_settings
+    mock_get_processor, mock_db, tmp_path, test_settings
 ):
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
 
     bexio_client = AsyncMock()
 
-    mock_ocr.return_value = ("Test Text", 0.5, None)
+    mock_processor = AsyncMock()
+    mock_get_processor.return_value = mock_processor
+
+    # Validation will catch low confidence
+
+    mock_processor.process.return_value = ProcessingResult(
+        raw_text="Test Text",
+        confidence=0.5,
+        trace=ExtractionTrace(),
+    )
 
     result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
+    # Status will be review if validation fails or if there are errors.
+    # With confidence 0.5, validate_receipt might flag it.
     assert result["status"] == "review"
 
 
 @pytest.mark.asyncio
-@patch("bexio_receipts.pipeline.async_run_ocr")
-@patch("bexio_receipts.pipeline.extract_receipt")
-@patch("bexio_receipts.pipeline.classify_accounts")
+@patch("bexio_receipts.pipeline.get_processor")
 async def test_process_receipt_extraction_failed(
-    mock_classify, mock_extract, mock_ocr, mock_db, tmp_path, test_settings
+    mock_get_processor, mock_db, tmp_path, test_settings
 ):
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
 
     bexio_client = AsyncMock()
 
-    mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.side_effect = Exception("Extraction failed")
+    mock_processor = AsyncMock()
+    mock_get_processor.return_value = mock_processor
+    mock_processor.process.side_effect = Exception("Extraction failed")
 
     result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
     assert result["status"] == "review"
 
 
 @pytest.mark.asyncio
-@patch("bexio_receipts.pipeline.async_run_ocr")
-@patch("bexio_receipts.pipeline.extract_receipt")
-@patch("bexio_receipts.pipeline.classify_accounts")
+@patch("bexio_receipts.pipeline.get_processor")
 async def test_process_receipt_validation_failed(
-    mock_classify, mock_extract, mock_ocr, mock_db, tmp_path, test_settings
+    mock_get_processor, mock_db, tmp_path, test_settings
 ):
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
 
     bexio_client = AsyncMock()
 
-    mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.return_value = (
-        Receipt(
-            merchant_name="Migros",
-            transaction_date=date.today(),
-            total_incl_vat=-10.0,  # triggers validation error
-        ),
-        ExtractionTrace(),
+    mock_processor = AsyncMock()
+    mock_get_processor.return_value = mock_processor
+
+    mock_processor.process.return_value = ProcessingResult(
+        raw_text="Test Text",
+        merchant_name="Migros",
+        transaction_date=date.today().isoformat(),
+        total_incl_vat=-10.0,  # triggers validation error
+        confidence=0.95,
+        trace=ExtractionTrace(),
     )
 
     result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
@@ -159,11 +172,9 @@ async def test_process_receipt_validation_failed(
 
 
 @pytest.mark.asyncio
-@patch("bexio_receipts.pipeline.async_run_ocr")
-@patch("bexio_receipts.pipeline.extract_receipt")
-@patch("bexio_receipts.pipeline.classify_accounts")
+@patch("bexio_receipts.pipeline.get_processor")
 async def test_process_receipt_no_merchant(
-    mock_classify, mock_extract, mock_ocr, mock_db, tmp_path, test_settings
+    mock_get_processor, mock_db, tmp_path, test_settings
 ):
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
@@ -172,10 +183,16 @@ async def test_process_receipt_no_merchant(
     bexio_client.upload_file.return_value = "file-uuid"
     bexio_client.create_expense.return_value = {"id": 200}
 
-    mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.return_value = (
-        Receipt(merchant_name=None, transaction_date=date.today(), total_incl_vat=10.0),
-        ExtractionTrace(),
+    mock_processor = AsyncMock()
+    mock_get_processor.return_value = mock_processor
+
+    mock_processor.process.return_value = ProcessingResult(
+        raw_text="Test Text",
+        merchant_name=None,
+        transaction_date=date.today().isoformat(),
+        total_incl_vat=10.0,
+        confidence=0.95,
+        trace=ExtractionTrace(),
     )
 
     result = await process_receipt(
@@ -186,10 +203,9 @@ async def test_process_receipt_no_merchant(
 
 
 @pytest.mark.asyncio
-@patch("bexio_receipts.pipeline.async_run_ocr")
-@patch("bexio_receipts.pipeline.extract_receipt")
+@patch("bexio_receipts.pipeline.get_processor")
 async def test_process_receipt_file_not_found(
-    mock_extract, mock_ocr, mock_db, tmp_path, test_settings
+    mock_get_processor, mock_db, tmp_path, test_settings
 ):
     bexio_client = AsyncMock()
     result = await process_receipt(
@@ -200,11 +216,9 @@ async def test_process_receipt_file_not_found(
 
 
 @pytest.mark.asyncio
-@patch("bexio_receipts.pipeline.async_run_ocr")
-@patch("bexio_receipts.pipeline.extract_receipt")
-@patch("bexio_receipts.pipeline.classify_accounts")
+@patch("bexio_receipts.pipeline.get_processor")
 async def test_process_receipt_bexio_error(
-    mock_classify, mock_extract, mock_ocr, mock_db, tmp_path, test_settings
+    mock_get_processor, mock_db, tmp_path, test_settings
 ):
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
@@ -212,12 +226,16 @@ async def test_process_receipt_bexio_error(
     bexio_client = AsyncMock()
     bexio_client.upload_file.side_effect = Exception("API down")
 
-    mock_ocr.return_value = ("Test Text", 0.95, None)
-    mock_extract.return_value = (
-        Receipt(
-            merchant_name="Migros", transaction_date=date.today(), total_incl_vat=10.0
-        ),
-        ExtractionTrace(),
+    mock_processor = AsyncMock()
+    mock_get_processor.return_value = mock_processor
+
+    mock_processor.process.return_value = ProcessingResult(
+        raw_text="Test Text",
+        merchant_name="Migros",
+        transaction_date=date.today().isoformat(),
+        total_incl_vat=10.0,
+        confidence=0.95,
+        trace=ExtractionTrace(),
     )
 
     result = await process_receipt(
@@ -251,9 +269,9 @@ async def test_send_to_review(tmp_path, test_settings):
 
 
 @pytest.mark.asyncio
-@patch("bexio_receipts.pipeline.async_run_ocr")
+@patch("bexio_receipts.pipeline.get_processor")
 async def test_process_receipt_unsupported_mime(
-    mock_ocr, tmp_path, test_settings, mock_db
+    mock_get_processor, tmp_path, test_settings, mock_db
 ):
     import json
 
@@ -261,7 +279,10 @@ async def test_process_receipt_unsupported_mime(
     test_file.write_text("unsupported")
 
     bexio_client = AsyncMock()
-    mock_ocr.side_effect = Exception("cannot identify image file")
+
+    mock_processor = AsyncMock()
+    mock_get_processor.return_value = mock_processor
+    mock_processor.process.side_effect = Exception("cannot identify image file")
 
     result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
     assert result["status"] == "review"
@@ -272,14 +293,18 @@ async def test_process_receipt_unsupported_mime(
 
 
 @pytest.mark.asyncio
-@patch("bexio_receipts.pipeline.async_run_ocr")
-async def test_process_receipt_ocr_timeout(mock_ocr, tmp_path, test_settings, mock_db):
+@patch("bexio_receipts.pipeline.get_processor")
+async def test_process_receipt_ocr_timeout(
+    mock_get_processor, tmp_path, test_settings, mock_db
+):
     import json
 
     test_file = tmp_path / "test.png"
     test_file.write_text("dummy")
 
-    mock_ocr.side_effect = TimeoutError()
+    mock_processor = AsyncMock()
+    mock_get_processor.return_value = mock_processor
+    mock_processor.process.side_effect = TimeoutError()
 
     bexio_client = AsyncMock()
     result = await process_receipt(str(test_file), test_settings, bexio_client, mock_db)
@@ -287,4 +312,7 @@ async def test_process_receipt_ocr_timeout(mock_ocr, tmp_path, test_settings, mo
 
     with open(result["review_file"]) as f:
         review_data = json.load(f)
-        assert "OCR stage timed out" in review_data["errors"][0]
+        assert (
+            "vision stage timed out" in review_data["errors"][0].lower()
+            or "ocr stage timed out" in review_data["errors"][0].lower()
+        )
