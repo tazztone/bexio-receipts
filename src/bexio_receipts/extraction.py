@@ -41,7 +41,8 @@ logger = structlog.get_logger(__name__)
 class ExtractionTrace(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     ocr_text: str = ""
-    step1_output: dict | None = None  # intermediate.model_dump()
+    step1_output: dict | list | None = None  # intermediate.model_dump() or VLM dict
+    step1_raw: str = ""
     step1_vat_raw: str = ""
     step2_vat_cleaned: str = ""
     step2_output: list[dict] = []  # [r.model_dump() for r in vat_rows]

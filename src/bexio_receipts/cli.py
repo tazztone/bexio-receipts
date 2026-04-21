@@ -315,13 +315,18 @@ async def _process_interactive(
             ],
             account_assignments=result.account_assignments,
         )
-        receipt = assemble_receipt(raw_receipt)
+        receipt = None
+        validation_errors = []
+        try:
+            receipt = assemble_receipt(raw_receipt)
+        except Exception as e:
+            validation_errors = [str(e)]
 
         table = Table(title="Extracted Data (Dry Run)", show_header=True)
         table.add_column("Field", style="cyan")
         table.add_column("Value", style="magenta")
 
-        for field, value in receipt.model_dump().items():
+        for field, value in raw_receipt.model_dump().items():
             if field == "vat_breakdown" and value:
                 table.add_row(
                     field,
@@ -343,7 +348,13 @@ async def _process_interactive(
         console.print(table)
 
         with console.status("[bold yellow]Validating..."):
-            errors, warnings = validate_receipt(receipt, settings)
+            if receipt:
+                errors, warnings = validate_receipt(receipt, settings)
+                errors.extend(validation_errors)
+            else:
+                errors = validation_errors
+                warnings = []
+
         if errors:
             console.print(
                 "\n[bold red]Validation Errors:[/bold red]\n"

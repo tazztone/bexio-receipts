@@ -188,16 +188,18 @@ class VisionProcessor(DocumentProcessor):
         vat_context = f"Default VAT rate is {settings.default_vat_rate}%."
 
         system_prompt = (
-            "You are a Swiss bookkeeping specialist. Extract data from the receipt image.\n\n"
+            "You are a Swiss bookkeeping specialist. Extract data from the receipt image. "
+            "Return ONLY a JSON object matching the requested schema.\n\n"
             "### RULES ###\n"
-            "1. MERCHANT: Vendor name (TOP logo/header).\n"
-            "2. DATE: YYYY-MM-DD.\n"
-            "3. TOTAL: Grand total.\n"
-            "4. VAT ROWS: For each MWST line, extract Rate%, VAT_Amount, Net_Amount, Total_Amount.\n"
-            "5. ACCOUNTS: Assign booking accounts based on product context.\n"
+            "1. merchant_name: Official vendor name (Prodega, Coop, etc.).\n"
+            "2. transaction_date: YYYY-MM-DD. Look for 'Datum' or 'Date'.\n"
+            "3. total_incl_vat: The final amount to be paid.\n"
+            "4. vat_rows: List of objects with keys: "
+            "rate (float), net_amount (float), vat_amount (float), total_amount (float).\n"
+            "5. account_assignments: Suggest 4200 (Food) or 4201 (Non-food) based on context.\n"
             f"AVAILABLE ACCOUNTS:\n{accounts_context}\n"
             f"{vat_context}\n"
-            "6. CONFIDENCE: Estimate your certainty (0.0 to 1.0).\n"
+            "6. confidence: 0.0 to 1.0 score based on image legibility.\n"
         )
 
         openai_client = AsyncOpenAI(
@@ -246,12 +248,14 @@ class VisionProcessor(DocumentProcessor):
                 raise ValueError(f"Failed to parse VLM output as JSON: {e}") from e
 
             trace = ExtractionTrace(
-                ocr_text=f"Vision extraction: {ext.merchant_name} on {ext.transaction_date}",
+                ocr_text=raw_response_content,
                 step1_output=data,
+                step1_raw=raw_response_content,
+                step3_assignments=[a.model_dump() for a in ext.account_assignments],
             )
 
             return ProcessingResult(
-                raw_text=f"Vision extraction from {file_path}",
+                raw_text=raw_response_content,
                 merchant_name=ext.merchant_name,
                 transaction_date=ext.transaction_date,
                 currency=ext.currency,
