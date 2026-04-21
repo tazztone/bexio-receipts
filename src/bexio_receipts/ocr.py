@@ -21,26 +21,6 @@ def get_ocr_parser(settings: Settings) -> GlmOcr:
     global _ocr_parser  # noqa: PLW0603
     with _ocr_lock:
         if _ocr_parser is None:
-            if settings.glm_ocr_manage_server:
-                extra_flags = [
-                    "--max-model-len",
-                    str(settings.glm_ocr_vllm_max_model_len),
-                    "--max-num-seqs",
-                    str(settings.glm_ocr_vllm_max_num_seqs),
-                    "--gpu-memory-utilization",
-                    str(settings.glm_ocr_vllm_gpu_memory_utilization),
-                    "--served-model-name",
-                    "glm-ocr",
-                    "--speculative-config",
-                    '{"method": "mtp", "num_speculative_tokens": 3}',
-                ]
-                start_vllm_server(
-                    "zai-org/GLM-OCR",
-                    settings.glm_ocr_api_port,
-                    settings,
-                    extra_flags=extra_flags,
-                )
-
             logger.info(
                 "Initializing OCR parser (singleton)",
                 host=settings.glm_ocr_api_host,
@@ -128,6 +108,27 @@ async def async_run_ocr(
     Public OCR entry point. Runs blocking SDK in thread executor with timeout.
     Returns (markdown_text, confidence, region_metadata).
     """
+    if settings.glm_ocr_manage_server:
+        extra_flags = [
+            "--max-model-len",
+            str(settings.glm_ocr_vllm_max_model_len),
+            "--max-num-seqs",
+            str(settings.glm_ocr_vllm_max_num_seqs),
+            "--gpu-memory-utilization",
+            str(settings.glm_ocr_vllm_gpu_memory_utilization),
+            "--served-model-name",
+            "glm-ocr",
+            "--speculative-config",
+            '{"method": "mtp", "num_speculative_tokens": 3}',
+        ]
+        await start_vllm_server(
+            "zai-org/GLM-OCR",
+            settings.glm_ocr_api_port,
+            settings,
+            extra_flags=extra_flags,
+            host=settings.glm_ocr_api_host,
+        )
+
     loop = asyncio.get_running_loop()
     try:
         return await asyncio.wait_for(

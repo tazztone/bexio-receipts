@@ -32,9 +32,12 @@ async def test_async_run_ocr_success(test_settings):
     mock_parser.parse.return_value = mock_result
 
     # Mock get_ocr_parser to return our mock parser
-    with patch(
-        "bexio_receipts.ocr.get_ocr_parser", return_value=mock_parser
-    ) as mock_get:
+    with (
+        patch(
+            "bexio_receipts.ocr.get_ocr_parser", return_value=mock_parser
+        ) as mock_get,
+        patch("bexio_receipts.ocr.start_vllm_server") as mock_start,
+    ):
         markdown, confidence, metadata = await async_run_ocr("test.png", test_settings)
 
         assert "| 8.1% |" in markdown
@@ -44,6 +47,8 @@ async def test_async_run_ocr_success(test_settings):
 
         mock_get.assert_called_once_with(test_settings)
         mock_parser.parse.assert_called_once_with("test.png")
+        if test_settings.glm_ocr_manage_server:
+            mock_start.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -106,7 +111,8 @@ def test_get_ocr_parser(test_settings):
         parser = get_ocr_parser(test_settings)
         assert parser is mock_glm_inst
         mock_glm_inst.__enter__.assert_called_once()
-        mock_start.assert_called_once()
+        # start_vllm_server moved to async_run_ocr
+        mock_start.assert_not_called()
 
     # close parser
     with patch("bexio_receipts.ocr.stop_vllm_server") as mock_stop:

@@ -29,17 +29,18 @@ class VisionExtraction(BaseModel):
     merchant_name: str | None = Field(None, description="Name of the vendor/store")
     transaction_date: str | None = Field(None, description="ISO date YYYY-MM-DD")
     currency: str = Field("CHF", description="3-letter currency code")
-    total_incl_vat: float | None = Field(
-        None, description="Final amount including taxes"
-    )
-    payment_method: str | None = Field(
-        None, description="Payment type (card, cash, etc.)"
-    )
-    vat_rows: list[RawVatRow] = Field(
-        default_factory=list, description="VAT breakdown lines"
+    subtotal_excl_vat: float | None = Field(None, description="Total net amount")
+    vat_rate_pct: float | None = Field(None, description="Primary VAT rate (%)")
+    vat_amount: float | None = Field(None, description="Primary VAT amount")
+    total_incl_vat: float | None = Field(None, description="Grand total amount")
+    vat_rows: list[dict] = Field(
+        default_factory=list, description="List of all VAT lines"
     )
     account_assignments: list[AccountAssignment] = Field(
-        default_factory=list, description="Booking account assignments"
+        default_factory=list, description="Suggested booking accounts per VAT rate"
+    )
+    confidence: float = Field(
+        0.95, ge=0, le=1, description="Estimated extraction confidence"
     )
 
 
@@ -53,9 +54,12 @@ class ProcessingResult(BaseModel):
     merchant_name: str | None = None
     transaction_date: str | None = None
     currency: str = "CHF"
+    subtotal_excl_vat: float | None = None
+    vat_rate_pct: float | None = None
+    vat_amount: float | None = None
     total_incl_vat: float | None = None
     payment_method: str | None = None
-    vat_rows: list[RawVatRow] = []
+    vat_rows: list[RawVatRow] | list[dict] = []
     account_assignments: list[AccountAssignment] = []
     confidence: float
     trace: ExtractionTrace
@@ -79,12 +83,16 @@ class VisionProcessor(DocumentProcessor):
         with open(file_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode("utf-8")
 
-    def _extract_pdf_text(self, file_path: str) -> str:
+    def _render_pdf_to_base64(self, file_path: str) -> str:
+        """Render the first page of a PDF to a base64 image."""
         with pymupdf.open(file_path) as doc:
-            text = ""
-            for page in doc:
-                text += page.get_text()
-            return text
+            if doc.page_count == 0:
+                raise ValueError("PDF has no pages")
+            page = doc[0]
+            # Standard resolution (150 DPI is usually enough for OCR/Vision)
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(2, 2))
+            img_data = pix.tobytes("png")
+            return base64.b64encode(img_data).decode("utf-8")
 
     async def process(
         self,
@@ -130,7 +138,7 @@ class VisionProcessor(DocumentProcessor):
             if settings.vision_enable_expert_parallel:
                 extra_flags.append("--enable-expert-parallel")
 
-            start_vllm_server(
+            await start_vllm_server(
                 settings.vision_model,
                 settings.vision_api_port,
                 settings,
@@ -142,22 +150,25 @@ class VisionProcessor(DocumentProcessor):
 
         content: list[Any] = []
         if is_pdf:
-            text = self._extract_pdf_text(file_path)
-            content.append({
-                "type": "text",
-                "text": f"Extract receipt data from this PDF text:\n\n{text}",
-            })
+            base64_image = self._render_pdf_to_base64(file_path)
+            mime = "image/png"
         else:
             base64_image = self._encode_image(file_path)
             mime = "image/jpeg" if file_ext in [".jpg", ".jpeg"] else "image/png"
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:{mime};base64,{base64_image}"},
-            })
-            content.append({
-                "type": "text",
-                "text": "Extract all structured data from this receipt image.",
-            })
+
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime};base64,{base64_image}"},
+        })
+        content.append({
+            "type": "text",
+            "text": "Extract all structured data from this receipt image.",
+        })
+
+        accounts_context = "\n".join([
+            f"- {acc_id}: {desc}" for acc_id, desc in settings.bexio_accounts.items()
+        ])
+        vat_context = f"Default VAT rate is {settings.default_vat_rate}%."
 
         system_prompt = (
             "You are a Swiss bookkeeping specialist. Extract data from the receipt image.\n\n"
@@ -166,7 +177,10 @@ class VisionProcessor(DocumentProcessor):
             "2. DATE: YYYY-MM-DD.\n"
             "3. TOTAL: Grand total.\n"
             "4. VAT ROWS: For each MWST line, extract Rate%, VAT_Amount, Net_Amount, Total_Amount.\n"
-            "5. ACCOUNTS: Assign 4200 for 2.6% (food), 4201 for 8.1% (non-food).\n"
+            "5. ACCOUNTS: Assign booking accounts based on product context.\n"
+            f"AVAILABLE ACCOUNTS:\n{accounts_context}\n"
+            f"{vat_context}\n"
+            "6. CONFIDENCE: Estimate your certainty (0.0 to 1.0).\n"
         )
 
         openai_client = AsyncOpenAI(
@@ -224,11 +238,13 @@ class VisionProcessor(DocumentProcessor):
                 merchant_name=ext.merchant_name,
                 transaction_date=ext.transaction_date,
                 currency=ext.currency,
+                subtotal_excl_vat=ext.subtotal_excl_vat,
+                vat_rate_pct=ext.vat_rate_pct,
+                vat_amount=ext.vat_amount,
                 total_incl_vat=ext.total_incl_vat,
-                payment_method=ext.payment_method,
                 vat_rows=ext.vat_rows,
                 account_assignments=ext.account_assignments,
-                confidence=0.95,
+                confidence=ext.confidence,
                 trace=trace,
             )
         finally:

@@ -26,14 +26,16 @@ def test_is_port_open():
             is_port_open("localhost", 8000)
 
 
-def test_start_vllm_server_already_running(test_settings):
+@pytest.mark.asyncio
+async def test_start_vllm_server_already_running(test_settings):
     with patch("bexio_receipts.vllm_server.is_port_open", return_value=True):
         with patch("subprocess.Popen") as mock_popen:
-            start_vllm_server("model", 8000, test_settings)
+            await start_vllm_server("model", 8000, test_settings)
             mock_popen.assert_not_called()
 
 
-def test_start_vllm_server_success(test_settings):
+@pytest.mark.asyncio
+async def test_start_vllm_server_success(test_settings):
     with patch("bexio_receipts.vllm_server.is_port_open") as mock_port:
         # First call False (server not started), second call True (server ready)
         mock_port.side_effect = [False, True]
@@ -43,7 +45,9 @@ def test_start_vllm_server_success(test_settings):
             mock_popen.return_value = mock_popen_inst
 
             with patch("builtins.open", MagicMock()):
-                start_vllm_server("model", 8000, test_settings, extra_flags=["--test"])
+                await start_vllm_server(
+                    "model", 8000, test_settings, extra_flags=["--test"]
+                )
                 mock_popen.assert_called_once()
                 args, kwargs = mock_popen.call_args
                 assert "--test" in args[0]

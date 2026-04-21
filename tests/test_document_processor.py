@@ -30,7 +30,7 @@ async def test_vision_processor_process_pdf(vision_processor, test_settings, tmp
     mock_response.choices = [
         MagicMock(
             message=MagicMock(
-                content='{"merchant_name": "PDF Corp", "transaction_date": "2026-01-01", "total_incl_vat": 123.45, "currency": "CHF", "vat_rows": [], "account_assignments": []}'
+                content='{"merchant_name": "PDF Corp", "transaction_date": "2026-01-01", "total_incl_vat": 123.45, "currency": "CHF", "vat_rows": [], "account_assignments": [], "confidence": 0.99}'
             )
         )
     ]
@@ -41,7 +41,7 @@ async def test_vision_processor_process_pdf(vision_processor, test_settings, tmp
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         with patch.object(
-            VisionProcessor, "_extract_pdf_text", return_value="pdf text"
+            VisionProcessor, "_render_pdf_to_base64", return_value="base64data"
         ):
             result = await vision_processor.process(str(pdf_file), test_settings)
 
@@ -62,7 +62,7 @@ async def test_vision_processor_process_image(
     mock_response.choices = [
         MagicMock(
             message=MagicMock(
-                content='{"merchant_name": "Img Shop", "transaction_date": "2026-02-02", "total_incl_vat": 50.0, "currency": "CHF", "vat_rows": [], "account_assignments": []}'
+                content='{"merchant_name": "Img Shop", "transaction_date": "2026-02-02", "total_incl_vat": 45.60, "currency": "CHF", "vat_rows": [], "account_assignments": [], "confidence": 0.92}'
             )
         )
     ]
@@ -76,7 +76,7 @@ async def test_vision_processor_process_image(
             result = await vision_processor.process(str(img_file), test_settings)
 
             assert result.merchant_name == "Img Shop"
-            assert result.total_incl_vat == 50.0
+            assert result.total_incl_vat == 45.60
             mock_client.chat.completions.create.assert_called_once()
 
 

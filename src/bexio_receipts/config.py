@@ -3,7 +3,7 @@ Configuration management using Pydantic Settings.
 Loads and validates environment variables and configuration files.
 """
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -64,8 +64,8 @@ class Settings(BaseSettings):
     openrouter_use_structured_output: bool = True
 
     # Default accounts for bexio
-    default_booking_account_id: int = 0
-    default_bank_account_id: int = 0
+    default_booking_account_id: int | None = None
+    default_bank_account_id: int | None = None
     default_vat_rate: float = 8.1
     default_payment_terms_days: int = 30
 
@@ -130,16 +130,25 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "bexio_api_token is required when offline_mode is False"
                 )
-            if self.default_booking_account_id == 0:
+            if self.default_booking_account_id is None:
                 raise ValueError(
                     "default_booking_account_id is required when offline_mode is False"
                 )
-            if self.default_bank_account_id == 0:
+            if self.default_bank_account_id is None:
                 raise ValueError(
                     "default_bank_account_id is required when offline_mode is False"
                 )
 
         return self
+
+    @field_validator("default_booking_account_id", "default_bank_account_id")
+    @classmethod
+    def validate_accounts(cls, v: int | None) -> int | None:
+        if v is None:
+            return None
+        if v < 0:
+            raise ValueError("Account ID must be positive")
+        return v
 
     @model_validator(mode="after")
     def hash_passwords_for_auth(self) -> "Settings":
