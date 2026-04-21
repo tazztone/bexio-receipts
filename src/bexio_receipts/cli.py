@@ -304,13 +304,18 @@ def process(
             console.print(table)
 
             with console.status("[bold yellow]Validating..."):
-                errors = validate_receipt(receipt, settings)
+                errors, warnings = validate_receipt(receipt, settings)
             if errors:
                 console.print(
                     "\n[bold red]Validation Errors:[/bold red]\n"
                     + "\n".join(f"- {e}" for e in errors)
                 )
-            else:
+            if warnings:
+                console.print(
+                    "\n[bold yellow]Validation Warnings:[/bold yellow]\n"
+                    + "\n".join(f"- {w}" for w in warnings)
+                )
+            if not errors and not warnings:
                 console.print("\n[bold green]Validation Passed[/bold green]")
             return
 
@@ -397,13 +402,18 @@ def reprocess(
             console.print(table)
 
             with console.status("[bold yellow]Validating..."):
-                errors = validate_receipt(receipt, settings)
+                errors, warnings = validate_receipt(receipt, settings)
             if errors:
                 console.print(
                     "\n[bold red]Validation Errors:[/bold red]\n"
                     + "\n".join(f"- {e}" for e in errors)
                 )
-            else:
+            if warnings:
+                console.print(
+                    "\n[bold yellow]Validation Warnings:[/bold yellow]\n"
+                    + "\n".join(f"- {w}" for w in warnings)
+                )
+            if not errors and not warnings:
                 console.print("\n[bold green]Validation Passed[/bold green]")
             return
 

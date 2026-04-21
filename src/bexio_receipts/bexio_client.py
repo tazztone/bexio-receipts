@@ -3,7 +3,7 @@ Client for interacting with the bexio API using httpx.
 Handles authentication and resource management in bexio.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import httpx
@@ -304,7 +304,6 @@ class BexioClient:
             })
 
         bill_date = receipt.transaction_date or date.today()
-        from datetime import timedelta
 
         # Determine due date based on payment terms
         due_date = bill_date + timedelta(days=self.default_payment_terms_days)

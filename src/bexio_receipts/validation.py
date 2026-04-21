@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from .config import Settings
 from .models import Receipt
 
-VALID_CH_VAT = {0.0, 2.6, 3.8, 8.1}
+VALID_CH_VAT = {0.0, 2.5, 2.6, 3.8, 7.7, 8.1}
 
 
 def validate_receipt(r: Receipt, settings: Settings) -> tuple[list[str], list[str]]:

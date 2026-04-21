@@ -265,7 +265,6 @@ def _build_model(
             provider=OpenAIProvider(http_client=client),
         )
     elif settings.llm_provider == "openrouter":
-        from openai import AsyncOpenAI
         from pydantic_ai.providers.openai import OpenAIProvider
 
         api_key = settings.openrouter_api_key
@@ -428,7 +427,7 @@ async def extract_receipt(
             raise ExtractionError(f"VAT assembly failed: {ve!s}", trace=trace) from ve
     finally:
         if or_client is not None:
-            await or_client.close() if hasattr(or_client, 'close') else await or_client.aclose()
+            await or_client.close()
 
 
 async def classify_accounts(
@@ -483,4 +482,4 @@ async def classify_accounts(
         return []
     finally:
         if or_client is not None:
-            await or_client.close() if hasattr(or_client, 'close') else await or_client.aclose()
+            await or_client.close()

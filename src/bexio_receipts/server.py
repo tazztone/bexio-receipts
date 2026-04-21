@@ -5,6 +5,7 @@ Provides the web interface for receipt review and management.
 
 import contextlib
 import functools
+import io
 import json
 import mimetypes
 import re
@@ -19,6 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from PIL import Image
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -329,11 +331,6 @@ async def get_receipt_thumbnail(
         )
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # Simple thumbnail generation using Pillow
-    import io
-
-    from PIL import Image
-
     try:
         with Image.open(img_path) as img:
             img.thumbnail((200, 200))
@@ -434,7 +431,7 @@ async def bulk_action(
 
                     if decide_bexio_action(receipt) == "purchase_bill":
                         await bexio.create_purchase_bill(
-                            receipt, file_uuid, booking_account_id=booking_account_id
+                            receipt, file_uuid, booking_account_ids=[booking_account_id]
                         )
                     else:
                         await bexio.create_expense(
@@ -518,7 +515,6 @@ async def get_review_form(
     settings: Settings = Depends(get_settings),
 ):
     """Show review form for a specific receipt."""
-    import re
 
     if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
         raise HTTPException(status_code=400, detail="Invalid review ID")
@@ -692,7 +688,6 @@ async def push_to_bexio(
     db: DuplicateDetector = Depends(get_db),
 ):
     """Update receipt data and push to bexio."""
-    import re
 
     if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
         raise HTTPException(status_code=400, detail="Invalid review ID")
@@ -828,7 +823,6 @@ async def discard_review(
     settings: Settings = Depends(get_settings),
 ):
     """Remove a receipt from the review queue."""
-    import re
 
     if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
         raise HTTPException(status_code=400, detail="Invalid review ID")

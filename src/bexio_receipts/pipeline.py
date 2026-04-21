@@ -206,7 +206,7 @@ async def process_receipt(
         )
         trace.step3_assignments = [a.model_dump() for a in assignments]
 
-    # 3. Validation
+    # 4. Validation
     logger.info("Validating extracted data")
     errors, warnings = validate_receipt(receipt, settings)
     if errors:

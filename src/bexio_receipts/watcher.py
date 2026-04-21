@@ -178,8 +178,6 @@ async def watch_folder(path: str, settings: Settings):
                         )
                         await asyncio.sleep(0.5)  # Let GPU/Ollama breathe between items
 
-                        await asyncio.sleep(0.5)  # Let GPU/Ollama breathe between items
-
                 task = asyncio.create_task(_queued_process())
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
