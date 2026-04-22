@@ -183,6 +183,13 @@ class VisionProcessor(DocumentProcessor):
                 temperature=settings.vision_temperature,
                 frequency_penalty=settings.vision_frequency_penalty,
                 max_tokens=settings.vision_max_tokens,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "VisionExtraction",
+                        "schema": VisionExtraction.model_json_schema(),
+                    },
+                },
                 extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
 
