@@ -183,6 +183,7 @@ class VisionProcessor(DocumentProcessor):
                 temperature=settings.vision_temperature,
                 frequency_penalty=settings.vision_frequency_penalty,
                 max_tokens=settings.vision_max_tokens,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
 
             raw_response_content = response.choices[0].message.content or ""

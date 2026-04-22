@@ -31,6 +31,8 @@ def build_vllm_flags(settings: Settings) -> list[str]:
         str(settings.vision_tensor_parallel_size),
         "--served-model-name",
         settings.vision_served_name,
+        "--default-chat-template-kwargs",
+        '{"enable_thinking": false}',
     ]
 
     if settings.vision_quantization and settings.vision_quantization != "auto":

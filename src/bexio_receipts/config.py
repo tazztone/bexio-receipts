@@ -46,16 +46,14 @@ class Settings(BaseSettings):
     vision_gpu_memory_utilization: float = 0.9
     vision_max_num_seqs: int = 32
     vision_quantization: str = "awq"
-    vision_tensor_parallel_size: int = 4
-    vision_enable_expert_parallel: bool = True
-    vision_reasoning_parser: str = "qwen3"
-    vision_speculative_config: str = (
-        '{"method":"qwen3_next_mtp","num_speculative_tokens":2}'
-    )
+    vision_tensor_parallel_size: int = 1
+    vision_enable_expert_parallel: bool = False
+    vision_reasoning_parser: str = "none"
+    vision_speculative_config: str = "none"
     vision_prompt_language: Literal["de", "en", "fr"] = "de"
-    vision_temperature: float = 0.1
-    vision_frequency_penalty: float = 0.2
-    vision_max_tokens: int = 4096
+    vision_temperature: float = 0.6
+    vision_frequency_penalty: float = 0.0
+    vision_max_tokens: int = 8192
     vision_pdf_dpi: int = 150
     vision_pdf_max_pages: int = 5
 
