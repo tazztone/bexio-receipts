@@ -179,6 +179,9 @@ class VisionExtraction(BaseModel):
     vat_rate_pct: float | None = Field(None, description="Primary VAT rate (%)")
     vat_amount: float | None = Field(None, description="Primary VAT amount")
     total_incl_vat: float | None = Field(None, description="Grand total amount")
+    payment_method: str | None = Field(
+        None, description="Payment method (Bar/Karte/Twint)"
+    )
     vat_rows: list[RawVatRow] = Field(
         default_factory=list, description="List of all VAT lines"
     )
