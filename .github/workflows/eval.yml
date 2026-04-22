@@ -1,0 +1,23 @@
+name: Vision Eval
+
+on:
+  pull_request:
+    paths:
+      - "src/bexio_receipts/prompts.py"
+      - "src/bexio_receipts/models.py"
+      - "src/bexio_receipts/document_processor.py"
+  workflow_dispatch:
+
+jobs:
+  eval:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --dev
+      - name: Run vision eval
+        run: uv run pytest tests/eval/ -v --tb=short -m eval

@@ -1,4 +1,4 @@
-.PHONY: up down restart logs ps setup process-test clean lint
+.PHONY: up down restart logs ps setup process-test clean lint eval eval-one
 
 # Run linting and formatting
 lint:
@@ -36,3 +36,11 @@ process-test:
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache __pycache__ src/bexio_receipts/__pycache__ tests/__pycache__
 	docker-compose down -v
+
+# Run vision eval suite (requires vLLM running)
+eval:
+	@echo "vLLM must be running on VISION_API_HOST:VISION_API_PORT"
+	uv run pytest tests/eval/ -v --tb=short -m eval --no-cov
+
+eval-one:
+	uv run pytest tests/eval/ -v --tb=short -m eval -k "$(ID)" --no-cov

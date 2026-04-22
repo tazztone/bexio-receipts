@@ -128,3 +128,13 @@ When adding a new ADR, use the following format:
   - **Reduced Latency**: Consolidates 3+ sequential LLM calls into a single high-fidelity vision-language inference.
   - **Strategy Pattern**: Decoupling the extraction logic from the core pipeline via `DocumentProcessor` ensures long-term flexibility (e.g., swapping for future models or falling back to OCR in low-VRAM environments).
   - **Structured Outputs**: Leverages vLLM's `json_schema` response format for 100% schema compliance at the model level, eliminating the need for post-extraction "VAT math" validation logic in most cases.
+
+## [ADR-016] Automated Vision Evaluation (Golden Dataset)
+- **Status**: Decided (April 2026)
+- **Context**: As the system relies more on multimodal VLMs (Qwen3.5), traditional mocking of OCR text is no longer sufficient to verify the extraction quality. We need a way to detect regressions in model performance (hallucinations, column drift) when prompts or model versions change.
+- **Decision**: Implement a specialized evaluation suite in `tests/eval/` using a "Golden Dataset" strategy.
+- **Rationale**:
+  - **Regression Testing**: Ensures that prompt optimizations for one merchant don't break extraction for another.
+  - **VLM-Specific Logic**: Evaluation tests use the real `VisionProcessor` against live vLLM backends, bypassing standard unit test mocks.
+  - **CI Integration**: A dedicated GitHub workflow (`eval.yml`) runs these tests on self-hosted runners equipped with GPUs, ensuring quality is maintained across PRs.
+  - **Data Privacy**: Ground truth (`.json`) is versioned, while sensitive raw images (`.jpg`) are gitignored and managed locally.

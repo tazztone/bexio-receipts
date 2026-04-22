@@ -121,7 +121,9 @@ If `GLM_OCR_MANAGE_SERVER=true`, the app will launch the GLM vLLM server automat
 > [!NOTE]
 > `GLM_OCR_API_HOST` and `OLLAMA_URL` are separate. This allows you to run the 
 > heavy layout/vision model on one host (e.g., with a GPU) and the extraction 
-> LLM on another (e.g., a standard CPU host).
+> LLM on another (e.g., a standard CPU host). The **Vision Evaluation Suite** 
+> also relies on `VISION_API_HOST` and `VISION_API_PORT` to run its live 
+> regression tests.
 
 ## Ingestion Sources
 

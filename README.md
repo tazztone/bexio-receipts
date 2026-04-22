@@ -184,6 +184,7 @@ The dashboard includes:
 │   └── models.py        # Unified data models (Receipt, VisionExtraction)
 ├── docs/                # Extended documentation
 ├── tests/               # Pytest suite
+│   └── eval/            # Vision evaluation suite (Golden dataset)
 └── Dockerfile           # Optimized multi-stage build
 ```
 

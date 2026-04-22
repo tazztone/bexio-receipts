@@ -74,6 +74,13 @@ financial data.
 2. Update `BEXIO_API_TOKEN` in your `.env`.
 3. Restart the service: `docker compose restart`.
 
+### Model & Prompt Updates
+When updating prompts in `prompts.py` or switching to a new vision model:
+1.  Run the evaluation suite: `make eval`.
+2.  Verify that no regressions occurred in the extraction of "golden" receipts.
+3.  If regressions are found, tune the prompt or model parameters before 
+    deploying to production.
+
 ### Database Maintenance
 The SQLite database (`processed_receipts.db`) grows slowly. No active
 maintenance is required, but a weekly backup is recommended.

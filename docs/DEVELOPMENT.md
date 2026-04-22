@@ -74,6 +74,33 @@ We use `pytest`. The suite includes mocks for bexio and LLM providers.
 uv run pytest tests/
 ```
 
+### Vision Evaluation Suite
+
+For multimodal models like Qwen3.5, standard unit tests are insufficient to 
+capture regression in extraction quality. The project includes an evaluation 
+suite that runs against a "golden" dataset of real receipt images.
+
+```bash
+# Run all evaluations (requires vLLM running)
+make eval
+
+# Run a specific fixture
+make eval ID=prodega_001
+```
+
+<!-- prettier-ignore -->
+> [!IMPORTANT]
+> The evaluation images are excluded from version control via `.gitignore` to 
+> avoid repo bloat and protect sensitive vendor data. You must manually populate 
+> `tests/eval/fixtures/` with the corresponding `.jpg`/`.png` files before 
+> running evals.
+
+To add a new evaluation case:
+1.  Drop the receipt image in `tests/eval/fixtures/<name>.jpg`.
+2.  Create a corresponding `tests/eval/fixtures/<name>.json` with the expected 
+    values (merchant, date, totals, VAT rows, and account assignments).
+3.  Set `"source": "vision"` in the JSON metadata.
+
 ### Best Practices for Testing
 1. **Mocking**: Use the `mock_bexio` fixture to avoid real API calls.
 2. **Deterministic Inputs**: Use fixtures in `tests/fixtures/` for consistent

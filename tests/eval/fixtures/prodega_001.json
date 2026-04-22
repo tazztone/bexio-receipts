@@ -1,0 +1,18 @@
+{
+  "receipt_id": "prodega_001",
+  "source": "vision",
+  "merchant_name": "Prodega Markt",
+  "transaction_date": "2026-01-31",
+  "total_incl_vat": 214.20,
+  "subtotal_excl_vat": 207.15,
+  "vat_amount": 7.06,
+  "payment_method": "Bar",
+  "vat_rows": [
+    {"rate": 2.6, "net_amount": 176.70, "vat_amount": 4.59},
+    {"rate": 8.1, "net_amount": 30.45, "vat_amount": 2.47}
+  ],
+  "account_assignments": [
+    {"vat_rate": 2.6, "account_id": "4200"},
+    {"vat_rate": 8.1, "account_id": "4201"}
+  ]
+}

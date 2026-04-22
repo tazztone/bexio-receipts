@@ -230,3 +230,7 @@ scratch/
 tests/fixtures/prodega_ocr.txt
 debug/
 .vscode/
+
+# Eval fixture images (local-only, potentially sensitive)
+tests/eval/fixtures/*.jpg
+tests/eval/fixtures/*.png
