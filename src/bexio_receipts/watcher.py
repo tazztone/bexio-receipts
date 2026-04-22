@@ -70,12 +70,12 @@ class ReceiptHandler(FileSystemEventHandler):
 
         # Cooldown: skip if processed very recently (avoid double events)
         now = time.time()
-        if file_path in self._last_processed:
-            if now - self._last_processed[file_path] < 30:
-                logger.debug(
-                    "Skipping file within cooldown period", path=str(file_path)
-                )
-                return
+        if (
+            file_path in self._last_processed
+            and now - self._last_processed[file_path] < 30
+        ):
+            logger.debug("Skipping file within cooldown period", path=str(file_path))
+            return
 
         logger.info(
             "File activity detected, scheduling processing", path=str(file_path)

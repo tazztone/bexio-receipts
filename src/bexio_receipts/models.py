@@ -167,3 +167,21 @@ class Receipt(BaseModel):
 
         # Collapse whitespace, preserve case
         return " ".join(v.split())
+
+
+class VisionExtraction(BaseModel):
+    """Schema for Qwen3.6 vision-language extraction."""
+
+    merchant_name: str | None = Field(None, description="Name of the vendor/store")
+    transaction_date: str | None = Field(None, description="ISO date YYYY-MM-DD")
+    currency: str = Field("CHF", description="3-letter currency code")
+    subtotal_excl_vat: float | None = Field(None, description="Total net amount")
+    vat_rate_pct: float | None = Field(None, description="Primary VAT rate (%)")
+    vat_amount: float | None = Field(None, description="Primary VAT amount")
+    total_incl_vat: float | None = Field(None, description="Grand total amount")
+    vat_rows: list[RawVatRow] = Field(
+        default_factory=list, description="List of all VAT lines"
+    )
+    account_assignments: list[AccountAssignment] = Field(
+        default_factory=list, description="Suggested booking accounts per VAT rate"
+    )

@@ -777,10 +777,12 @@ async def push_to_bexio(
             file_uuid = await bexio.upload_file(img_path, filename, mime_type)
 
             # Logic #4: Server-side override (never trust client blindly)
-            if bexio_action == "expense":
-                if decide_bexio_action(receipt) == "purchase_bill":
-                    logger.info("Overriding 'expense' to 'purchase_bill' for safety")
-                    bexio_action = "purchase_bill"
+            if (
+                bexio_action == "expense"
+                and decide_bexio_action(receipt) == "purchase_bill"
+            ):
+                logger.info("Overriding 'expense' to 'purchase_bill' for safety")
+                bexio_action = "purchase_bill"
 
             # Routing decision
             if bexio_action == "purchase_bill":
@@ -998,9 +1000,9 @@ async def check_llm_status(
             )
     elif settings.llm_provider in ("openai", "openrouter"):
         key_set = False
-        if settings.llm_provider == "openai" and settings.openai_api_key:
-            key_set = True
-        elif settings.llm_provider == "openrouter" and settings.openrouter_api_key:
+        if (settings.llm_provider == "openai" and settings.openai_api_key) or (
+            settings.llm_provider == "openrouter" and settings.openrouter_api_key
+        ):
             key_set = True
 
         if key_set:

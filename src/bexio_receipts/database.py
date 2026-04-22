@@ -39,9 +39,8 @@ class DuplicateDetector:
         return conn
 
     def _init_db(self):
-        with closing(self._get_conn()) as conn:
-            with conn:
-                conn.execute("""
+        with closing(self._get_conn()) as conn, conn:
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS processed_receipts (
                 file_hash TEXT PRIMARY KEY,
                 file_path TEXT,
@@ -53,39 +52,39 @@ class DuplicateDetector:
             )
         """)
 
-                # Migration for existing databases
-                try:
-                    conn.execute(
-                        "ALTER TABLE processed_receipts ADD COLUMN total_incl_vat REAL"
-                    )
-                    conn.execute(
-                        "ALTER TABLE processed_receipts ADD COLUMN merchant_name TEXT"
-                    )
-                    conn.execute(
-                        "ALTER TABLE processed_receipts ADD COLUMN vat_amount REAL"
-                    )
-                except sqlite3.OperationalError as e:
-                    if "duplicate column name" not in str(e).lower():
-                        raise
-                    # Column already exists
-                    pass
+            # Migration for existing databases
+            try:
+                conn.execute(
+                    "ALTER TABLE processed_receipts ADD COLUMN total_incl_vat REAL"
+                )
+                conn.execute(
+                    "ALTER TABLE processed_receipts ADD COLUMN merchant_name TEXT"
+                )
+                conn.execute(
+                    "ALTER TABLE processed_receipts ADD COLUMN vat_amount REAL"
+                )
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
+                # Column already exists
+                pass
 
-                try:
-                    conn.execute(
-                        "ALTER TABLE processed_receipts ADD COLUMN ocr_confidence REAL"
-                    )
-                except sqlite3.OperationalError as e:
-                    if "duplicate column name" not in str(e).lower():
-                        raise
-                    pass
+            try:
+                conn.execute(
+                    "ALTER TABLE processed_receipts ADD COLUMN ocr_confidence REAL"
+                )
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
+                pass
 
-                conn.execute("""
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS merchant_accounts (
                         merchant_name TEXT PRIMARY KEY,
                         booking_account_id INTEGER
                     )
                 """)
-                conn.execute("""
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS merchant_vat_accounts (
                         merchant_name TEXT,
                         vat_rate REAL,
@@ -93,7 +92,7 @@ class DuplicateDetector:
                         PRIMARY KEY (merchant_name, vat_rate)
                     )
                 """)
-                conn.execute("""
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS gdrive_seen_files (
                         file_id TEXT PRIMARY KEY,
                         seen_at TIMESTAMP
@@ -139,23 +138,22 @@ class DuplicateDetector:
         ocr_confidence: float | None = None,
     ):
         """Record a processed receipt."""
-        with closing(self._get_conn()) as conn:
-            with conn:
-                conn.execute(
-                    """INSERT INTO processed_receipts
-                       (file_hash, file_path, processed_at, bexio_id, total_incl_vat, merchant_name, vat_amount, ocr_confidence)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        file_hash,
-                        str(file_path),
-                        datetime.now(),
-                        bexio_id,
-                        total_incl_vat,
-                        merchant_name,
-                        vat_amount,
-                        ocr_confidence,
-                    ),
-                )
+        with closing(self._get_conn()) as conn, conn:
+            conn.execute(
+                """INSERT INTO processed_receipts
+                   (file_hash, file_path, processed_at, bexio_id, total_incl_vat, merchant_name, vat_amount, ocr_confidence)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    file_hash,
+                    str(file_path),
+                    datetime.now(),
+                    bexio_id,
+                    total_incl_vat,
+                    merchant_name,
+                    vat_amount,
+                    ocr_confidence,
+                ),
+            )
 
     def get_merchant_account(self, merchant_name: str) -> int | None:
         """Get the last used booking account for a merchant (case-insensitive)."""
@@ -169,12 +167,11 @@ class DuplicateDetector:
 
     def set_merchant_account(self, merchant_name: str, account_id: int):
         """Save the booking account for a merchant (case-insensitive)."""
-        with closing(self._get_conn()) as conn:
-            with conn:
-                conn.execute(
-                    "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
-                    (merchant_name.upper(), account_id),
-                )
+        with closing(self._get_conn()) as conn, conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
+                (merchant_name.upper(), account_id),
+            )
 
     def get_merchant_vat_account(
         self, merchant_name: str, vat_rate: float
@@ -192,12 +189,11 @@ class DuplicateDetector:
         self, merchant_name: str, vat_rate: float, account_id: int
     ):
         """Save the booking account for a merchant and rate (case-insensitive)."""
-        with closing(self._get_conn()) as conn:
-            with conn:
-                conn.execute(
-                    "INSERT OR REPLACE INTO merchant_vat_accounts (merchant_name, vat_rate, booking_account_id) VALUES (?, ?, ?)",
-                    (merchant_name.upper(), vat_rate, account_id),
-                )
+        with closing(self._get_conn()) as conn, conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO merchant_vat_accounts (merchant_name, vat_rate, booking_account_id) VALUES (?, ?, ?)",
+                (merchant_name.upper(), vat_rate, account_id),
+            )
 
     def get_all_merchant_accounts(self) -> dict[str, int]:
         """Get all merchant to booking account mappings."""
@@ -210,12 +206,11 @@ class DuplicateDetector:
     def import_merchant_accounts(self, mappings: dict[str, int]):
         """Import merchant to booking account mappings (case-insensitive)."""
         normalized = {k.upper(): v for k, v in mappings.items()}
-        with closing(self._get_conn()) as conn:
-            with conn:
-                conn.executemany(
-                    "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
-                    normalized.items(),
-                )
+        with closing(self._get_conn()) as conn, conn:
+            conn.executemany(
+                "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
+                normalized.items(),
+            )
 
     def is_gdrive_seen(self, file_id: str) -> bool:
         """Check if a Google Drive file ID has been seen."""
@@ -227,12 +222,11 @@ class DuplicateDetector:
 
     def mark_gdrive_seen(self, file_id: str):
         """Mark a Google Drive file ID as seen."""
-        with closing(self._get_conn()) as conn:
-            with conn:
-                conn.execute(
-                    "INSERT OR IGNORE INTO gdrive_seen_files (file_id, seen_at) VALUES (?, ?)",
-                    (file_id, datetime.now()),
-                )
+        with closing(self._get_conn()) as conn, conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO gdrive_seen_files (file_id, seen_at) VALUES (?, ?)",
+                (file_id, datetime.now()),
+            )
 
     def get_processed_receipts(
         self, limit: int = 50, offset: int = 0, search: str | None = None

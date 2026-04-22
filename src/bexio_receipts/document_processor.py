@@ -18,8 +18,9 @@ from .extraction import (
     classify_accounts,
     extract_receipt,
 )
-from .models import AccountAssignment, RawVatRow
+from .models import AccountAssignment, RawVatRow, VisionExtraction
 from .ocr import async_run_ocr
+from .prompts import build_vision_system_prompt
 from .vllm_server import build_vllm_flags, start_vllm_server
 
 
@@ -50,24 +51,6 @@ def extract_json_block(text: str) -> dict | None:
         return None
 
 
-class VisionExtraction(BaseModel):
-    """Schema for Qwen3.6 vision-language extraction."""
-
-    merchant_name: str | None = Field(None, description="Name of the vendor/store")
-    transaction_date: str | None = Field(None, description="ISO date YYYY-MM-DD")
-    currency: str = Field("CHF", description="3-letter currency code")
-    subtotal_excl_vat: float | None = Field(None, description="Total net amount")
-    vat_rate_pct: float | None = Field(None, description="Primary VAT rate (%)")
-    vat_amount: float | None = Field(None, description="Primary VAT amount")
-    total_incl_vat: float | None = Field(None, description="Grand total amount")
-    vat_rows: list[RawVatRow] = Field(
-        default_factory=list, description="List of all VAT lines"
-    )
-    account_assignments: list[AccountAssignment] = Field(
-        default_factory=list, description="Suggested booking accounts per VAT rate"
-    )
-
-
 logger = structlog.get_logger(__name__)
 
 
@@ -85,7 +68,14 @@ class ProcessingResult(BaseModel):
     payment_method: str | None = None
     vat_rows: list[RawVatRow] = []
     account_assignments: list[AccountAssignment] = []
-    confidence: float
+    confidence: float = Field(
+        ...,
+        description=(
+            "Extraction quality signal. "
+            "Vision: 1.0 if all required fields present, 0.0 otherwise. "
+            "OCR: SDK-reported confidence (typically 0.90)."
+        ),
+    )
     trace: ExtractionTrace
 
 
@@ -171,8 +161,6 @@ class VisionProcessor(DocumentProcessor):
             "type": "text",
             "text": "Extract all structured data from this receipt. If multiple pages, combine into one result.",
         })
-
-        from .prompts import build_vision_system_prompt
 
         system_prompt = build_vision_system_prompt(settings)
 
@@ -290,4 +278,6 @@ class OcrProcessor(DocumentProcessor):
 def get_processor(settings: Settings) -> DocumentProcessor:
     if settings.processor_mode == "vision":
         return VisionProcessor()
-    return OcrProcessor()
+    if settings.processor_mode == "ocr":
+        return OcrProcessor()
+    raise ValueError(f"Unknown processor_mode: {settings.processor_mode!r}")

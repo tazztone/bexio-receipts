@@ -156,19 +156,21 @@ def resolve_vat_rows(rows: list[RawVatRow]) -> list[VatEntry]:
         for vat, base, total in candidates:
             if total is not None:
                 # Primary check: VAT + Base = Total
-                if abs(round(base + vat, 2) - total) < math_tol:
-                    # Secondary check: Base * Rate ≈ VAT (must match within tolerance)
-                    if base > 0 and abs(round(base * rate / 100, 2) - vat) < math_tol:
-                        entries.append(
-                            VatEntry(
-                                rate=rate,
-                                vat_amount=vat,
-                                base_amount=base,
-                                total_incl_vat=total,
-                            )
+                if (
+                    abs(round(base + vat, 2) - total) < math_tol
+                    and base > 0
+                    and abs(round(base * rate / 100, 2) - vat) < math_tol
+                ):
+                    entries.append(
+                        VatEntry(
+                            rate=rate,
+                            base_amount=base,
+                            vat_amount=vat,
+                            total_incl_vat=total,
                         )
-                        resolved = True
-                        break
+                    )
+                    resolved = True
+                    break
             else:
                 # If only two columns, we must rely on rate math
                 if base > 0 and abs(round(base * rate / 100, 2) - vat) < math_tol:
