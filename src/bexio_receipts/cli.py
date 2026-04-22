@@ -314,6 +314,7 @@ async def _process_interactive(
                 RawVatRow(**v) if isinstance(v, dict) else v for v in result.vat_rows
             ],
             account_assignments=result.account_assignments,
+            payment_method=result.payment_method,
         )
         receipt = None
         validation_errors = []
