@@ -225,6 +225,7 @@ class VisionProcessor(DocumentProcessor):
                 vat_rate_pct=ext.vat_rate_pct,
                 vat_amount=ext.vat_amount,
                 total_incl_vat=ext.total_incl_vat,
+                payment_method=ext.payment_method,
                 vat_rows=ext.vat_rows,
                 account_assignments=ext.account_assignments,
                 confidence=1.0
