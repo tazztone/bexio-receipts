@@ -72,12 +72,14 @@ graph TD
     subgraph Processing
         P --> DB_Hash[SHA-256 Check]
         DB_Hash -- Duplicate --> Skip[Skip]
-        DB_Hash -- New --> OCR_SDK[GLM-OCR SDK]
-        OCR_SDK -- Layout Analysis --> PP_DocLayout[PP-DocLayoutV3]
-        PP_DocLayout -- PDF/Image --> LLM_S1[Step 1: Searcher]
+        DB_Hash -- New --> DP{DocumentProcessor}
+        DP -- "vision (default)" --> VLM[Qwen3.5 VLM]
+        DP -- "ocr (fallback)" --> OCR_SDK[GLM-OCR SDK]
+        VLM --> VAL[Validation]
+        OCR_SDK --> LLM_S1[Step 1: Searcher]
         LLM_S1 --> LLM_S2[Step 2: VAT Assigner]
         LLM_S2 --> LLM_S3[Step 3: Account Classifier]
-        LLM_S3 --> VAL[Validation]
+        LLM_S3 --> VAL
     end
 
     subgraph Integration
@@ -167,8 +169,10 @@ The dashboard includes:
 ```text
 .
 ├── src/bexio_receipts/
-│   ├── ocr.py           # Unified OCR layer (GLM-OCR)
+│   ├── document_processor.py # Vision/OCR strategy orchestrator
+│   ├── ocr.py           # Legacy OCR layer (GLM-OCR)
 │   ├── extraction.py    # LLM structured extraction (Pydantic AI)
+│   ├── prompts.py       # VLM/LLM system prompt templates
 │   ├── validation.py    # Swiss VAT & business rules
 │   ├── server.py        # Dashboard backend (FastAPI + HTMX)
 │   ├── bexio_client.py  # bexio API interactions (httpx)
@@ -177,7 +181,7 @@ The dashboard includes:
 │   ├── watcher.py       # Folder filesystem monitoring
 │   ├── gdrive_ingest.py # Google Drive polling
 │   ├── config.py        # Pydantic Settings
-│   └── models.py        # Pydantic data models
+│   └── models.py        # Unified data models (Receipt, VisionExtraction)
 ├── docs/                # Extended documentation
 ├── tests/               # Pytest suite
 └── Dockerfile           # Optimized multi-stage build

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-04-22
+
+### Added
+- **Multi-language Vision Prompts**: Added full support for French (`fr`) prompt
+  templates in the Vision pipeline, joining German and English.
+- **Drift-proof Prompt Generation**: System prompts are now generated
+  dynamically from the `VisionExtraction` Pydantic model. This guarantees that
+  the VLM always receives the most up-to-date schema.
+- **Vision Pipeline Documentation**: Added comprehensive descriptions to extraction
+  quality metrics (formerly `confidence`) to clarify the heuristic differences
+  between Vision and OCR modes.
+
+### Fixed
+- **Circular Dependency Resolution**: Refactored the core data models to break a
+  circular import between `document_processor` and `prompts`. `VisionExtraction`
+  now resides in `models.py`.
+- **Processor Safety**: Hardened `get_processor` with explicit validation and
+  error handling for unknown processor modes.
+- **Code Quality**: Fixed several nested control flow lints (SIM117, SIM102) and
+  cleaned up the global Ruff configuration.
+
 ## [0.2.0] - 2026-04-19
 
 ### Fixed

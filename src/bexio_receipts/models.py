@@ -170,7 +170,7 @@ class Receipt(BaseModel):
 
 
 class VisionExtraction(BaseModel):
-    """Schema for Qwen3.6 vision-language extraction."""
+    """Schema for Qwen3.5 vision-language extraction."""
 
     merchant_name: str | None = Field(None, description="Name of the vendor/store")
     transaction_date: str | None = Field(None, description="ISO date YYYY-MM-DD")

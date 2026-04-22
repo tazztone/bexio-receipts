@@ -1,4 +1,4 @@
-"""Document processing strategies: Vision (Qwen3.6) and OCR (GLM-OCR + LLM)."""
+"""Document processing strategies: Vision (Qwen3.5) and OCR (GLM-OCR + LLM)."""
 
 import base64
 import json
@@ -91,7 +91,7 @@ class DocumentProcessor(ABC):
 
 
 class VisionProcessor(DocumentProcessor):
-    """Single-pass Vision-Language Model extraction using Qwen3.6."""
+    """Single-pass Vision-Language Model extraction using Qwen3.5."""
 
     def _encode_image(self, file_path: str) -> str:
         with open(file_path, "rb") as image_file:

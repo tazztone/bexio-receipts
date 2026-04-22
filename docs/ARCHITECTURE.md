@@ -19,7 +19,7 @@ graph TD
         P --> DB_Hash[SHA-256 Check]
         DB_Hash -- Duplicate --> Skip[Skip]
         DB_Hash -- New --> DP{DocumentProcessor}
-        DP -- "vision (default)" --> VLM[Qwen3.6 VLM]
+        DP -- "vision (default)" --> VLM[Qwen3.5 VLM]
         DP -- "ocr (fallback)" --> OCR_SDK[GLM-OCR SDK]
         VLM --> PR[ProcessingResult]
         OCR_SDK --> LLM_S1[Step 1: Searcher]
@@ -49,10 +49,17 @@ graph TD
 - **GDrive**: Uses Google Drive API (v3) to poll and move files.
 
 ### 2. Document Processing Layer (`document_processor.py`)
-- **Strategy Pattern**: The pipeline supports multiple extraction strategies, selectable via `processor_mode` ("vision" or "ocr").
-- **Vision Strategy (Default)**: Uses **Qwen3.6-35B-A3B** (multimodal vision-language model) served via vLLM. It performs single-pass extraction of all receipt fields directly from images or PDF text.
-- **OCR Strategy (Fallback)**: Uses the **GLM-OCR SDK** for layout analysis and text extraction, followed by a multi-step LLM pipeline for data structuring.
-- **Native PDF Support**: Digital PDFs have text extracted via `pymupdf` and sent as text input, avoiding lossy image conversion.
+- **Strategy Pattern**: The pipeline supports multiple extraction strategies,
+  selectable via `processor_mode` ("vision" or "ocr").
+- **Vision Strategy (Default)**: Uses **Qwen3.5-9B** (multimodal
+  vision-language model) served via vLLM. It performs single-pass extraction of
+  all receipt fields directly from images or PDF text. The system supports
+  multi-language prompt templates (German, English, and French) and uses
+  type-safe schema generation from `models.py` to prevent prompt drift.
+- **OCR Strategy (Fallback)**: Uses the **GLM-OCR SDK** for layout analysis and
+  text extraction, followed by a multi-step LLM pipeline for data structuring.
+- **Native PDF Support**: Digital PDFs have text extracted via `pymupdf` and sent
+  as text input, avoiding lossy image conversion.
 
 ### 3. vLLM Inference Backend (`vllm_server.py`)
 Both strategies utilize a local **vLLM** inference engine. The application provides unified lifecycle management to start/stop the server based on the active strategy and hardware constraints (RTX 3090 optimized).
@@ -65,9 +72,10 @@ Both strategies utilize a local **vLLM** inference engine. The application provi
     using deterministic math validation to prevent hallucinations.
   - **Step 3 (Account Classifier)**: Assigns Swiss booking accounts based on the
     full OCR context (product items) and VAT rates.
-- **Model Intelligence**: Enforces strict schemas using `Receipt` and
-  `AccountAssignment` models. Handles merchant identification, date/currency
-  parsing, and Swiss VAT rate detection.
+- **Model Intelligence**: Enforces strict schemas using `Receipt`,
+  `VisionExtraction`, and `AccountAssignment` models (all residing in
+  `models.py`). Handles merchant identification, date/currency parsing, and
+  Swiss VAT rate detection.
 - **Contract**: The `Receipt` model uses an alias for the transaction date.
   While the internal field is `transaction_date`, the JSON source must provide
   the key `date`.

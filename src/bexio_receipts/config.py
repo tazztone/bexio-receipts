@@ -33,9 +33,9 @@ class Settings(BaseSettings):
     glm_ocr_vllm_max_num_seqs: int = 1
     glm_ocr_vllm_max_model_len: int = 8192
 
-    # Vision Model Settings (Qwen3.6 via vLLM)
-    vision_model: str = "tclf90/Qwen3.6-35B-A3B-AWQ"
-    vision_served_name: str = "qwen3.6"
+    # Vision Model Settings (Qwen3.5 via vLLM)
+    vision_model: str = "cyankiwi/Qwen3.5-9B-AWQ-4bit"
+    vision_served_name: str = "qwen3.5"
     vision_api_host: str = "localhost"
     vision_api_port: int = 8000
     vision_manage_server: bool = True

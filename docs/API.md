@@ -33,7 +33,8 @@ bexio API, Ingestion sources).
 Returns Prometheus-compatible metrics.
 - `receipts_processed_total`: Total receipts successfully booked.
 - `receipts_failed_total`: Number of items currently in the review queue.
-- `ocr_confidence_avg`: Average confidence score from the OCR engine.
+- `ocr_confidence_avg`: Average extraction quality score. (Vision: 1.0/0.0
+  heuristic; OCR: SDK confidence score).
 
 ### `GET /stats`
 Returns an HTML fragment (or page) with high-level processing statistics.
