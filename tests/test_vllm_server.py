@@ -4,7 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from bexio_receipts.vllm_server import is_port_open, start_vllm_server, stop_vllm_server
+from bexio_receipts.vllm_server import (
+    build_vllm_flags,
+    is_port_open,
+    start_vllm_server,
+    stop_vllm_server,
+)
 
 
 def test_is_port_open():
@@ -28,10 +33,12 @@ def test_is_port_open():
 
 @pytest.mark.asyncio
 async def test_start_vllm_server_already_running(test_settings):
-    with patch("bexio_receipts.vllm_server.is_port_open", return_value=True):
-        with patch("subprocess.Popen") as mock_popen:
-            await start_vllm_server("model", 8000, test_settings)
-            mock_popen.assert_not_called()
+    with (
+        patch("bexio_receipts.vllm_server.is_port_open", return_value=True),
+        patch("subprocess.Popen") as mock_popen,
+    ):
+        await start_vllm_server("model", 8000, test_settings)
+        mock_popen.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -58,12 +65,14 @@ def test_stop_vllm_server_success():
     mock_process = MagicMock()
     mock_log = MagicMock()
 
-    with patch("bexio_receipts.vllm_server._vllm_process", mock_process):
-        with patch("bexio_receipts.vllm_server._vllm_log_file", mock_log):
-            stop_vllm_server()
-            mock_process.terminate.assert_called_once()
-            mock_process.wait.assert_called_once()
-            mock_log.close.assert_called_once()
+    with (
+        patch("bexio_receipts.vllm_server._vllm_process", mock_process),
+        patch("bexio_receipts.vllm_server._vllm_log_file", mock_log),
+    ):
+        stop_vllm_server()
+        mock_process.terminate.assert_called_once()
+        mock_process.wait.assert_called_once()
+        mock_log.close.assert_called_once()
 
 
 def test_stop_vllm_server_kill():
@@ -74,3 +83,10 @@ def test_stop_vllm_server_kill():
         stop_vllm_server()
         mock_process.terminate.assert_called_once()
         mock_process.kill.assert_called_once()
+
+
+def test_build_vllm_flags_gguf(test_settings):
+    test_settings.vision_quantization = "gguf"
+    flags = build_vllm_flags(test_settings)
+    assert "--quantization" in flags
+    assert flags[flags.index("--quantization") + 1] == "gguf"

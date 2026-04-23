@@ -8,6 +8,24 @@ from typing import Literal
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+RECOMMENDED_VISION_MODELS: dict[str, dict[str, str]] = {
+    "qwen3.5-9b (AWQ, default)": {
+        "model": "cyankiwi/Qwen3.5-9B-AWQ-4bit",
+        "served_name": "qwen3.5",
+        "quantization": "awq",
+    },
+    "qwen3.6-27b-uncensored (GGUF, Q4_K_P)": {
+        "model": "hf://HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Aggressive/Qwen3.6-27B-Uncensored-HauhauCS-Aggressive-Q4_K_P.gguf",
+        "served_name": "qwen3.6",
+        "quantization": "gguf",
+    },
+    "qwen3.6-27b-autoround (INT4, 85 TPS)": {
+        "model": "Lorbus/Qwen3.6-27B-int4-AutoRound",
+        "served_name": "qwen3.6",
+        "quantization": "auto_round",
+    },
+}
+
 
 class Settings(BaseSettings):
     env: str = "development"
@@ -54,7 +72,7 @@ class Settings(BaseSettings):
     vision_temperature: float = 0.6
     vision_frequency_penalty: float = 0.0
     vision_max_tokens: int = 8192
-    vision_pdf_dpi: int = 150
+    vision_pdf_dpi: int = 300
     vision_pdf_max_pages: int = 5
 
     # LLM Settings
@@ -110,6 +128,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
+
+    @model_validator(mode="after")
+    def auto_set_gguf_quantization(self) -> "Settings":
+        if self.vision_model.endswith(".gguf") and self.vision_quantization != "gguf":
+            self.vision_quantization = "gguf"
+        return self
 
     @model_validator(mode="after")
     def validate_openrouter_model(self) -> "Settings":

@@ -8,7 +8,8 @@ The easiest way to configure the system is to run the interactive setup command:
 ```bash
 uv run bexio-receipts init
 ```
-This command will guide you through the most important settings and
+This command will guide you through the most important settings, including the
+processing mode (Vision vs. OCR) and the specific Vision model choice, then
 automatically create a `.env` file for you.
 
 ## Core API Settings
@@ -54,26 +55,42 @@ The system supports two primary processing modes: **Vision** (New, high-fidelity
 
 | Variable | Description | Default |
 |---|---|---|
-| `PROCESSOR_MODE` | `vision` or `ocr` | `vision` |
+| `PROCESSOR_MODE` | `vision` (high accuracy) or `ocr` (low VRAM) | `vision` |
 
 ### Vision Pipeline (`vision`)
 When `PROCESSOR_MODE=vision`, the system uses a high-performance VLM backend.
+See the [VLM Performance Guide](VLM_PERFORMANCE.md) for hardware benchmarks and
+optimization tips.
 
 | Variable | Description | Default |
 |---|---|---|
-| `VISION_MODEL` | HuggingFace model path | `cyankiwi/Qwen3.5-9B-AWQ-4bit` |
+| `VISION_MODEL` | HuggingFace model path or GGUF URL | `cyankiwi/Qwen3.5-9B-AWQ-4bit` |
+| `VISION_SERVED_NAME` | Model name string expected by the API | `qwen3.5` |
 | `VISION_API_HOST` | Hostname for the vLLM server | `localhost` |
 | `VISION_API_PORT` | Port for the vLLM server | `8000` |
 | `VISION_MANAGE_SERVER` | Start/stop vLLM automatically | `true` |
 | `VISION_GPU_MEMORY_UTILIZATION` | Fraction of VRAM to reserve | `0.9` |
-| `VISION_TENSOR_PARALLEL_SIZE` | GPUs/Shards for TP (e.g. 4 for RTX 3090) | `4` |
+| `VISION_TENSOR_PARALLEL_SIZE` | Number of GPUs for tensor parallelism | `1` |
 | `VISION_MAX_MODEL_LEN` | Context window size | `32768` |
-| `VISION_QUANTIZATION` | Weights format | `awq` |
+| `VISION_QUANTIZATION` | Weight format (`awq`, `gguf`, `auto`) | `awq` |
 | `VISION_PROMPT_LANGUAGE` | Language for extraction prompt (`de`, `en`, `fr`) | `de` |
 | `VISION_PDF_DPI` | DPI for PDF-to-image conversion | `300` |
-| `VISION_TEMPERATURE` | Sampling temperature for the VLM | `0.0` |
-| `VISION_REPETITION_PENALTY` | Penalty for repetitive output | `1.1` |
-| `VISION_SPECULATIVE_CONFIG` | (Optional) Draft model for speculative decoding | `None` |
+| `VISION_TEMPERATURE` | Sampling temperature for the VLM | `0.6` |
+| `VISION_FREQUENCY_PENALTY` | Penalty for token repetition | `0.0` |
+| `VISION_SPECULATIVE_CONFIG` | (Optional) Draft model config for speedup | `None` |
+
+<!-- prettier-ignore -->
+> [!TIP]
+> For high-performance on consumer GPUs (e.g. RTX 3090/4090), use the
+> **Qwen3.6-27B-Uncensored** GGUF model. The system automatically detects
+> `.gguf` files and enables the appropriate quantization backend.
+
+<!-- prettier-ignore -->
+> [!NOTE]
+> Even for digital PDFs that already contain text, the Vision strategy renders
+> them as images at the configured `VISION_PDF_DPI`. This allows the VLM to utilize
+> visual layout cues (like table borders and font weight) which significantly
+> improves extraction accuracy on complex receipts compared to raw text parsing.
 
 ### Legacy OCR Engine (`ocr`)
 Used when `PROCESSOR_MODE=ocr`. Connects to a vLLM backend running GLM-OCR.

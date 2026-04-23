@@ -10,7 +10,7 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from .bexio_client import BexioClient
-from .config import Settings
+from .config import RECOMMENDED_VISION_MODELS, Settings
 from .pipeline import process_receipt
 
 app = typer.Typer(
@@ -111,8 +111,11 @@ def init(
         token = os.getenv("BEXIO_API_TOKEN", "your_bexio_token")
         llm_provider = os.getenv("LLM_PROVIDER", "ollama")
         secret_key = os.getenv("SECRET_KEY", "change-me-in-production")
+        processor_mode = os.getenv("PROCESSOR_MODE", "vision")
+        vision_model_choice = next(iter(RECOMMENDED_VISION_MODELS))
 
         console.print("\n[bold]Using assumed configuration:[/bold]")
+        console.print(f"  - Mode: [cyan]{processor_mode}[/cyan]")
         console.print(f"  - LLM: [cyan]{llm_provider}[/cyan]")
         console.print("  - Default Accounts: [cyan]630/1[/cyan]")
     else:
@@ -143,6 +146,23 @@ def init(
             )
             if not Confirm.ask("Continue anyway?"):
                 raise typer.Exit(1)
+
+        processor_mode = Prompt.ask(
+            "Processor Mode",
+            choices=["vision", "ocr"],
+            default="vision",
+            show_choices=True,
+        )
+
+        vision_model_choice = next(iter(RECOMMENDED_VISION_MODELS))
+        if processor_mode == "vision":
+            model_options = [*RECOMMENDED_VISION_MODELS, "custom"]
+            vision_model_choice = Prompt.ask(
+                "Vision Model",
+                choices=model_options,
+                default=next(iter(RECOMMENDED_VISION_MODELS)),
+                show_choices=True,
+            )
 
         llm_provider = Prompt.ask(
             "LLM Provider",
@@ -178,9 +198,29 @@ def init(
     config = [
         f"BEXIO_API_TOKEN={token}",
         "BEXIO_BASE_URL=https://api.bexio.com",
+        f"PROCESSOR_MODE={processor_mode}",
         "OCR_ENGINE=glm-ocr",
         f"LLM_PROVIDER={llm_provider}",
     ]
+
+    # Vision config
+    if processor_mode == "vision":
+        if vision_model_choice == "custom":
+            # Only ask in interactive mode
+            v_model = Prompt.ask("Enter custom Vision Model ID")
+            v_name = Prompt.ask("Enter custom Served Name", default="custom")
+            v_quant = Prompt.ask(
+                "Enter custom Quantization (e.g. awq, gptq, gguf, none)", default="none"
+            )
+        else:
+            m_data = RECOMMENDED_VISION_MODELS[vision_model_choice]
+            v_model = m_data["model"]
+            v_name = m_data["served_name"]
+            v_quant = m_data["quantization"]
+
+        config.append(f"VISION_MODEL={v_model}")
+        config.append(f"VISION_SERVED_NAME={v_name}")
+        config.append(f"VISION_QUANTIZATION={v_quant}")
 
     if llm_provider == "ollama":
         config.append("OLLAMA_URL=http://localhost:11434")

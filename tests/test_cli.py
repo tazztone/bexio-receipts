@@ -12,25 +12,26 @@ def test_cli_process_dry_run(tmp_path, test_settings):
     img_file = tmp_path / "receipt.png"
     img_file.write_text("fake image content")
 
-    with patch("bexio_receipts.cli.Settings", return_value=test_settings):
-        # Patch the underlying functions via the processor
-        with patch("bexio_receipts.pipeline.get_processor") as mock_get:
-            mock_processor = AsyncMock()
-            mock_get.return_value = mock_processor
-            from bexio_receipts.document_processor import ProcessingResult
-            from bexio_receipts.extraction import ExtractionTrace
+    with (
+        patch("bexio_receipts.cli.Settings", return_value=test_settings),
+        patch("bexio_receipts.pipeline.get_processor") as mock_get,
+    ):
+        mock_processor = AsyncMock()
+        mock_get.return_value = mock_processor
+        from bexio_receipts.document_processor import ProcessingResult
+        from bexio_receipts.extraction import ExtractionTrace
 
-            mock_processor.process.return_value = ProcessingResult(
-                raw_text="raw text",
-                merchant_name="Test",
-                total_incl_vat=10.0,
-                confidence=0.9,
-                trace=ExtractionTrace(),
-            )
+        mock_processor.process.return_value = ProcessingResult(
+            raw_text="raw text",
+            merchant_name="Test",
+            total_incl_vat=10.0,
+            confidence=0.9,
+            trace=ExtractionTrace(),
+        )
 
-            result = runner.invoke(app, ["process", str(img_file), "--dry-run"])
-            assert result.exit_code == 0
-            mock_processor.process.assert_called_once()
+        result = runner.invoke(app, ["process", str(img_file), "--dry-run"])
+        assert result.exit_code == 0
+        mock_processor.process.assert_called_once()
 
 
 def test_cli_process_real(tmp_path, test_settings):
@@ -38,19 +39,21 @@ def test_cli_process_real(tmp_path, test_settings):
     img_file.write_text("fake image content")
     test_settings.bexio_api_token = "valid_token"
 
-    with patch("bexio_receipts.cli.Settings", return_value=test_settings):
-        with patch("bexio_receipts.database.DuplicateDetector"):
-            with patch("bexio_receipts.cli.BexioClient") as mock_client:
-                mock_client_inst = mock_client.return_value.__aenter__.return_value
-                mock_client_inst.cache_lookups = AsyncMock()
-                with patch(
-                    "bexio_receipts.cli.process_receipt", new_callable=AsyncMock
-                ) as mock_process:
-                    mock_process.return_value = {"status": "booked"}
+    with (
+        patch("bexio_receipts.cli.Settings", return_value=test_settings),
+        patch("bexio_receipts.database.DuplicateDetector"),
+        patch("bexio_receipts.cli.BexioClient") as mock_client,
+    ):
+        mock_client_inst = mock_client.return_value.__aenter__.return_value
+        mock_client_inst.cache_lookups = AsyncMock()
+        with patch(
+            "bexio_receipts.cli.process_receipt", new_callable=AsyncMock
+        ) as mock_process:
+            mock_process.return_value = {"status": "booked"}
 
-                    result = runner.invoke(app, ["process", str(img_file)])
-                    assert result.exit_code == 0
-                    mock_process.assert_called_once()
+            result = runner.invoke(app, ["process", str(img_file)])
+            assert result.exit_code == 0
+            mock_process.assert_called_once()
 
 
 def test_cli_mappings(tmp_path, test_settings):
@@ -82,22 +85,24 @@ def test_cli_reprocess(tmp_path, test_settings):
     review_file = tmp_path / "review.json"
     review_file.write_text(json.dumps({"original_file": str(img_file)}))
 
-    with patch("bexio_receipts.cli.Settings", return_value=test_settings):
-        with patch("bexio_receipts.database.DuplicateDetector"):
-            with patch("bexio_receipts.cli.BexioClient") as mock_client:
-                mock_client_inst = mock_client.return_value.__aenter__.return_value
-                mock_client_inst.cache_lookups = AsyncMock()
-                # Mock get_profile to avoid 404 in tests
-                mock_client_inst.get_profile = AsyncMock(
-                    return_value={"id": 1, "name": "Test User"}
-                )
-                with patch(
-                    "bexio_receipts.cli.process_receipt", new_callable=AsyncMock
-                ) as mock_process:
-                    mock_process.return_value = {"status": "booked"}
-                    result = runner.invoke(app, ["reprocess", str(review_file)])
-                    assert result.exit_code == 0
-                    mock_process.assert_called_once()
+    with (
+        patch("bexio_receipts.cli.Settings", return_value=test_settings),
+        patch("bexio_receipts.database.DuplicateDetector"),
+        patch("bexio_receipts.cli.BexioClient") as mock_client,
+    ):
+        mock_client_inst = mock_client.return_value.__aenter__.return_value
+        mock_client_inst.cache_lookups = AsyncMock()
+        # Mock get_profile to avoid 404 in tests
+        mock_client_inst.get_profile = AsyncMock(
+            return_value={"id": 1, "name": "Test User"}
+        )
+        with patch(
+            "bexio_receipts.cli.process_receipt", new_callable=AsyncMock
+        ) as mock_process:
+            mock_process.return_value = {"status": "booked"}
+            result = runner.invoke(app, ["reprocess", str(review_file)])
+            assert result.exit_code == 0
+            mock_process.assert_called_once()
 
 
 def test_cli_config_error():
@@ -145,28 +150,58 @@ def test_cli_init_quickstart(tmp_path, test_settings):
 
         mock_path.side_effect = path_side_effect
 
-        with patch("shutil.copy"):
-            with patch("bexio_receipts.pipeline.get_processor") as mock_get:
-                mock_processor = AsyncMock()
-                mock_get.return_value = mock_processor
-                from bexio_receipts.document_processor import ProcessingResult
-                from bexio_receipts.extraction import ExtractionTrace
+        with (
+            patch("shutil.copy"),
+            patch("bexio_receipts.pipeline.get_processor") as mock_get,
+        ):
+            mock_processor = AsyncMock()
+            mock_get.return_value = mock_processor
+        from bexio_receipts.document_processor import ProcessingResult
+        from bexio_receipts.extraction import ExtractionTrace
 
-                mock_processor.process.return_value = ProcessingResult(
-                    raw_text="raw",
-                    merchant_name="Test",
-                    total_incl_vat=10.0,
-                    confidence=0.9,
-                    trace=ExtractionTrace(),
-                )
+        mock_processor.process.return_value = ProcessingResult(
+            raw_text="raw",
+            merchant_name="Test",
+            total_incl_vat=10.0,
+            confidence=0.9,
+            trace=ExtractionTrace(),
+        )
 
-                with patch("bexio_receipts.cli.Settings", return_value=test_settings):
-                    result = runner.invoke(app, ["init", "--quickstart"])
-                    assert result.exit_code == 0
-                    assert "Quickstart complete" in result.stdout
+        with patch("bexio_receipts.cli.Settings", return_value=test_settings):
+            result = runner.invoke(app, ["init", "--quickstart"])
+            assert result.exit_code == 0
+            assert "Quickstart complete" in result.stdout
 
 
 def test_cli_file_not_found(test_settings):
     with patch("bexio_receipts.cli.Settings", return_value=test_settings):
         result = runner.invoke(app, ["process", "nonexistent.png"])
-        assert result.exit_code == 2
+    assert result.exit_code == 2
+
+
+def test_cli_init_non_interactive_writes_vision_keys(tmp_path):
+    env_file = tmp_path / ".env"
+
+    with patch("bexio_receipts.cli.Path") as mock_path:
+        # Mock .env to point to our tmp_path, others return a mock that exists
+        def path_side_effect(p):
+            if str(p) == ".env":
+                return env_file
+            m = MagicMock()
+            m.exists.return_value = True
+            return m
+
+        mock_path.side_effect = path_side_effect
+
+        result = runner.invoke(app, ["init", "--non-interactive"])
+        assert result.exit_code == 0
+
+        content = env_file.read_text()
+        assert "PROCESSOR_MODE=vision" in content
+        # Check first recommended model (dynamically)
+        from bexio_receipts.config import RECOMMENDED_VISION_MODELS
+
+        first_model = next(iter(RECOMMENDED_VISION_MODELS.values()))
+        assert f"VISION_MODEL={first_model['model']}" in content
+        assert f"VISION_SERVED_NAME={first_model['served_name']}" in content
+        assert f"VISION_QUANTIZATION={first_model['quantization']}" in content

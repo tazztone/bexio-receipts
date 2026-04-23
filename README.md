@@ -20,7 +20,7 @@ uv run bexio-receipts init --quickstart
 
 The `--quickstart` flag will:
 1.  **Validate** your Bexio token and display your company name.
-2.  **Configure** default local models (Qwen 3.5 & GLM-OCR SDK).
+2.  **Configure** default local models (Qwen 3.5/3.6 & GLM-OCR SDK).
 3.  **Process** a bundled demo receipt to verify your local LLM/OCR stack.
 
 ### What you'll see first
@@ -44,8 +44,8 @@ The `--quickstart` flag will:
     accuracy on digital PDFs.
   - **GLM-OCR:** A specialized multimodal LLM for high-accuracy text/table
     recognition on scanned images.
-- **Intelligent Extraction:** Uses **Pydantic AI** with local LLMs (e.g., Qwen
-  3.5) to parse text into structured data.
+- **Intelligent Extraction:** Uses **Pydantic AI** with local VLMs (e.g., Qwen
+  3.5/3.6) to parse text into structured data.
 - **Swiss Business Rules & Account Classification:**
   - **VAT Verification**: Built-in validation for Swiss VAT rates (8.1%, 2.6%,
     3.8%) and 5-rappen rounding.
@@ -73,7 +73,7 @@ graph TD
         P --> DB_Hash[SHA-256 Check]
         DB_Hash -- Duplicate --> Skip[Skip]
         DB_Hash -- New --> DP{DocumentProcessor}
-        DP -- "vision (default)" --> VLM[Qwen3.5 VLM]
+        DP -- "vision (default)" --> VLM[Qwen3.5/3.6 VLM]
         DP -- "ocr (fallback)" --> OCR_SDK[GLM-OCR SDK]
         VLM --> VAL[Validation]
         OCR_SDK --> LLM_S1[Step 1: Searcher]
@@ -198,7 +198,7 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ### Extended Documentation
 - [Architecture](docs/ARCHITECTURE.md): System flow and engine details.
-- [OCR Deployment](docs/OCR_DEPLOYMENT.md): Guide for self-hosting GLM-OCR via vLLM.
+- [VLM Performance](docs/VLM_PERFORMANCE.md): Hardware benchmarks and optimization tips.
 - [Configuration](docs/CONFIGURATION.md): Detailed environment variable reference.
 - [Development](docs/DEVELOPMENT.md): Setup and contribution guide.
 - [Operations](docs/OPERATIONS.md): Production setup and maintenance.

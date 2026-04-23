@@ -19,7 +19,7 @@ graph TD
         P --> DB_Hash[SHA-256 Check]
         DB_Hash -- Duplicate --> Skip[Skip]
         DB_Hash -- New --> DP{DocumentProcessor}
-        DP -- "vision (default)" --> VLM[Qwen3.5 VLM]
+        DP -- "vision (default)" --> VLM[Qwen3.5/3.6 VLM]
         DP -- "ocr (fallback)" --> OCR_SDK[GLM-OCR SDK]
         VLM --> PR[ProcessingResult]
         OCR_SDK --> LLM_S1[Step 1: Searcher]
@@ -51,18 +51,23 @@ graph TD
 ### 2. Document Processing Layer (`document_processor.py`)
 - **Strategy Pattern**: The pipeline supports multiple extraction strategies,
   selectable via `processor_mode` ("vision" or "ocr").
-- **Vision Strategy (Default)**: Uses **Qwen3.5-9B** (multimodal
-  vision-language model) served via vLLM. It performs single-pass extraction of
-  all receipt fields directly from images or PDF text. The system supports
-  multi-language prompt templates (German, English, and French) and uses
-  type-safe schema generation from `models.py` to prevent prompt drift.
+- **Vision Strategy (Default)**: Uses high-performance Vision-Language Models
+  (VLMs) such as **Qwen3.5-9B** or **Qwen3.6-27B** served via vLLM. It performs
+  single-pass extraction of all receipt fields directly from images or PDF text.
+  The system supports multi-language prompt templates (German, English, and
+  French) and uses type-safe schema generation from `models.py` to prevent
+  prompt drift.
 - **OCR Strategy (Fallback)**: Uses the **GLM-OCR SDK** for layout analysis and
   text extraction, followed by a multi-step LLM pipeline for data structuring.
 - **Native PDF Support**: Digital PDFs have text extracted via `pymupdf` and sent
   as text input, avoiding lossy image conversion.
 
 ### 3. vLLM Inference Backend (`vllm_server.py`)
-Both strategies utilize a local **vLLM** inference engine. The application provides unified lifecycle management to start/stop the server based on the active strategy and hardware constraints (RTX 3090 optimized).
+Both strategies utilize a local **vLLM** inference engine. The application
+provides unified lifecycle management to start and stop the server based on the
+active strategy and hardware constraints. It supports various quantization formats,
+including **AWQ** and **GGUF**, and is optimized for consumer GPUs like the
+RTX 3090/4090.
 
 ### 4. Extraction Layer (`extraction.py`)
 - **Pydantic AI**: Orchestrates the three-step LLM pipeline:
