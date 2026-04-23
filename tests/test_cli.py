@@ -124,53 +124,27 @@ def test_cli_init_quickstart(tmp_path, test_settings):
     sample_img = fixtures_dir / "sample_receipt.png"
     sample_img.write_text("fake image")
 
-    with patch(
-        "bexio_receipts.cli.Path",
-        side_effect=lambda x: tmp_path / x,
+    from bexio_receipts.document_processor import ProcessingResult
+    from bexio_receipts.extraction import ExtractionTrace
+
+    mock_processor = AsyncMock()
+    mock_processor.process.return_value = ProcessingResult(
+        raw_text="raw",
+        merchant_name="Test",
+        total_incl_vat=10.0,
+        confidence=0.9,
+        trace=ExtractionTrace(),
+    )
+
+    with (
+        patch("bexio_receipts.cli.Path", side_effect=lambda x: tmp_path / str(x)),
+        patch("shutil.copy"),
+        patch("bexio_receipts.pipeline.get_processor", return_value=mock_processor),
+        patch("bexio_receipts.cli.Settings", return_value=test_settings),
     ):
-        # We need to be careful with Path patching
-        pass
-
-    # Simplified patch for init
-    with patch("bexio_receipts.cli.Path") as mock_path:
-        # Mock .env path
-        mock_env = MagicMock()
-        mock_env.exists.return_value = False
-
-        # Mock fixtures path
-        mock_fixtures = MagicMock()
-        mock_fixtures.exists.return_value = True
-
-        def path_side_effect(path_str):
-            if str(path_str) == ".env":
-                return mock_env
-            if "fixtures" in str(path_str):
-                return mock_fixtures
-            return MagicMock()
-
-        mock_path.side_effect = path_side_effect
-
-        with (
-            patch("shutil.copy"),
-            patch("bexio_receipts.pipeline.get_processor") as mock_get,
-        ):
-            mock_processor = AsyncMock()
-            mock_get.return_value = mock_processor
-        from bexio_receipts.document_processor import ProcessingResult
-        from bexio_receipts.extraction import ExtractionTrace
-
-        mock_processor.process.return_value = ProcessingResult(
-            raw_text="raw",
-            merchant_name="Test",
-            total_incl_vat=10.0,
-            confidence=0.9,
-            trace=ExtractionTrace(),
-        )
-
-        with patch("bexio_receipts.cli.Settings", return_value=test_settings):
-            result = runner.invoke(app, ["init", "--quickstart"])
-            assert result.exit_code == 0
-            assert "Quickstart complete" in result.stdout
+        result = runner.invoke(app, ["init", "--quickstart"])
+        assert result.exit_code == 0
+        assert "Quickstart complete" in result.stdout
 
 
 def test_cli_file_not_found(test_settings):
