@@ -1,5 +1,6 @@
+import signal
 import socket
-import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from bexio_receipts.vllm_server import (
     is_port_open,
     start_vllm_server,
     stop_vllm_server,
+    terminate_managed_vllm,
 )
 
 
@@ -46,9 +48,15 @@ async def test_start_vllm_server_success(test_settings):
     with patch("bexio_receipts.vllm_server.is_port_open") as mock_port:
         # First call False (server not started), second call True (server ready)
         mock_port.side_effect = [False, True]
-        with patch("subprocess.Popen") as mock_popen:
+        mock_pid_file = MagicMock(spec=Path)
+        with (
+            patch("subprocess.Popen") as mock_popen,
+            patch("bexio_receipts.vllm_server.VLLM_PID_FILE", mock_pid_file),
+            patch("builtins.print"),  # Suppress prints from log tailing
+        ):
             mock_popen_inst = MagicMock()
             mock_popen_inst.poll.return_value = None
+            mock_popen_inst.pid = 1234
             mock_popen.return_value = mock_popen_inst
 
             with patch("builtins.open", MagicMock()):
@@ -56,33 +64,55 @@ async def test_start_vllm_server_success(test_settings):
                     "model", 8000, test_settings, extra_flags=["--test"]
                 )
                 mock_popen.assert_called_once()
+                mock_pid_file.write_text.assert_called_once_with("1234")
                 args, kwargs = mock_popen.call_args
                 assert "--test" in args[0]
                 assert "VLLM_SLEEP_WHEN_IDLE" in kwargs["env"]
 
 
+def test_terminate_managed_vllm_no_file():
+    mock_pid_file = MagicMock(spec=Path)
+    mock_pid_file.exists.return_value = False
+    with patch("bexio_receipts.vllm_server.VLLM_PID_FILE", mock_pid_file):
+        success, message = terminate_managed_vllm()
+        assert success is False
+        assert "No managed vLLM server found" in message
+
+
+def test_terminate_managed_vllm_success():
+    mock_pid_file = MagicMock(spec=Path)
+    mock_pid_file.exists.return_value = True
+    mock_pid_file.read_text.return_value = "1234"
+    with (
+        patch("bexio_receipts.vllm_server.VLLM_PID_FILE", mock_pid_file),
+        patch("os.kill") as mock_kill,
+        patch("time.sleep"),
+    ):
+        # First call to os.kill(pid, 0) succeeds (process exists)
+        # Second call to os.kill(pid, 0) fails (process gone after SIGTERM)
+        mock_kill.side_effect = [None, None, OSError()]
+
+        success, message = terminate_managed_vllm()
+
+        assert success is True
+        assert "Successfully stopped vLLM server" in message
+        mock_kill.assert_any_call(1234, 0)
+        mock_kill.assert_any_call(1234, signal.SIGTERM)
+        mock_pid_file.unlink.assert_called_once()
+
+
 def test_stop_vllm_server_success():
-    mock_process = MagicMock()
     mock_log = MagicMock()
 
     with (
-        patch("bexio_receipts.vllm_server._vllm_process", mock_process),
+        patch(
+            "bexio_receipts.vllm_server.terminate_managed_vllm",
+            return_value=(True, "Success"),
+        ),
         patch("bexio_receipts.vllm_server._vllm_log_file", mock_log),
     ):
         stop_vllm_server()
-        mock_process.terminate.assert_called_once()
-        mock_process.wait.assert_called_once()
         mock_log.close.assert_called_once()
-
-
-def test_stop_vllm_server_kill():
-    mock_process = MagicMock()
-    mock_process.wait.side_effect = subprocess.TimeoutExpired(cmd="test", timeout=10)
-
-    with patch("bexio_receipts.vllm_server._vllm_process", mock_process):
-        stop_vllm_server()
-        mock_process.terminate.assert_called_once()
-        mock_process.kill.assert_called_once()
 
 
 def test_build_vllm_flags_gguf(test_settings):

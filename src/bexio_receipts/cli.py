@@ -684,6 +684,20 @@ def start(
     asyncio.run(_start_all())
 
 
+@app.command(name="vllm-stop")
+def vllm_stop():
+    """Stop the managed vLLM server if it's running."""
+    from .vllm_server import terminate_managed_vllm
+
+    with console.status("[bold red]Stopping vLLM server..."):
+        success, message = terminate_managed_vllm()
+
+    if success:
+        console.print(f"[green]✔[/green] {message}")
+    else:
+        console.print(f"[yellow]ℹ[/yellow] {message}")
+
+
 def main():
     app()
 

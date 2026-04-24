@@ -179,3 +179,18 @@ def test_cli_init_non_interactive_writes_vision_keys(tmp_path):
         assert f"VISION_MODEL={first_model['model']}" in content
         assert f"VISION_SERVED_NAME={first_model['served_name']}" in content
         assert f"VISION_QUANTIZATION={first_model['quantization']}" in content
+
+
+def test_cli_vllm_stop():
+    with patch("bexio_receipts.vllm_server.terminate_managed_vllm") as mock_terminate:
+        # Success case
+        mock_terminate.return_value = (True, "Terminated 1234")
+        result = runner.invoke(app, ["vllm-stop"])
+        assert result.exit_code == 0
+        assert "Terminated 1234" in result.stdout
+
+        # Failure case (not found)
+        mock_terminate.return_value = (False, "Not found")
+        result = runner.invoke(app, ["vllm-stop"])
+        assert result.exit_code == 0
+        assert "Not found" in result.stdout

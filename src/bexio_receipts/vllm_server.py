@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import signal
 import socket
 import subprocess
 import time
@@ -13,6 +14,7 @@ from .config import Settings
 
 logger = structlog.get_logger(__name__)
 
+VLLM_PID_FILE = Path("debug/vllm.pid")
 _vllm_process: subprocess.Popen | None = None
 _vllm_log_file = None
 _vllm_lock: asyncio.Lock | None = None
@@ -123,6 +125,8 @@ async def start_vllm_server(
                 stderr=_vllm_log_file,
                 env=env,
             )
+            # Record PID for cross-session management
+            VLLM_PID_FILE.write_text(str(_vllm_process.pid))
         except Exception as e:
             logger.error("Failed to spawn vLLM process", error=str(e))
             if _vllm_log_file:
@@ -133,7 +137,21 @@ async def start_vllm_server(
         # Wait for the server to be ready without blocking the loop
         logger.info("Waiting for vLLM server to start...", port=port, timeout=300)
         start_time = time.time()
+        last_pos = 0
         while time.time() - start_time < 300:
+            # Stream logs from the file
+            try:
+                if log_path.exists():
+                    with open(log_path, errors="replace") as f:
+                        f.seek(last_pos)
+                        new_content = f.read()
+                        if new_content:
+                            print(new_content, end="", flush=True)  # noqa: T201
+                            last_pos = f.tell()
+            except Exception:
+                # Don't let log streaming crash the startup
+                pass
+
             if is_port_open(host, port):
                 logger.info("vLLM server is ready", port=port)
                 # Small grace period for actual API readiness
@@ -156,22 +174,65 @@ async def start_vllm_server(
         )
 
 
-def stop_vllm_server():
-    """Stop the background vLLM server."""
-    global _vllm_process, _vllm_log_file  # noqa: PLW0603
-    if _vllm_process:
-        try:
-            logger.info("Stopping vLLM server")
-            _vllm_process.terminate()
+def terminate_managed_vllm() -> tuple[bool, str]:
+    """Terminate the managed vLLM server across sessions."""
+    if not VLLM_PID_FILE.exists():
+        return False, "No managed vLLM server found (PID file missing)."
+
+    try:
+        pid = int(VLLM_PID_FILE.read_text().strip())
+    except Exception as e:
+        VLLM_PID_FILE.unlink(missing_ok=True)
+        return (
+            False,
+            f"Failed to read PID file, it might be corrupt. Cleaned up. Error: {e}",
+        )
+
+    try:
+        # Check if process exists
+        os.kill(pid, 0)
+    except OSError:
+        VLLM_PID_FILE.unlink(missing_ok=True)
+        return False, f"Process {pid} is not running. Cleaned up PID file."
+
+    try:
+        logger.info("Terminating vLLM server", pid=pid)
+        os.kill(pid, signal.SIGTERM)
+
+        # Wait for it to die
+        for _ in range(10):
             try:
-                _vllm_process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                logger.warning("vLLM server didn't stop, killing")
-                _vllm_process.kill()
-        except Exception as e:
-            logger.error("Error stopping vLLM process", error=str(e))
-        finally:
-            _vllm_process = None
-            if _vllm_log_file is not None:
-                _vllm_log_file.close()
-                _vllm_log_file = None
+                os.kill(pid, 0)
+                time.sleep(1)
+            except OSError:
+                # Process is dead
+                break
+        else:
+            logger.warning(
+                "vLLM server didn't stop with SIGTERM, killing with SIGKILL", pid=pid
+            )
+            os.kill(pid, signal.SIGKILL)
+            time.sleep(1)
+
+    except Exception as e:
+        return False, f"Error terminating process {pid}: {e}"
+    finally:
+        VLLM_PID_FILE.unlink(missing_ok=True)
+
+    return True, f"Successfully stopped vLLM server (PID {pid})."
+
+
+def stop_vllm_server():
+    """Stop the background vLLM server (in-session wrapper)."""
+    global _vllm_process, _vllm_log_file  # noqa: PLW0603
+
+    success, message = terminate_managed_vllm()
+    if success:
+        logger.info(message)
+    else:
+        logger.debug(message)
+
+    _vllm_process = None
+    if _vllm_log_file is not None:
+        _vllm_log_file.close()
+        _vllm_log_file = None
