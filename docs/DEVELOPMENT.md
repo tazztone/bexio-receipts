@@ -66,6 +66,16 @@ For development without a real bexio account, you can use a mock server.
 - **Configuration**: Set `BEXIO_BASE_URL=http://localhost:8001` in your `.env`.
 - **Dashboard**: Access the review interface at `http://localhost:8000`.
 
+### Managed vLLM Server
+The project can automatically manage a vLLM server instance for local 
+vision-based extraction.
+
+- **PID Tracking**: The server Process ID is stored in `debug/vllm.pid`.
+- **Startup Feedback**: During the ~75s startup, the app streams the tail of 
+  the vLLM log file (`debug/vllm_{port}.log`) to `stdout`.
+- **Manual Stop**: Use `uv run bexio-receipts vllm-stop` to terminate the 
+  managed server and clear VRAM.
+
 ## Testing Strategy
 
 ### Unit & Integration Tests

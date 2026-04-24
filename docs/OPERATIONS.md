@@ -93,10 +93,13 @@ sqlite3 processed_receipts.db ".backup backup_$(date +%Y%m%d).db"
 ## Disaster Recovery
 
 ### "My Pipeline is Stuck"
-If the folder watcher stops picking up files:
+If the folder watcher stops picking up files or the vision extraction hangs:
 1. Check for `Permission Denied` errors on the `inbox/` directory.
-2. Restart the process: `docker compose restart`.
-3. Check the `logs` for any `DuplicateDetector` lock errors.
+2. **Reset vLLM**: If the vision server seems unresponsive or is hogging VRAM,
+   stop it manually: `uv run bexio-receipts vllm-stop`. It will restart
+   automatically on the next request.
+3. Restart the main process: `docker compose restart`.
+4. Check the `logs` for any `DuplicateDetector` lock errors.
 
 ### Moving to a New Server
 1. Copy the `.env` and `processed_receipts.db`.

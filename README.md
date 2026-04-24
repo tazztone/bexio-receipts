@@ -148,6 +148,12 @@ uv run bexio-receipts watch folder --path ./my-inbox
 uv run bexio-receipts watch gdrive
 ```
 
+**Manage Managed vLLM Server:**
+```bash
+# Stop the background vLLM server and free VRAM
+uv run bexio-receipts vllm-stop
+```
+
 ### Review Dashboard
 
 Start the web interface to manage your receipts:

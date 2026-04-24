@@ -70,6 +70,13 @@ optimization tips.
 | `VISION_API_PORT` | Port for the vLLM server | `8000` |
 | `VISION_MANAGE_SERVER` | Start/stop vLLM automatically | `true` |
 | `VISION_GPU_MEMORY_UTILIZATION` | Fraction of VRAM to reserve | `0.9` |
+
+<!-- prettier-ignore -->
+> [!NOTE]
+> When `VISION_MANAGE_SERVER` is enabled, the system tracks the process in 
+> `debug/vllm.pid` and logs startup output to `debug/vllm_{port}.log`. You can 
+> manually terminate it using the `vllm-stop` CLI command.
+
 | `VISION_TENSOR_PARALLEL_SIZE` | Number of GPUs for tensor parallelism | `1` |
 | `VISION_MAX_MODEL_LEN` | Context window size | `32768` |
 | `VISION_QUANTIZATION` | Weight format (`awq`, `gguf`, `auto`) | `awq` |

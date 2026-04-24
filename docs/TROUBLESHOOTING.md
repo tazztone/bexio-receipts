@@ -70,6 +70,10 @@ If the managed server fails to start due to VRAM:
 1. Reduce `GLM_OCR_VLLM_GPU_MEMORY_UTILIZATION` (e.g., to `0.15`).
 2. Ensure no other processes are using the GPU.
 3. Ensure `GLM_OCR_VLLM_MAX_NUM_SEQS` is set to `1`.
+4. **Stop dangling processes**: If you manually killed a process and the VRAM is still blocked, run:
+   ```bash
+   uv run bexio-receipts vllm-stop
+   ```
 
 ### 7. `Merchant Match Failure`
 **Symptoms**: Extracted merchant name is correct, but it doesn't match an

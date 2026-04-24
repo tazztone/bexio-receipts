@@ -234,3 +234,4 @@ debug/
 # Eval fixture images (local-only, potentially sensitive)
 tests/eval/fixtures/*.jpg
 tests/eval/fixtures/*.png
+docs/superpowers/
