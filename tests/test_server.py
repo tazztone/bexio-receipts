@@ -168,19 +168,19 @@ def test_pull_model_success(test_settings):
     mock_resp = MagicMock()
     mock_resp.raise_for_status = MagicMock()
 
-    with patch(
-        "httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_resp
-    ):
-        with patch(
+    with (
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_resp),
+        patch(
             "bexio_receipts.server.Request.session",
             property(lambda x: {"csrf_token": "test_token"}),
-        ):
-            response = client.post(
-                "/setup/pull-model",
-                data={"model": "test-model", "csrf_token": "test_token"},
-                auth=("admin", "test_password"),
-            )
-            assert "Successfully pulled test-model" in response.text
+        ),
+    ):
+        response = client.post(
+            "/setup/pull-model",
+            data={"model": "test-model", "csrf_token": "test_token"},
+            auth=("admin", "test_password"),
+        )
+        assert "Successfully pulled test-model" in response.text
     app.dependency_overrides.clear()
 
 
@@ -283,10 +283,10 @@ def test_auth_rate_limit(test_settings):
     # Reset the in-process limiter store so previous test runs don't pre-exhaust the quota.
     app.dependency_overrides.clear()
     app.dependency_overrides[get_settings] = lambda: test_settings
-    try:
+    import contextlib
+
+    with contextlib.suppress(Exception):
         app.state.limiter.reset()
-    except Exception:
-        pass
 
     for _ in range(10):
         response = client.get("/", auth=("admin", "wrong_password"))

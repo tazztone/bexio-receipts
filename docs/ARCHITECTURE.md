@@ -101,6 +101,7 @@ A custom async client (using `httpx`) that:
   with better supplier tracking).
 - **Retry Logic**: All API calls are wrapped in a `@BEXIO_RETRY` decorator
   (using `tenacity`) to handle rate limits and transient network issues.
+- **Reference**: Detailed API excerpts are available in [BEXIO_API.md](BEXIO_API.md).
 
 ### 6. Review Dashboard (`server.py`)
 - **FastAPI**: Provides the backend and API logic.

@@ -209,4 +209,4 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 - [Development](docs/DEVELOPMENT.md): Setup and contribution guide.
 - [Operations](docs/OPERATIONS.md): Production setup and maintenance.
 - [Troubleshooting](docs/TROUBLESHOOTING.md): Common issues and fixes.
-- [API Reference](docs/API.md): Dashboard endpoints and monitoring.
+- [Internal API Reference](docs/INTERNAL_API.md): Dashboard endpoints and monitoring.

@@ -1,4 +1,4 @@
-# API Reference
+# Internal API Reference
 
 The Review Dashboard is built with FastAPI and provides several endpoints for
 integration and monitoring.

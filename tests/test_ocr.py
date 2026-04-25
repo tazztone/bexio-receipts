@@ -64,9 +64,11 @@ async def test_async_run_ocr_timeout(test_settings):
         return "too late", 0.0, []
 
     # Mock the sync run to be slow
-    with patch("bexio_receipts.ocr._sync_run_ocr", side_effect=slow_ocr):
-        with pytest.raises(asyncio.TimeoutError):
-            await async_run_ocr("test.png", test_settings)
+    with (
+        patch("bexio_receipts.ocr._sync_run_ocr", side_effect=slow_ocr),
+        pytest.raises(asyncio.TimeoutError),
+    ):
+        await async_run_ocr("test.png", test_settings)
 
 
 @pytest.mark.asyncio
@@ -75,9 +77,11 @@ async def test_async_run_ocr_error(test_settings):
     mock_parser = MagicMock()
     mock_parser.parse.side_effect = Exception("SDK Error")
 
-    with patch("bexio_receipts.ocr.get_ocr_parser", return_value=mock_parser):
-        with pytest.raises(Exception, match="SDK Error"):
-            await async_run_ocr("test.png", test_settings)
+    with (
+        patch("bexio_receipts.ocr.get_ocr_parser", return_value=mock_parser),
+        pytest.raises(Exception, match="SDK Error"),
+    ):
+        await async_run_ocr("test.png", test_settings)
 
 
 def test_is_port_open():

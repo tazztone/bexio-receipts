@@ -7,6 +7,7 @@ from bexio_receipts.gdrive_ingest import GoogleDriveIngestor
 
 @pytest.mark.asyncio
 async def test_gdrive_credentials_permissions(test_settings, tmp_path):
+    import contextlib
     import stat
 
     from structlog.testing import capture_logs
@@ -22,10 +23,8 @@ async def test_gdrive_credentials_permissions(test_settings, tmp_path):
     ingestor = GoogleDriveIngestor(test_settings, bexio_mock)
 
     with capture_logs() as cap_logs:
-        try:
+        with contextlib.suppress(Exception):
             await ingestor.connect()
-        except Exception:
-            pass
 
         assert any("insecure permissions" in log["event"] for log in cap_logs)
 
@@ -33,9 +32,7 @@ async def test_gdrive_credentials_permissions(test_settings, tmp_path):
     creds_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
     with capture_logs() as cap_logs:
-        try:
+        with contextlib.suppress(Exception):
             await ingestor.connect()
-        except Exception:
-            pass
 
         assert not any("insecure permissions" in log["event"] for log in cap_logs)

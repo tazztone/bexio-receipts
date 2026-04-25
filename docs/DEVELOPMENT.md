@@ -141,6 +141,7 @@ Before pushing, ensure these pass:
 7. **Documentation**:
    - Update `CHANGELOG.md` for every significant change.
    - Refactor `ARCHITECTURE.md` if the data flow changes.
+   - Refer to [BEXIO_API.md](BEXIO_API.md) for API integration details.
 
 ## 🏗️ Design Rationale
 

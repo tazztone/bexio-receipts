@@ -12,10 +12,10 @@ async def test_rate_limit(test_settings):
     app.dependency_overrides[get_settings] = lambda: test_settings
 
     # Reset limiter state so previous tests don't pre-exhaust the quota.
-    try:
+    import contextlib
+
+    with contextlib.suppress(Exception):
         app.state.limiter.reset()
-    except Exception:
-        pass
 
     # Pin remote address to a constant IP so all requests share the same bucket.
     with patch("bexio_receipts.server.get_remote_address", return_value="192.0.2.1"):
