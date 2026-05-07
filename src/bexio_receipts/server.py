@@ -450,14 +450,30 @@ async def bulk_action(
                                 if not acc_id:
                                     # Fallback to general merchant account or default
                                     acc_id = booking_account_id
+
+                                if acc_id is None:
+                                    raise ValueError(
+                                        f"No booking account found for merchant {receipt.merchant_name} and VAT rate {entry.rate}"
+                                    )
                                 booking_account_ids.append(acc_id)
                         else:
+                            if booking_account_id is None:
+                                raise ValueError(
+                                    f"No booking account found for merchant {receipt.merchant_name}"
+                                )
                             booking_account_ids = [booking_account_id]
 
                         await bexio.create_purchase_bill(
                             receipt, file_uuid, booking_account_ids=booking_account_ids
                         )
                     else:
+                        if booking_account_id is None:
+                            raise ValueError(
+                                f"No booking account found for merchant {receipt.merchant_name}"
+                            )
+                        if settings.default_bank_account_id is None:
+                            raise ValueError("DEFAULT_BANK_ACCOUNT_ID is not configured")
+
                         await bexio.create_expense(
                             receipt,
                             file_uuid,
@@ -788,7 +804,11 @@ async def push_to_bexio(
             if bexio_action == "purchase_bill":
                 # Always Purchase Bill for multi-rate or merchant
                 await bexio.create_purchase_bill(
-                    receipt, file_uuid, booking_account_ids=booking_account_ids
+                    receipt,
+                    file_uuid,
+                    booking_account_ids=[
+                        acc_id for acc_id in booking_account_ids if acc_id is not None
+                    ],
                 )
                 # Save account mapping for merchant (Learning Loop)
                 if receipt.merchant_name:
@@ -805,11 +825,17 @@ async def push_to_bexio(
                         )
             else:
                 # Single-rate expense
+                effective_bank_account_id = (
+                    bank_account_id or settings.default_bank_account_id
+                )
+                if effective_bank_account_id is None:
+                    raise ValueError("Bank account ID is not configured")
+
                 await bexio.create_expense(
                     receipt,
                     file_uuid,
                     booking_account_id=booking_account_ids[0],
-                    bank_account_id=bank_account_id or settings.default_bank_account_id,
+                    bank_account_id=effective_bank_account_id,
                 )
                 # Learning loop for single-rate
                 if receipt.merchant_name:

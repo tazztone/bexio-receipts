@@ -79,6 +79,230 @@ def get_settings() -> Settings:
         raise typer.Exit(code=1) from None
 
 
+async def _validate_bexio_token(token: str) -> str | None:
+    """Helper to validate Bexio API token."""
+    try:
+        async with BexioClient(token=token) as client:
+            profile = await client.get_profile()
+            return profile.get("company_name") or profile.get("name")
+    except Exception:
+        return None
+
+
+def _gather_config_non_interactive():
+    """Gather configuration using environment variables or defaults."""
+    import os
+
+    token = os.getenv("BEXIO_API_TOKEN", "your_bexio_token")
+    llm_provider = os.getenv("LLM_PROVIDER", "ollama")
+    secret_key = os.getenv("SECRET_KEY", "change-me-in-production")
+    processor_mode = os.getenv("PROCESSOR_MODE", "vision")
+    vision_model_choice = next(iter(RECOMMENDED_VISION_MODELS))
+
+    console.print("\n[bold]Using assumed configuration:[/bold]")
+    console.print(f"  - Mode: [cyan]{processor_mode}[/cyan]")
+    console.print(f"  - LLM: [cyan]{llm_provider}[/cyan]")
+    console.print("  - Default Accounts: [cyan]630/1[/cyan]")
+
+    return (
+        token,
+        llm_provider,
+        secret_key,
+        processor_mode,
+        vision_model_choice,
+        "",
+        "anthropic/claude-3.5-sonnet",
+        "",
+    )
+
+
+def _gather_config_interactive():
+    """Gather configuration by prompting the user."""
+    token = Prompt.ask("Enter your Bexio API Token (from bexio Admin -> API Tokens)")
+
+    # Live validation
+    with console.status("[bold green]Validating token..."):
+        company_name = asyncio.run(_validate_bexio_token(token))
+
+    if company_name:
+        console.print(
+            f"[green]✅ Token valid! Connected to: [bold]{company_name}[/bold][/green]"
+        )
+    else:
+        console.print(
+            "[red]❌ Token validation failed. Please check your token and try again.[/red]"
+        )
+        if not Confirm.ask("Continue anyway?"):
+            raise typer.Exit(1)
+
+    processor_mode = Prompt.ask(
+        "Processor Mode",
+        choices=["vision", "ocr"],
+        default="vision",
+        show_choices=True,
+    )
+
+    vision_model_choice = next(iter(RECOMMENDED_VISION_MODELS))
+    if processor_mode == "vision":
+        model_options = [*RECOMMENDED_VISION_MODELS, "custom"]
+        vision_model_choice = Prompt.ask(
+            "Vision Model",
+            choices=model_options,
+            default=next(iter(RECOMMENDED_VISION_MODELS)),
+            show_choices=True,
+        )
+
+    llm_provider = Prompt.ask(
+        "LLM Provider",
+        choices=["ollama", "openai", "openrouter"],
+        default="ollama",
+        show_choices=True,
+    )
+
+    openrouter_key = ""
+    openrouter_model = "anthropic/claude-3.5-sonnet"
+    openai_key = ""
+
+    if llm_provider == "ollama":
+        console.print(
+            "[dim](Note: supports Ollama quantization suffix, e.g. qwen3.5:9b for default, qwen3.5:9b-q4_K_M for lower RAM usage)[/dim]"
+        )
+    elif llm_provider == "openrouter":
+        openrouter_key = Prompt.ask("OpenRouter API Key")
+        console.print(
+            "[dim]Note: OpenRouter models must use provider/model format.[/dim]\n"
+            "[dim]Examples: anthropic/claude-3.5-sonnet, meta-llama/llama-3-70b-instruct, google/gemini-1.5-pro[/dim]"
+        )
+        openrouter_model = Prompt.ask("LLM Model", default="anthropic/claude-3.5-sonnet")
+    elif llm_provider == "openai":
+        openai_key = Prompt.ask("OpenAI API Key")
+
+    secret_key = Prompt.ask(
+        "Secret Key (for dashboard sessions)", default="change-me-in-production"
+    )
+
+    return (
+        token,
+        llm_provider,
+        secret_key,
+        processor_mode,
+        vision_model_choice,
+        openrouter_key,
+        openrouter_model,
+        openai_key,
+    )
+
+
+def _build_vision_config(processor_mode: str, vision_model_choice: str) -> list[str]:
+    """Construct vision-related configuration strings."""
+    config = []
+    if processor_mode == "vision":
+        if vision_model_choice == "custom":
+            v_model = Prompt.ask("Enter custom Vision Model ID")
+            v_name = Prompt.ask("Enter custom Served Name", default="custom")
+            v_quant = Prompt.ask(
+                "Enter custom Quantization (e.g. awq, gptq, gguf, none)", default="none"
+            )
+        else:
+            m_data = RECOMMENDED_VISION_MODELS[vision_model_choice]
+            v_model = m_data["model"]
+            v_name = m_data["served_name"]
+            v_quant = m_data["quantization"]
+
+        config.append(f"VISION_MODEL={v_model}")
+        config.append(f"VISION_SERVED_NAME={v_name}")
+        config.append(f"VISION_QUANTIZATION={v_quant}")
+    return config
+
+
+def _build_llm_config(
+    llm_provider: str,
+    non_interactive: bool,
+    openrouter_key: str = "",
+    openrouter_model: str = "anthropic/claude-3.5-sonnet",
+    openai_key: str = "",
+) -> list[str]:
+    """Construct LLM-related configuration strings."""
+    config = []
+    if llm_provider == "ollama":
+        config.append("OLLAMA_URL=http://localhost:11434")
+        config.append("LLM_MODEL=qwen3.5:9b")
+    elif llm_provider == "openrouter":
+        config.append("OPENROUTER_URL=https://openrouter.ai/api/v1")
+        if not non_interactive:
+            config.append(f"OPENROUTER_API_KEY={openrouter_key}")
+            config.append(f"LLM_MODEL={openrouter_model}")
+        else:
+            config.append("LLM_MODEL=anthropic/claude-3.5-sonnet")
+    elif llm_provider == "openai":
+        if not non_interactive:
+            config.append(f"OPENAI_API_KEY={openai_key}")
+        config.append("LLM_MODEL=gpt-4o-mini")
+    return config
+
+
+def _run_quickstart_demo(token: str):
+    """Run the quickstart demo process."""
+    import os
+    import shutil
+
+    console.print("\n[bold blue]🚀 Quickstart: Processing demo receipt...[/bold blue]")
+
+    inbox_path = Path("inbox")
+    inbox_path.mkdir(exist_ok=True)
+    demo_receipt = Path("tests/fixtures/sample_receipt.png")
+    if demo_receipt.exists():
+        target = inbox_path / "demo_receipt.png"
+        shutil.copy(demo_receipt, target)
+        console.print(f"  - Copied demo receipt to [cyan]{target}[/cyan]")
+
+        # Run dry-run process
+        from .config import Settings
+
+        # We need to reload settings since we just wrote .env
+        os.environ["BEXIO_API_TOKEN"] = token  # Ensure it's in env for this process
+        settings = Settings()
+
+        async def _dry_run():
+            from .models import RawReceipt, RawVatRow
+            from .pipeline import assemble_receipt, get_processor
+
+            processor = get_processor(settings)
+            with console.status(f"[bold green]Running demo ({settings.processor_mode})..."):
+                result = await processor.process(str(target), settings)
+
+            raw_receipt = RawReceipt(
+                merchant_name=result.merchant_name,
+                transaction_date=result.transaction_date,
+                total_incl_vat=result.total_incl_vat,
+                currency=result.currency,
+                vat_rows=[
+                    RawVatRow(**v) if isinstance(v, dict) else v
+                    for v in result.vat_rows
+                ],
+                account_assignments=result.account_assignments,
+            )
+            receipt = assemble_receipt(raw_receipt)
+            console.print(f"  - Detected Merchant: [bold]{receipt.merchant_name}[/bold]")
+            console.print(
+                f"  - Detected Total: [bold]{receipt.total_incl_vat} {receipt.currency}[/bold]"
+            )
+
+        asyncio.run(_dry_run())
+        console.print("\n[bold green]✨ Quickstart complete![/bold green]")
+        console.print("Next steps:")
+        console.print(
+            "  1. Run [bold]uv run bexio-receipts serve[/bold] to start the dashboard"
+        )
+        console.print(
+            "  2. Open [link=http://localhost:8000/setup]http://localhost:8000/setup[/link] to verify health"
+        )
+    else:
+        console.print(
+            "[yellow]Warning: Demo receipt fixture not found. Skipping demo process.[/yellow]"
+        )
+
+
 @app.command()
 def init(
     non_interactive: bool = typer.Option(
@@ -106,94 +330,27 @@ def init(
         raise typer.Exit()
 
     if non_interactive:
-        import os
-
-        token = os.getenv("BEXIO_API_TOKEN", "your_bexio_token")
-        llm_provider = os.getenv("LLM_PROVIDER", "ollama")
-        secret_key = os.getenv("SECRET_KEY", "change-me-in-production")
-        processor_mode = os.getenv("PROCESSOR_MODE", "vision")
-        vision_model_choice = next(iter(RECOMMENDED_VISION_MODELS))
-
-        console.print("\n[bold]Using assumed configuration:[/bold]")
-        console.print(f"  - Mode: [cyan]{processor_mode}[/cyan]")
-        console.print(f"  - LLM: [cyan]{llm_provider}[/cyan]")
-        console.print("  - Default Accounts: [cyan]630/1[/cyan]")
+        (
+            token,
+            llm_provider,
+            secret_key,
+            processor_mode,
+            vision_model_choice,
+            openrouter_key,
+            openrouter_model,
+            openai_key,
+        ) = _gather_config_non_interactive()
     else:
-        token = Prompt.ask(
-            "Enter your Bexio API Token (from bexio Admin -> API Tokens)"
-        )
-
-        # Live validation
-        with console.status("[bold green]Validating token..."):
-
-            async def validate():
-                try:
-                    async with BexioClient(token=token) as client:
-                        profile = await client.get_profile()
-                        return profile.get("company_name") or profile.get("name")
-                except Exception:
-                    return None
-
-            company_name = asyncio.run(validate())
-
-        if company_name:
-            console.print(
-                f"[green]✅ Token valid! Connected to: [bold]{company_name}[/bold][/green]"
-            )
-        else:
-            console.print(
-                "[red]❌ Token validation failed. Please check your token and try again.[/red]"
-            )
-            if not Confirm.ask("Continue anyway?"):
-                raise typer.Exit(1)
-
-        processor_mode = Prompt.ask(
-            "Processor Mode",
-            choices=["vision", "ocr"],
-            default="vision",
-            show_choices=True,
-        )
-
-        vision_model_choice = next(iter(RECOMMENDED_VISION_MODELS))
-        if processor_mode == "vision":
-            model_options = [*RECOMMENDED_VISION_MODELS, "custom"]
-            vision_model_choice = Prompt.ask(
-                "Vision Model",
-                choices=model_options,
-                default=next(iter(RECOMMENDED_VISION_MODELS)),
-                show_choices=True,
-            )
-
-        llm_provider = Prompt.ask(
-            "LLM Provider",
-            choices=["ollama", "openai", "openrouter"],
-            default="ollama",
-            show_choices=True,
-        )
-
-        openrouter_key = ""
-        openrouter_model = "anthropic/claude-3.5-sonnet"
-        openai_key = ""
-
-        if llm_provider == "ollama":
-            console.print(
-                "[dim](Note: supports Ollama quantization suffix, e.g. qwen3.5:9b for default, qwen3.5:9b-q4_K_M for lower RAM usage)[/dim]"
-            )
-        elif llm_provider == "openrouter":
-            openrouter_key = Prompt.ask("OpenRouter API Key")
-            console.print(
-                "[dim]Note: OpenRouter models must use provider/model format.[/dim]\n"
-                "[dim]Examples: anthropic/claude-3.5-sonnet, meta-llama/llama-3-70b-instruct, google/gemini-1.5-pro[/dim]"
-            )
-            openrouter_model = Prompt.ask(
-                "LLM Model", default="anthropic/claude-3.5-sonnet"
-            )
-        elif llm_provider == "openai":
-            openai_key = Prompt.ask("OpenAI API Key")
-
-        secret_key = Prompt.ask(
-            "Secret Key (for dashboard sessions)", default="change-me-in-production"
-        )
+        (
+            token,
+            llm_provider,
+            secret_key,
+            processor_mode,
+            vision_model_choice,
+            openrouter_key,
+            openrouter_model,
+            openai_key,
+        ) = _gather_config_interactive()
 
     config = [
         f"BEXIO_API_TOKEN={token}",
@@ -203,46 +360,25 @@ def init(
         f"LLM_PROVIDER={llm_provider}",
     ]
 
-    # Vision config
-    if processor_mode == "vision":
-        if vision_model_choice == "custom":
-            # Only ask in interactive mode
-            v_model = Prompt.ask("Enter custom Vision Model ID")
-            v_name = Prompt.ask("Enter custom Served Name", default="custom")
-            v_quant = Prompt.ask(
-                "Enter custom Quantization (e.g. awq, gptq, gguf, none)", default="none"
-            )
-        else:
-            m_data = RECOMMENDED_VISION_MODELS[vision_model_choice]
-            v_model = m_data["model"]
-            v_name = m_data["served_name"]
-            v_quant = m_data["quantization"]
+    config.extend(_build_vision_config(processor_mode, vision_model_choice))
+    config.extend(
+        _build_llm_config(
+            llm_provider,
+            non_interactive,
+            openrouter_key,
+            openrouter_model,
+            openai_key,
+        )
+    )
 
-        config.append(f"VISION_MODEL={v_model}")
-        config.append(f"VISION_SERVED_NAME={v_name}")
-        config.append(f"VISION_QUANTIZATION={v_quant}")
-
-    if llm_provider == "ollama":
-        config.append("OLLAMA_URL=http://localhost:11434")
-        config.append("LLM_MODEL=qwen3.5:9b")
-    elif llm_provider == "openrouter":
-        config.append("OPENROUTER_URL=https://openrouter.ai/api/v1")
-        if not non_interactive:
-            config.append(f"OPENROUTER_API_KEY={openrouter_key}")
-            config.append(f"LLM_MODEL={openrouter_model}")
-        else:
-            config.append("LLM_MODEL=anthropic/claude-3.5-sonnet")
-    elif llm_provider == "openai":
-        if not non_interactive:
-            config.append(f"OPENAI_API_KEY={openai_key}")
-        config.append("LLM_MODEL=gpt-4o-mini")
-
-    config.append("DEFAULT_BOOKING_ACCOUNT_ID=630")
-    config.append("DEFAULT_BANK_ACCOUNT_ID=1")
-    config.append(f"SECRET_KEY={secret_key}")
-    config.append("REVIEW_USERNAME=admin")
-    config.append("REVIEW_PASSWORD=admin")
-    config.append("BEXIO_PUSH_ENABLED=false")
+    config.extend([
+        "DEFAULT_BOOKING_ACCOUNT_ID=630",
+        "DEFAULT_BANK_ACCOUNT_ID=1",
+        f"SECRET_KEY={secret_key}",
+        "REVIEW_USERNAME=admin",
+        "REVIEW_PASSWORD=admin",
+        "BEXIO_PUSH_ENABLED=false",
+    ])
 
     with open(env_path, "w") as f:
         f.write("\n".join(config) + "\n")
@@ -253,68 +389,7 @@ def init(
     )
 
     if quickstart:
-        console.print(
-            "\n[bold blue]🚀 Quickstart: Processing demo receipt...[/bold blue]"
-        )
-        import shutil
-
-        inbox_path = Path("inbox")
-        inbox_path.mkdir(exist_ok=True)
-        demo_receipt = Path("tests/fixtures/sample_receipt.png")
-        if demo_receipt.exists():
-            target = inbox_path / "demo_receipt.png"
-            shutil.copy(demo_receipt, target)
-            console.print(f"  - Copied demo receipt to [cyan]{target}[/cyan]")
-
-            # Run dry-run process
-            from .config import Settings
-
-            # We need to reload settings since we just wrote .env
-            os.environ["BEXIO_API_TOKEN"] = token  # Ensure it's in env for this process
-            settings = Settings()
-
-            async def _dry_run():
-                from .models import RawReceipt, RawVatRow
-                from .pipeline import assemble_receipt, get_processor
-
-                processor = get_processor(settings)
-                with console.status(
-                    f"[bold green]Running demo ({settings.processor_mode})..."
-                ):
-                    result = await processor.process(str(target), settings)
-
-                raw_receipt = RawReceipt(
-                    merchant_name=result.merchant_name,
-                    transaction_date=result.transaction_date,
-                    total_incl_vat=result.total_incl_vat,
-                    currency=result.currency,
-                    vat_rows=[
-                        RawVatRow(**v) if isinstance(v, dict) else v
-                        for v in result.vat_rows
-                    ],
-                    account_assignments=result.account_assignments,
-                )
-                receipt = assemble_receipt(raw_receipt)
-                console.print(
-                    f"  - Detected Merchant: [bold]{receipt.merchant_name}[/bold]"
-                )
-                console.print(
-                    f"  - Detected Total: [bold]{receipt.total_incl_vat} {receipt.currency}[/bold]"
-                )
-
-            asyncio.run(_dry_run())
-            console.print("\n[bold green]✨ Quickstart complete![/bold green]")
-            console.print("Next steps:")
-            console.print(
-                "  1. Run [bold]uv run bexio-receipts serve[/bold] to start the dashboard"
-            )
-            console.print(
-                "  2. Open [link=http://localhost:8000/setup]http://localhost:8000/setup[/link] to verify health"
-            )
-        else:
-            console.print(
-                "[yellow]Warning: Demo receipt fixture not found. Skipping demo process.[/yellow]"
-            )
+        _run_quickstart_demo(token)
 
 
 @app.command()
