@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from bexio_receipts.bexio_client import BexioClient
+from bexio_receipts.bexio_client import BexioClient, is_retryable_exception
 from bexio_receipts.models import Receipt
 
 
@@ -116,3 +116,33 @@ async def test_create_purchase_bill_net_fallback():
         await client.create_purchase_bill(receipt_no_rate, "uuid", [100])
         data = json.loads(bill_route.calls.last.request.read())
         assert data["line_items"][0]["amount"] == 198.15
+
+
+@pytest.mark.parametrize(
+    "status_code, expected",
+    [
+        (429, True),
+        (500, True),
+        (503, True),
+        (599, True),
+        (400, False),
+        (404, False),
+    ],
+)
+def test_is_retryable_exception_http_status_error(status_code, expected):
+    request = httpx.Request("GET", "https://api.bexio.com")
+    response = httpx.Response(status_code, request=request)
+    exception = httpx.HTTPStatusError("Error", request=request, response=response)
+    assert is_retryable_exception(exception) is expected
+
+
+@pytest.mark.parametrize(
+    "exception, expected",
+    [
+        (ValueError("Some error"), False),
+        (httpx.RequestError("Request error", request=httpx.Request("GET", "https://api.bexio.com")), False),
+        (Exception("General error"), False),
+    ],
+)
+def test_is_retryable_exception_other_errors(exception, expected):
+    assert is_retryable_exception(exception) is expected
