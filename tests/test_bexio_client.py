@@ -36,6 +36,40 @@ async def test_bexio_cache_lookups():
         assert client._account_cache["6000"] == 100
 
 
+from unittest.mock import patch
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_bexio_cache_lookups_get_profile_error():
+    # Setup mocks for taxes and accounts to ensure the flow continues
+    respx.get("https://api.bexio.com/3.0/taxes").mock(
+        return_value=httpx.Response(
+            200, json=[{"id": 1, "value": 8.1}, {"id": 2, "value": 2.6}]
+        )
+    )
+    respx.get("https://api.bexio.com/2.0/accounts").mock(
+        return_value=httpx.Response(200, json=[{"id": 100, "account_no": "6000"}])
+    )
+
+    with patch(
+        "bexio_receipts.bexio_client.BexioClient.get_profile",
+        side_effect=Exception("Simulated API failure"),
+    ), patch("bexio_receipts.bexio_client.logger") as mock_logger:
+
+        async with BexioClient(token="test") as client:
+            await client.cache_lookups()
+
+            # Check that get_profile failure was logged and handled gracefully
+            assert client._user_id is None
+            mock_logger.warning.assert_any_call(
+                "Failed to fetch user profile in cache_lookups", error="Simulated API failure"
+            )
+
+            # Verify that execution continued and other caches were populated
+            assert client._tax_cache[8.1] == 1
+            assert client._account_cache["6000"] == 100
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_create_expense():
