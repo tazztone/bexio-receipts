@@ -3,7 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from bexio_receipts.extraction import _is_rate_limit, extract_receipt, resolve_vat_rows
+from bexio_receipts.extraction import (
+    _is_rate_limit,
+    extract_receipt,
+    resolve_vat_rows,
+    validate_vat_snippet,
+)
 from bexio_receipts.models import IntermediateReceipt, RawVatRow, RawVatRows, Receipt
 
 
@@ -128,3 +133,35 @@ def test_is_rate_limit():
     assert _is_rate_limit(ValueError("Invalid response")) is False
     assert _is_rate_limit(RuntimeError("500 Internal Server Error")) is False
     assert _is_rate_limit(httpx.HTTPStatusError("404 Not Found", request=MagicMock(), response=MagicMock())) is False
+
+
+@pytest.mark.parametrize(
+    "snippet, expected_error",
+    [
+        # HTML tables
+        ("<table><tr><td>8.1%</td><td>10.00</td></tr></table>", None),
+        ("<table><tr><td>No numbers</td></tr></table>", "Table present but contains no numeric values"),
+        ("<TABLE><tr><td>8.1</td></tr></TABLE>", None),
+
+        # Markdown tables
+        ("| Rate | Base | VAT |\n|---|---|---|\n| 8.1% | 10.00 | 0.81 |", None),
+        ("| Rate | Base | VAT |\n|---|---|---|\n| % | | |", "Table present but contains no numeric values"),
+
+        # Plain text valid
+        ("8.1% 10.00 0.81", None),
+        ("Some text\n8.1% 10.00\nOther text", None),
+
+        # Plain text invalid (vertical extraction / not enough numbers per line)
+        ("8.1%\n10.00\n0.81", "No line has 2+ numeric tokens"),
+        ("Just some text without numbers", "No line has 2+ numeric tokens"),
+        ("", "No line has 2+ numeric tokens"),
+        ("123", "No line has 2+ numeric tokens"),
+    ],
+)
+def test_validate_vat_snippet(snippet: str, expected_error: str | None):
+    result = validate_vat_snippet(snippet)
+    if expected_error is None:
+        assert result is None
+    else:
+        assert result is not None
+        assert expected_error in result
