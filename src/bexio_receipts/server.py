@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     # Startup
     yield
     # Shutdown
-    close_ocr_parser()
+    await close_ocr_parser()
 
 
 app = FastAPI(title="bexio-receipts Review Dashboard", lifespan=lifespan)

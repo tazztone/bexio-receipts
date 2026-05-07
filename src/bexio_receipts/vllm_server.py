@@ -174,7 +174,7 @@ async def start_vllm_server(
         )
 
 
-def terminate_managed_vllm() -> tuple[bool, str]:
+async def terminate_managed_vllm() -> tuple[bool, str]:
     """Terminate the managed vLLM server across sessions."""
     if not VLLM_PID_FILE.exists():
         return False, "No managed vLLM server found (PID file missing)."
@@ -203,7 +203,7 @@ def terminate_managed_vllm() -> tuple[bool, str]:
         for _ in range(10):
             try:
                 os.kill(pid, 0)
-                time.sleep(1)
+                await asyncio.sleep(1)
             except OSError:
                 # Process is dead
                 break
@@ -212,7 +212,7 @@ def terminate_managed_vllm() -> tuple[bool, str]:
                 "vLLM server didn't stop with SIGTERM, killing with SIGKILL", pid=pid
             )
             os.kill(pid, signal.SIGKILL)
-            time.sleep(1)
+            await asyncio.sleep(1)
 
     except Exception as e:
         return False, f"Error terminating process {pid}: {e}"
@@ -222,17 +222,20 @@ def terminate_managed_vllm() -> tuple[bool, str]:
     return True, f"Successfully stopped vLLM server (PID {pid})."
 
 
-def stop_vllm_server():
+async def stop_vllm_server():
     """Stop the background vLLM server (in-session wrapper)."""
-    global _vllm_process, _vllm_log_file  # noqa: PLW0603
+    global _vllm_process, _vllm_log_file, _vllm_lock  # noqa: PLW0603
+    if _vllm_lock is None:
+        _vllm_lock = asyncio.Lock()
 
-    success, message = terminate_managed_vllm()
-    if success:
-        logger.info(message)
-    else:
-        logger.debug(message)
+    async with _vllm_lock:
+        success, message = await terminate_managed_vllm()
+        if success:
+            logger.info(message)
+        else:
+            logger.debug(message)
 
-    _vllm_process = None
-    if _vllm_log_file is not None:
-        _vllm_log_file.close()
-        _vllm_log_file = None
+        _vllm_process = None
+        if _vllm_log_file is not None:
+            _vllm_log_file.close()
+            _vllm_log_file = None

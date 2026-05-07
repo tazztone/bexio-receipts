@@ -765,7 +765,7 @@ def vllm_stop():
     from .vllm_server import terminate_managed_vllm
 
     with console.status("[bold red]Stopping vLLM server..."):
-        success, message = terminate_managed_vllm()
+        success, message = asyncio.run(terminate_managed_vllm())
 
     if success:
         console.print(f"[green]✔[/green] {message}")
