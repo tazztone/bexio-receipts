@@ -6,6 +6,7 @@ import pytest
 from bexio_receipts.document_processor import (
     OcrProcessor,
     VisionProcessor,
+    extract_json_block,
 )
 from bexio_receipts.extraction import ExtractionTrace
 from bexio_receipts.models import Receipt, VatEntry
@@ -19,6 +20,19 @@ def vision_processor():
 @pytest.fixture
 def ocr_processor():
     return OcrProcessor()
+
+
+def test_extract_json_block_error_path():
+    """Test that extract_json_block returns None on malformed JSON."""
+    # Malformed JSON block
+    malformed_json = "```json\n{invalid json\n```"
+    result = extract_json_block(malformed_json)
+    assert result is None
+
+    # Invalid JSON structure that can cause an exception
+    invalid_structure = "{not even json at all}"
+    result = extract_json_block(invalid_structure)
+    assert result is None
 
 
 @pytest.mark.asyncio
