@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from bexio_receipts.extraction import extract_receipt, resolve_vat_rows
+from bexio_receipts.extraction import _is_rate_limit, extract_receipt, resolve_vat_rows
 from bexio_receipts.models import IntermediateReceipt, RawVatRow, RawVatRows, Receipt
 
 
@@ -114,3 +114,17 @@ def test_receipt_invariants():
 
     with pytest.raises(ValidationError, match=r"10.0 \+ 2.0 = 12.0 ≠ 15.0"):
         Receipt(subtotal_excl_vat=10.0, vat_amount=2.0, total_incl_vat=15.0)
+
+
+def test_is_rate_limit():
+    # Positive cases
+    assert _is_rate_limit(Exception("HTTP 429 Too Many Requests")) is True
+    assert _is_rate_limit(ValueError("Rate limit exceeded")) is True
+    assert _is_rate_limit(RuntimeError("RATE LIMIT")) is True
+    assert _is_rate_limit(httpx.HTTPStatusError("429 Client Error", request=MagicMock(), response=MagicMock())) is True
+
+    # Negative cases
+    assert _is_rate_limit(Exception("Connection Timeout")) is False
+    assert _is_rate_limit(ValueError("Invalid response")) is False
+    assert _is_rate_limit(RuntimeError("500 Internal Server Error")) is False
+    assert _is_rate_limit(httpx.HTTPStatusError("404 Not Found", request=MagicMock(), response=MagicMock())) is False
