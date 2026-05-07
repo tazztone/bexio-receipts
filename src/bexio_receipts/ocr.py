@@ -50,7 +50,7 @@ def get_ocr_parser(settings: Settings) -> GlmOcr:
         return _ocr_parser
 
 
-def close_ocr_parser():
+async def close_ocr_parser():
     """Shutdown the OCR parser and release resources."""
     global _ocr_parser  # noqa: PLW0603
     with _ocr_lock:
@@ -63,7 +63,7 @@ def close_ocr_parser():
             finally:
                 _ocr_parser = None
 
-        stop_vllm_server()
+    await stop_vllm_server()
 
 
 def _sync_run_ocr(file_path: str, settings: Settings) -> tuple[str, float, list[dict]]:

@@ -70,29 +70,31 @@ async def test_start_vllm_server_success(test_settings):
                 assert "VLLM_SLEEP_WHEN_IDLE" in kwargs["env"]
 
 
-def test_terminate_managed_vllm_no_file():
+@pytest.mark.asyncio
+async def test_terminate_managed_vllm_no_file():
     mock_pid_file = MagicMock(spec=Path)
     mock_pid_file.exists.return_value = False
     with patch("bexio_receipts.vllm_server.VLLM_PID_FILE", mock_pid_file):
-        success, message = terminate_managed_vllm()
+        success, message = await terminate_managed_vllm()
         assert success is False
         assert "No managed vLLM server found" in message
 
 
-def test_terminate_managed_vllm_success():
+@pytest.mark.asyncio
+async def test_terminate_managed_vllm_success():
     mock_pid_file = MagicMock(spec=Path)
     mock_pid_file.exists.return_value = True
     mock_pid_file.read_text.return_value = "1234"
     with (
         patch("bexio_receipts.vllm_server.VLLM_PID_FILE", mock_pid_file),
         patch("os.kill") as mock_kill,
-        patch("time.sleep"),
+        patch("asyncio.sleep"),
     ):
         # First call to os.kill(pid, 0) succeeds (process exists)
         # Second call to os.kill(pid, 0) fails (process gone after SIGTERM)
         mock_kill.side_effect = [None, None, OSError()]
 
-        success, message = terminate_managed_vllm()
+        success, message = await terminate_managed_vllm()
 
         assert success is True
         assert "Successfully stopped vLLM server" in message
@@ -101,7 +103,8 @@ def test_terminate_managed_vllm_success():
         mock_pid_file.unlink.assert_called_once()
 
 
-def test_stop_vllm_server_success():
+@pytest.mark.asyncio
+async def test_stop_vllm_server_success():
     mock_log = MagicMock()
 
     with (
@@ -111,7 +114,7 @@ def test_stop_vllm_server_success():
         ),
         patch("bexio_receipts.vllm_server._vllm_log_file", mock_log),
     ):
-        stop_vllm_server()
+        await stop_vllm_server()
         mock_log.close.assert_called_once()
 
 

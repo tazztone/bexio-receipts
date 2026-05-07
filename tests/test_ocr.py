@@ -95,7 +95,8 @@ def test_is_port_open():
         assert not is_port_open("localhost", 1234)
 
 
-def test_get_ocr_parser(test_settings):
+@pytest.mark.asyncio
+async def test_get_ocr_parser(test_settings):
     # reset global state
     bexio_receipts.ocr._ocr_parser = None
     bexio_receipts.vllm_server._vllm_process = None
@@ -120,14 +121,15 @@ def test_get_ocr_parser(test_settings):
 
     # close parser
     with patch("bexio_receipts.ocr.stop_vllm_server") as mock_stop:
-        close_ocr_parser()
+        await close_ocr_parser()
 
         assert bexio_receipts.ocr._ocr_parser is None
         mock_glm_inst.__exit__.assert_called_once()
         mock_stop.assert_called_once()
 
 
-def test_close_ocr_parser_exceptions(test_settings):
+@pytest.mark.asyncio
+async def test_close_ocr_parser_exceptions(test_settings):
     bexio_receipts.ocr._ocr_parser = MagicMock()
     bexio_receipts.ocr._ocr_parser.__exit__.side_effect = Exception("test exit error")
 
@@ -139,7 +141,7 @@ def test_close_ocr_parser_exceptions(test_settings):
     )
 
     with patch("bexio_receipts.ocr.stop_vllm_server"):
-        close_ocr_parser()
+        await close_ocr_parser()
 
     assert bexio_receipts.ocr._ocr_parser is None
 
