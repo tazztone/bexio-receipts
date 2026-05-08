@@ -173,7 +173,9 @@ def _gather_config_interactive():
             "[dim]Note: OpenRouter models must use provider/model format.[/dim]\n"
             "[dim]Examples: anthropic/claude-3.5-sonnet, meta-llama/llama-3-70b-instruct, google/gemini-1.5-pro[/dim]"
         )
-        openrouter_model = Prompt.ask("LLM Model", default="anthropic/claude-3.5-sonnet")
+        openrouter_model = Prompt.ask(
+            "LLM Model", default="anthropic/claude-3.5-sonnet"
+        )
     elif llm_provider == "openai":
         openai_key = Prompt.ask("OpenAI API Key")
 
@@ -268,7 +270,9 @@ def _run_quickstart_demo(token: str):
             from .pipeline import assemble_receipt, get_processor
 
             processor = get_processor(settings)
-            with console.status(f"[bold green]Running demo ({settings.processor_mode})..."):
+            with console.status(
+                f"[bold green]Running demo ({settings.processor_mode})..."
+            ):
                 result = await processor.process(str(target), settings)
 
             raw_receipt = RawReceipt(
@@ -283,7 +287,9 @@ def _run_quickstart_demo(token: str):
                 account_assignments=result.account_assignments,
             )
             receipt = assemble_receipt(raw_receipt)
-            console.print(f"  - Detected Merchant: [bold]{receipt.merchant_name}[/bold]")
+            console.print(
+                f"  - Detected Merchant: [bold]{receipt.merchant_name}[/bold]"
+            )
             console.print(
                 f"  - Detected Total: [bold]{receipt.total_incl_vat} {receipt.currency}[/bold]"
             )
