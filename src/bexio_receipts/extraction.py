@@ -312,6 +312,96 @@ class ExtractionError(Exception):
         self.trace = trace
 
 
+async def _run_step1_searcher(
+    raw_text: str, model: OpenAIChatModel, trace: ExtractionTrace, llm_model: str
+) -> IntermediateReceipt:
+    searcher_agent = Agent(
+        model,
+        output_type=IntermediateReceipt,
+        retries=1,
+        system_prompt=(
+            "Transcribe basic receipt data and locate the VAT table.\n"
+            "### RULES ###\n"
+            "1. MERCHANT: Extract vendor name. IGNORE customer addresses.\n"
+            "2. DATE: Transcribe exactly (e.g. 31.01.2026).\n"
+            "3. TOTAL: Extract the grand total in CHF only. IGNORE any currency conversion lines "
+            "(e.g. 'EUR ... zum Kurs ...'). The CHF total is labeled 'Total Rechnung', 'Ihr Betrag', "
+            "or 'Endbetrag'.\n"
+            "4. CURRENCY: Always 'CHF' unless no CHF total exists at all.\n"
+            "5. VAT TABLE RAW: Find the Markdown table that summarizes VAT "
+            "(Zusammenfassung gem. MWST, MwSt-Übersicht) containing the rates "
+            "(8.1%, 2.6%). COPY that table verbatim as Markdown (with | pipes). "
+            "IGNORE the line item table."
+        ),
+    )
+
+    logger.info("Step 1: Preliminary extraction started", model=llm_model)
+    res1 = await searcher_agent.run(f"Receipt text:\n{raw_text}")
+    intermediate = res1.output
+    if not isinstance(intermediate, IntermediateReceipt):
+        trace.error_stage = "step1"
+        trace.error_detail = "Unexpected output type from Step 1"
+        raise ExtractionError(trace.error_detail, trace=trace)
+
+    trace.step1_output = intermediate.model_dump()
+    trace.step1_vat_raw = intermediate.vat_table_raw or ""
+    logger.debug("Step1 output", intermediate=trace.step1_output)
+    return intermediate
+
+
+async def _run_step2_parser(
+    intermediate: IntermediateReceipt, model: OpenAIChatModel, trace: ExtractionTrace
+) -> list[RawVatRow]:
+    vat_rows = []
+    if intermediate.vat_table_raw and len(intermediate.vat_table_raw.strip()) > 5:
+        # Pre-Step 2 Guard
+        validation_error = validate_vat_snippet(intermediate.vat_table_raw)
+        if validation_error:
+            logger.warning(
+                "Step 1 produced invalid VAT snippet, retrying",
+                error=validation_error,
+            )
+            trace.error_stage = "step1_vat_validation"
+            trace.error_detail = validation_error
+            raise ExtractionError(validation_error, trace=trace)
+
+        parser_agent = Agent(
+            model,
+            output_type=RawVatRows,
+            retries=1,
+            system_prompt=(
+                "You are a VAT data entry specialist. I will give you a tiny snippet of a VAT table "
+                "(may be plain text, Markdown, or HTML <table>).\n"
+                "Extract the rows. For each row:\n"
+                "- rate: e.g. 2.6, 8.1\n"
+                "- col_a, col_b, col_c: the numbers in that row in order from left to right.\n"
+                "RULES:\n"
+                "1. If HTML, extract the numeric values from the <td> tags in each <tr>.\n"
+                "2. rate: MUST be one of [8.1, 7.7, 2.6, 3.8, 2.5, 0.0]. IGNORE any other numbers.\n"
+                "3. IGNORE summary rows (Total, Summe, Rundung).\n"
+                "4. IGNORE columns containing savings values.\n"
+                "5. ONLY extract rows representing a specific VAT rate."
+            ),
+        )
+
+        cleaned_snippet = clean_vat_snippet(intermediate.vat_table_raw)
+        trace.error_stage = ""  # clear any previous stage error if retrying
+        trace.step2_vat_cleaned = cleaned_snippet
+        logger.info("Step 2: VAT parsing started", snippet=cleaned_snippet)
+        logger.debug("Step2 cleaned_snippet", snippet=cleaned_snippet)
+
+        res2 = await parser_agent.run(f"VAT Table Snippet:\n{cleaned_snippet}")
+        vat_rows = res2.output.rows
+        if not isinstance(vat_rows, list):
+            trace.error_stage = "step2"
+            trace.error_detail = "Unexpected output type from Step 2"
+            raise ExtractionError(trace.error_detail, trace=trace)
+
+        trace.step2_output = [r.model_dump() for r in vat_rows]
+        logger.debug("Step2 resolved_rows", rows=trace.step2_output)
+    return vat_rows
+
+
 @retry(
     stop=stop_after_attempt(4),
     wait=wait_exponential(multiplier=2, min=5, max=60),
@@ -334,87 +424,10 @@ async def extract_receipt(
     # or_client must be closed by the caller; see finally block below.
     model, or_client = _build_model(settings, client)
     try:
-        # STEP 1: Preliminary Extraction (Searcher)
-        searcher_agent = Agent(
-            model,
-            output_type=IntermediateReceipt,
-            retries=1,
-            system_prompt=(
-                "Transcribe basic receipt data and locate the VAT table.\n"
-                "### RULES ###\n"
-                "1. MERCHANT: Extract vendor name. IGNORE customer addresses.\n"
-                "2. DATE: Transcribe exactly (e.g. 31.01.2026).\n"
-                "3. TOTAL: Extract the grand total in CHF only. IGNORE any currency conversion lines "
-                "(e.g. 'EUR ... zum Kurs ...'). The CHF total is labeled 'Total Rechnung', 'Ihr Betrag', "
-                "or 'Endbetrag'.\n"
-                "4. CURRENCY: Always 'CHF' unless no CHF total exists at all.\n"
-                "5. VAT TABLE RAW: Find the Markdown table that summarizes VAT "
-                "(Zusammenfassung gem. MWST, MwSt-Übersicht) containing the rates "
-                "(8.1%, 2.6%). COPY that table verbatim as Markdown (with | pipes). "
-                "IGNORE the line item table."
-            ),
+        intermediate = await _run_step1_searcher(
+            raw_text, model, trace, settings.llm_model
         )
-
-        logger.info("Step 1: Preliminary extraction started", model=settings.llm_model)
-        res1 = await searcher_agent.run(f"Receipt text:\n{raw_text}")
-        intermediate = res1.output
-        if not isinstance(intermediate, IntermediateReceipt):
-            trace.error_stage = "step1"
-            trace.error_detail = "Unexpected output type from Step 1"
-            raise ExtractionError(trace.error_detail, trace=trace)
-
-        trace.step1_output = intermediate.model_dump()
-        trace.step1_vat_raw = intermediate.vat_table_raw or ""
-        logger.debug("Step1 output", intermediate=trace.step1_output)
-
-        # STEP 2: VAT Parsing (Assigner)
-        vat_rows = []
-        if intermediate.vat_table_raw and len(intermediate.vat_table_raw.strip()) > 5:
-            # Pre-Step 2 Guard
-            validation_error = validate_vat_snippet(intermediate.vat_table_raw)
-            if validation_error:
-                logger.warning(
-                    "Step 1 produced invalid VAT snippet, retrying",
-                    error=validation_error,
-                )
-                trace.error_stage = "step1_vat_validation"
-                trace.error_detail = validation_error
-                raise ExtractionError(validation_error, trace=trace)
-
-            parser_agent = Agent(
-                model,
-                output_type=RawVatRows,
-                retries=1,
-                system_prompt=(
-                    "You are a VAT data entry specialist. I will give you a tiny snippet of a VAT table "
-                    "(may be plain text, Markdown, or HTML <table>).\n"
-                    "Extract the rows. For each row:\n"
-                    "- rate: e.g. 2.6, 8.1\n"
-                    "- col_a, col_b, col_c: the numbers in that row in order from left to right.\n"
-                    "RULES:\n"
-                    "1. If HTML, extract the numeric values from the <td> tags in each <tr>.\n"
-                    "2. rate: MUST be one of [8.1, 7.7, 2.6, 3.8, 2.5, 0.0]. IGNORE any other numbers.\n"
-                    "3. IGNORE summary rows (Total, Summe, Rundung).\n"
-                    "4. IGNORE columns containing savings values.\n"
-                    "5. ONLY extract rows representing a specific VAT rate."
-                ),
-            )
-
-            cleaned_snippet = clean_vat_snippet(intermediate.vat_table_raw)
-            trace.error_stage = ""  # clear any previous stage error if retrying
-            trace.step2_vat_cleaned = cleaned_snippet
-            logger.info("Step 2: VAT parsing started", snippet=cleaned_snippet)
-            logger.debug("Step2 cleaned_snippet", snippet=cleaned_snippet)
-
-            res2 = await parser_agent.run(f"VAT Table Snippet:\n{cleaned_snippet}")
-            vat_rows = res2.output.rows
-            if not isinstance(vat_rows, list):
-                trace.error_stage = "step2"
-                trace.error_detail = "Unexpected output type from Step 2"
-                raise ExtractionError(trace.error_detail, trace=trace)
-
-            trace.step2_output = [r.model_dump() for r in vat_rows]
-            logger.debug("Step2 resolved_rows", rows=trace.step2_output)
+        vat_rows = await _run_step2_parser(intermediate, model, trace)
 
         # Final assembly
         raw_receipt = RawReceipt(
