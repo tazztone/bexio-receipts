@@ -6,6 +6,7 @@ import pytest
 from bexio_receipts.document_processor import (
     OcrProcessor,
     VisionProcessor,
+    extract_json_block,
 )
 from bexio_receipts.extraction import ExtractionTrace
 from bexio_receipts.models import Receipt, VatEntry
@@ -132,3 +133,48 @@ async def test_ocr_processor_process(ocr_processor, test_settings, tmp_path):
         assert result.merchant_name == "OCR Shop"
         assert result.confidence == 0.99
         assert result.vat_rows[0].rate == 8.1
+
+
+def test_extract_json_block_valid_json():
+    text = '{"key": "value", "number": 42}'
+    result = extract_json_block(text)
+    assert result == {"key": "value", "number": 42}
+
+
+def test_extract_json_block_markdown_json():
+    text = '''Here is the extracted data:
+```json
+{"merchant_name": "Test", "total": 100.0}
+```
+Some extra text.'''
+    result = extract_json_block(text)
+    assert result == {"merchant_name": "Test", "total": 100.0}
+
+
+def test_extract_json_block_markdown_generic():
+    text = '''```
+{"field": "test"}
+```'''
+    result = extract_json_block(text)
+    assert result == {"field": "test"}
+
+
+def test_extract_json_block_fallback_braces():
+    text = '''Some garbage before {"found": true} and some garbage after.'''
+    result = extract_json_block(text)
+    assert result == {"found": True}
+
+
+def test_extract_json_block_empty():
+    assert extract_json_block("") is None
+    assert extract_json_block("   \n  ") is None
+
+
+def test_extract_json_block_malformed_json():
+    text = '```json\n{"missing_quote: true}\n```'
+    assert extract_json_block(text) is None
+
+
+def test_extract_json_block_no_braces():
+    text = "Just some plain text without any JSON."
+    assert extract_json_block(text) is None
