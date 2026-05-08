@@ -44,6 +44,19 @@ def ocr_processor():
     return OcrProcessor()
 
 
+def test_extract_json_block_error_path():
+    """Test that extract_json_block returns None on malformed JSON."""
+    # Malformed JSON block
+    malformed_json = "```json\n{invalid json\n```"
+    result = extract_json_block(malformed_json)
+    assert result is None
+
+    # Invalid JSON structure that can cause an exception
+    invalid_structure = "{not even json at all}"
+    result = extract_json_block(invalid_structure)
+    assert result is None
+
+
 @pytest.mark.asyncio
 async def test_vision_processor_process_pdf(vision_processor, test_settings, tmp_path):
     pdf_file = tmp_path / "test.pdf"
