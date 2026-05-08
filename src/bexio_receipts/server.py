@@ -355,6 +355,133 @@ async def favicon():
     return Response(content=b"", media_type="image/x-icon")
 
 
+def _handle_bulk_discard(review_dir: Path, ids: list[str]) -> tuple[int, int]:
+    """Helper to handle the discard bulk action."""
+    success_count = 0
+    error_count = 0
+    for review_id in ids:
+        p = review_dir / f"{review_id}.json"
+        if p.exists():
+            p.unlink()
+            success_count += 1
+    return success_count, error_count
+
+
+async def _handle_bulk_process(
+    settings: Settings, db: DuplicateDetector, ids: list[str]
+) -> tuple[int, int]:
+    """Helper to handle the process bulk action."""
+    success_count = 0
+    error_count = 0
+    review_dir = Path(settings.review_dir)
+
+    async with BexioClient(
+        settings.bexio_api_token,
+        settings.bexio_base_url,
+        settings.default_vat_rate,
+        settings.default_payment_terms_days,
+        push_enabled=settings.bexio_push_enabled,
+    ) as bexio:
+        await bexio.cache_lookups()
+
+        for review_id in ids:
+            p = review_dir / f"{review_id}.json"
+            if not p.exists():
+                continue
+
+            try:
+                try:
+                    data = json.loads(p.read_text())
+                except Exception as e:
+                    logger.error(
+                        "Skipping corrupted review file in bulk action",
+                        path=str(p),
+                        error=str(e),
+                    )
+                    continue
+
+                extracted = data.get("extracted", {})
+                receipt = Receipt.model_validate(extracted)
+                img_path = data.get("original_file")
+                filename = Path(img_path).name
+                mime_type, _ = mimetypes.guess_type(img_path)
+                mime_type = mime_type or "application/octet-stream"
+
+                file_uuid = await bexio.upload_file(img_path, filename, mime_type)
+
+                # Use merchant-specific account or default
+                booking_account_id = None
+                if receipt.merchant_name:
+                    booking_account_id = db.get_merchant_account(receipt.merchant_name)
+
+                if not booking_account_id:
+                    booking_account_id = settings.default_booking_account_id
+
+                if decide_bexio_action(receipt) == "purchase_bill":
+                    # Build account list matching VAT breakdown
+                    booking_account_ids = []
+                    if receipt.vat_breakdown:
+                        for entry in receipt.vat_breakdown:
+                            acc_id = (
+                                db.get_merchant_vat_account(
+                                    receipt.merchant_name, entry.rate
+                                )
+                                if receipt.merchant_name
+                                else None
+                            )
+                            if not acc_id:
+                                # Fallback to general merchant account or default
+                                acc_id = booking_account_id
+
+                            if acc_id is None:
+                                raise ValueError(
+                                    f"No booking account found for merchant {receipt.merchant_name} and VAT rate {entry.rate}"
+                                )
+                            booking_account_ids.append(acc_id)
+                    else:
+                        if booking_account_id is None:
+                            raise ValueError(
+                                f"No booking account found for merchant {receipt.merchant_name}"
+                            )
+                        booking_account_ids = [booking_account_id]
+
+                    await bexio.create_purchase_bill(
+                        receipt, file_uuid, booking_account_ids=booking_account_ids
+                    )
+                else:
+                    if booking_account_id is None:
+                        raise ValueError(
+                            f"No booking account found for merchant {receipt.merchant_name}"
+                        )
+                    if settings.default_bank_account_id is None:
+                        raise ValueError("DEFAULT_BANK_ACCOUNT_ID is not configured")
+
+                    await bexio.create_expense(
+                        receipt,
+                        file_uuid,
+                        booking_account_id=booking_account_id,
+                        bank_account_id=settings.default_bank_account_id,
+                    )
+
+                p.unlink()
+
+                file_hash = db.get_hash(img_path)
+                db.mark_processed(
+                    file_hash,
+                    img_path,
+                    str(file_uuid),
+                    total_incl_vat=receipt.total_incl_vat,
+                    merchant_name=receipt.merchant_name,
+                    vat_amount=receipt.vat_amount,
+                )
+                success_count += 1
+            except Exception as e:
+                logger.error("Bulk process failed for item", id=review_id, error=str(e))
+                error_count += 1
+
+    return success_count, error_count
+
+
 @app.post("/bulk-action")
 async def bulk_action(
     request: Request,
@@ -373,16 +500,8 @@ async def bulk_action(
         request.session["success_msg"] = "⚠️ No receipts selected for bulk action."
         return RedirectResponse(url="/", status_code=303)
 
-    review_dir = Path(settings.review_dir)
-    success_count = 0
-    error_count = 0
-
     if action == "discard":
-        for review_id in ids:
-            p = review_dir / f"{review_id}.json"
-            if p.exists():
-                p.unlink()
-                success_count += 1
+        success_count, _ = _handle_bulk_discard(Path(settings.review_dir), ids)
         request.session["success_msg"] = f"🗑️ Discarded {success_count} receipts."
 
     elif action == "process":
@@ -392,113 +511,7 @@ async def bulk_action(
             )
             return RedirectResponse(url="/", status_code=303)
 
-        async with BexioClient(
-            settings.bexio_api_token,
-            settings.bexio_base_url,
-            settings.default_vat_rate,
-            settings.default_payment_terms_days,
-            push_enabled=settings.bexio_push_enabled,
-        ) as bexio:
-            await bexio.cache_lookups()
-
-            for review_id in ids:
-                p = review_dir / f"{review_id}.json"
-                if not p.exists():
-                    continue
-
-                try:
-                    try:
-                        data = json.loads(p.read_text())
-                    except Exception as e:
-                        logger.error(
-                            "Skipping corrupted review file in bulk action",
-                            path=str(p),
-                            error=str(e),
-                        )
-                        continue
-
-                    extracted = data.get("extracted", {})
-                    receipt = Receipt.model_validate(extracted)
-                    img_path = data.get("original_file")
-                    filename = Path(img_path).name
-                    mime_type, _ = mimetypes.guess_type(img_path)
-                    mime_type = mime_type or "application/octet-stream"
-
-                    file_uuid = await bexio.upload_file(img_path, filename, mime_type)
-
-                    # Use merchant-specific account or default
-                    booking_account_id = None
-                    if receipt.merchant_name:
-                        booking_account_id = db.get_merchant_account(
-                            receipt.merchant_name
-                        )
-
-                    if not booking_account_id:
-                        booking_account_id = settings.default_booking_account_id
-
-                    if decide_bexio_action(receipt) == "purchase_bill":
-                        # Build account list matching VAT breakdown
-                        booking_account_ids = []
-                        if receipt.vat_breakdown:
-                            for entry in receipt.vat_breakdown:
-                                acc_id = (
-                                    db.get_merchant_vat_account(
-                                        receipt.merchant_name, entry.rate
-                                    )
-                                    if receipt.merchant_name
-                                    else None
-                                )
-                                if not acc_id:
-                                    # Fallback to general merchant account or default
-                                    acc_id = booking_account_id
-
-                                if acc_id is None:
-                                    raise ValueError(
-                                        f"No booking account found for merchant {receipt.merchant_name} and VAT rate {entry.rate}"
-                                    )
-                                booking_account_ids.append(acc_id)
-                        else:
-                            if booking_account_id is None:
-                                raise ValueError(
-                                    f"No booking account found for merchant {receipt.merchant_name}"
-                                )
-                            booking_account_ids = [booking_account_id]
-
-                        await bexio.create_purchase_bill(
-                            receipt, file_uuid, booking_account_ids=booking_account_ids
-                        )
-                    else:
-                        if booking_account_id is None:
-                            raise ValueError(
-                                f"No booking account found for merchant {receipt.merchant_name}"
-                            )
-                        if settings.default_bank_account_id is None:
-                            raise ValueError("DEFAULT_BANK_ACCOUNT_ID is not configured")
-
-                        await bexio.create_expense(
-                            receipt,
-                            file_uuid,
-                            booking_account_id=booking_account_id,
-                            bank_account_id=settings.default_bank_account_id,
-                        )
-
-                    p.unlink()
-
-                    file_hash = db.get_hash(img_path)
-                    db.mark_processed(
-                        file_hash,
-                        img_path,
-                        str(file_uuid),
-                        total_incl_vat=receipt.total_incl_vat,
-                        merchant_name=receipt.merchant_name,
-                        vat_amount=receipt.vat_amount,
-                    )
-                    success_count += 1
-                except Exception as e:
-                    logger.error(
-                        "Bulk process failed for item", id=review_id, error=str(e)
-                    )
-                    error_count += 1
+        success_count, error_count = await _handle_bulk_process(settings, db, ids)
 
         msg = f"✅ Processed {success_count} receipts."
         if error_count > 0:
