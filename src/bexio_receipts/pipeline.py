@@ -17,7 +17,7 @@ from .extraction import (
     ExtractionTrace,
     assemble_receipt,
 )
-from .models import RawReceipt, Receipt
+from .models import AccountAssignment, RawReceipt, Receipt
 from .validation import validate_receipt
 
 logger = structlog.get_logger(__name__)
@@ -90,6 +90,80 @@ async def send_to_review(
             extracted=receipt.model_dump() if receipt else None,
         )
         return {"status": "review_failed", "errors": errors}
+
+
+async def _push_to_bexio(
+    bexio: BexioClient,
+    db: Database,
+    receipt: Receipt,
+    settings: Settings,
+    bexio_action: str,
+    file_path: str,
+    file_path_obj: Path,
+    mime_type: str,
+    assignments: list[AccountAssignment],
+) -> dict:
+    """Helper to handle pushing a receipt to bexio."""
+    file_uuid = await bexio.upload_file(file_path, file_path_obj.name, mime_type)
+
+    # Ensure default account IDs are set
+    if not settings.default_booking_account_id:
+        raise ValueError("Missing default booking account ID in settings")
+
+    # Prefer Bill (v4) if we have a merchant name or multiple VAT rates.
+    if bexio_action == "purchase_bill":
+        # Build booking account list based on assignments or database priority
+        booking_account_ids = []
+        if receipt.vat_breakdown:
+            for entry in receipt.vat_breakdown:
+                acc_id = None
+                # Priority 1: Database (Learned from human)
+                if receipt.merchant_name:
+                    acc_id = db.get_merchant_vat_account(
+                        receipt.merchant_name, entry.rate
+                    )
+
+                # Priority 2: LLM Assignment (Step 3)
+                if not acc_id:
+                    # Find matching assignment
+                    match = next(
+                        (a for a in assignments if a.vat_rate == entry.rate), None
+                    )
+                    if match:
+                        acc_id = int(match.account_id)
+
+                # Priority 3: Default fallback
+                if not acc_id:
+                    logger.warning(
+                        "No account found for VAT rate, using default",
+                        rate=entry.rate,
+                        merchant=receipt.merchant_name,
+                    )
+                    acc_id = settings.default_booking_account_id
+
+                booking_account_ids.append(acc_id)
+        else:
+            # Single rate or no breakdown
+            acc_id = None
+            if receipt.merchant_name:
+                acc_id = db.get_merchant_account(receipt.merchant_name)
+            if not acc_id:
+                acc_id = settings.default_booking_account_id
+            booking_account_ids = [acc_id]
+
+        return await bexio.create_purchase_bill(
+            receipt, file_uuid, booking_account_ids=booking_account_ids
+        )
+    else:
+        if not settings.default_bank_account_id:
+            raise ValueError("Missing default bank account ID for simple expense")
+
+        return await bexio.create_expense(
+            receipt,
+            file_uuid,
+            booking_account_id=settings.default_booking_account_id,
+            bank_account_id=settings.default_bank_account_id,
+        )
 
 
 async def process_receipt(
@@ -210,83 +284,28 @@ async def process_receipt(
     try:
         mime_type = mime_type or "application/octet-stream"
 
-        file_uuid = await bexio.upload_file(file_path, file_path_obj.name, mime_type)
-
-        # Ensure default account IDs are set
-        if not settings.default_booking_account_id:
+        try:
+            expense = await _push_to_bexio(
+                bexio=bexio,
+                db=db,
+                receipt=receipt,
+                settings=settings,
+                bexio_action=bexio_action,
+                file_path=file_path,
+                file_path_obj=file_path_obj,
+                mime_type=mime_type,
+                assignments=assignments,
+            )
+        except ValueError as e:
             return await send_to_review(
                 file_path,
                 raw_text,
-                ["Missing default booking account ID in settings"],
+                [str(e)],
                 settings,
                 receipt,
                 ocr_confidence=extraction_quality,
                 failed_stage="bexio",
                 trace=trace,
-            )
-
-        # Prefer Bill (v4) if we have a merchant name or multiple VAT rates.
-        if bexio_action == "purchase_bill":
-            # Build booking account list based on assignments or database priority
-            booking_account_ids = []
-            if receipt.vat_breakdown:
-                for entry in receipt.vat_breakdown:
-                    acc_id = None
-                    # Priority 1: Database (Learned from human)
-                    if receipt.merchant_name:
-                        acc_id = db.get_merchant_vat_account(
-                            receipt.merchant_name, entry.rate
-                        )
-
-                    # Priority 2: LLM Assignment (Step 3)
-                    if not acc_id:
-                        # Find matching assignment
-                        match = next(
-                            (a for a in assignments if a.vat_rate == entry.rate), None
-                        )
-                        if match:
-                            acc_id = int(match.account_id)
-
-                    # Priority 3: Default fallback
-                    if not acc_id:
-                        logger.warning(
-                            "No account found for VAT rate, using default",
-                            rate=entry.rate,
-                            merchant=receipt.merchant_name,
-                        )
-                        acc_id = settings.default_booking_account_id
-
-                    booking_account_ids.append(acc_id)
-            else:
-                # Single rate or no breakdown
-                acc_id = None
-                if receipt.merchant_name:
-                    acc_id = db.get_merchant_account(receipt.merchant_name)
-                if not acc_id:
-                    acc_id = settings.default_booking_account_id
-                booking_account_ids = [acc_id]
-
-            expense = await bexio.create_purchase_bill(
-                receipt, file_uuid, booking_account_ids=booking_account_ids
-            )
-        else:
-            if not settings.default_bank_account_id:
-                return await send_to_review(
-                    file_path,
-                    raw_text,
-                    ["Missing default bank account ID for simple expense"],
-                    settings,
-                    receipt,
-                    ocr_confidence=extraction_quality,
-                    failed_stage="bexio",
-                    trace=trace,
-                )
-
-            expense = await bexio.create_expense(
-                receipt,
-                file_uuid,
-                booking_account_id=settings.default_booking_account_id,
-                bank_account_id=settings.default_bank_account_id,
             )
 
         # 6. Mark as processed
