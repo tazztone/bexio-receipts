@@ -33,6 +33,7 @@ from .database import DuplicateDetector
 from .models import Receipt
 from .ocr import close_ocr_parser
 from .pipeline import decide_bexio_action
+from .view_models import ReviewViewModel
 
 logger = structlog.get_logger(__name__)
 
@@ -577,88 +578,32 @@ async def get_review_form(
     ) as bexio:
         all_accounts = await bexio.get_accounts()
 
-    # Resolve allowed SOLL accounts to internal IDs
-    allowed_numbers = {str(no) for no in settings.bexio_allowed_soll_accounts}
-    allowed_accounts = [
-        {"id": a["id"], "account_no": a["account_no"], "name": a["name"]}
-        for a in all_accounts
-        if str(a.get("account_no")) in allowed_numbers
-    ]
+    # Build View Model
+    receipt = Receipt.model_validate(data.get("extracted", {}))
+    view_model = ReviewViewModel(
+        receipt=receipt,
+        all_accounts=all_accounts,
+        settings=settings,
+        db=db,
+        trace_data=data.get("extraction_trace", {})
+    )
 
-    # Resolve HABEN accounts
-    haben_bank_id = next(
-        (
-            a["id"]
-            for a in all_accounts
-            if str(a.get("account_no")) == str(settings.bexio_haben_account_bank)
-        ),
-        None,
-    )
-    haben_cash_id = next(
-        (
-            a["id"]
-            for a in all_accounts
-            if str(a.get("account_no")) == str(settings.bexio_haben_account_cash)
-        ),
-        None,
-    )
+    if "csrf_token" not in request.session:
+        request.session["csrf_token"] = secrets.token_urlsafe()
+
+    csrf_token = request.session["csrf_token"]
 
     # Detect bexio_action
-    receipt = Receipt.model_validate(data.get("extracted", {}))
     bexio_action = decide_bexio_action(receipt)
 
     # Bug #3 Guard: Degrade to purchase_bill if HABEN accounts are missing
-    if bexio_action == "expense" and (haben_bank_id is None or haben_cash_id is None):
+    if bexio_action == "expense" and (view_model.haben_bank_id is None or view_model.haben_cash_id is None):
         logger.warning(
             "HABEN accounts not found in chart of accounts; degrading to purchase_bill",
             bank=settings.bexio_haben_account_bank,
             cash=settings.bexio_haben_account_cash,
         )
         bexio_action = "purchase_bill"
-
-    # Get the default account for this merchant if known
-    default_account_id = (
-        db.get_merchant_account(receipt.merchant_name)
-        if receipt.merchant_name
-        else None
-    )
-    if not default_account_id:
-        default_account_id = settings.default_booking_account_id
-
-    # Map each VAT rate to a default account (Priority: DB > LLM Assignment > Default)
-    vat_account_map = {}
-    assignments = data.get("extraction_trace", {}).get("step3_assignments", [])
-    if receipt.vat_breakdown:
-        for entry in receipt.vat_breakdown:
-            acc_id = None
-            if receipt.merchant_name:
-                acc_id = db.get_merchant_vat_account(receipt.merchant_name, entry.rate)
-
-            match = None
-            if not acc_id:
-                # Fallback to Step 3 assignments from trace
-                match = next(
-                    (a for a in assignments if a.get("vat_rate") == entry.rate), None
-                )
-                if match:
-                    try:
-                        acc_id = int(match.get("account_id"))
-                    except (ValueError, TypeError):
-                        acc_id = None
-
-            if not acc_id:
-                acc_id = default_account_id
-
-            vat_account_map[entry.rate] = {
-                "account_id": acc_id,
-                "reasoning": match.get("reasoning") if match else None,
-                "confidence": match.get("confidence") if match else None,
-            }
-
-    if "csrf_token" not in request.session:
-        request.session["csrf_token"] = secrets.token_urlsafe()
-
-    csrf_token = request.session["csrf_token"]
 
     return templates.TemplateResponse(
         request,
@@ -667,11 +612,11 @@ async def get_review_form(
             "id": review_id,
             "data": data,
             "receipt": receipt,
-            "allowed_accounts": allowed_accounts,
-            "default_account_id": default_account_id,
-            "vat_account_map": vat_account_map,
-            "haben_bank_id": haben_bank_id,
-            "haben_cash_id": haben_cash_id,
+            "allowed_accounts": view_model.allowed_accounts,
+            "default_account_id": view_model.default_account_id,
+            "vat_account_map": view_model.vat_account_map,
+            "haben_bank_id": view_model.haben_bank_id,
+            "haben_cash_id": view_model.haben_cash_id,
             "bexio_action": bexio_action,
             "csrf_token": csrf_token,
             "payment_method": receipt.payment_method,
