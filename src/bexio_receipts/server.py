@@ -421,11 +421,14 @@ async def _handle_bulk_process(
                     # Build account list matching VAT breakdown
                     booking_account_ids = []
                     if receipt.vat_breakdown:
+                        merchant_vat_accounts = {}
+                        if receipt.merchant_name:
+                            merchant_vat_accounts = db.get_merchant_vat_accounts(
+                                receipt.merchant_name
+                            )
                         for entry in receipt.vat_breakdown:
                             acc_id = (
-                                db.get_merchant_vat_account(
-                                    receipt.merchant_name, entry.rate
-                                )
+                                merchant_vat_accounts.get(entry.rate)
                                 if receipt.merchant_name
                                 else None
                             )
@@ -598,7 +601,7 @@ async def get_review_form(
         all_accounts=all_accounts,
         settings=settings,
         db=db,
-        trace_data=data.get("extraction_trace", {})
+        trace_data=data.get("extraction_trace", {}),
     )
 
     if "csrf_token" not in request.session:
@@ -610,7 +613,9 @@ async def get_review_form(
     bexio_action = decide_bexio_action(receipt)
 
     # Bug #3 Guard: Degrade to purchase_bill if HABEN accounts are missing
-    if bexio_action == "expense" and (view_model.haben_bank_id is None or view_model.haben_cash_id is None):
+    if bexio_action == "expense" and (
+        view_model.haben_bank_id is None or view_model.haben_cash_id is None
+    ):
         logger.warning(
             "HABEN accounts not found in chart of accounts; degrading to purchase_bill",
             bank=settings.bexio_haben_account_bank,

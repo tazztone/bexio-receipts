@@ -12,7 +12,7 @@ class ReviewViewModel:
         all_accounts: list[dict[str, Any]],
         settings: Settings,
         db: DuplicateDetector,
-        trace_data: dict[str, Any]
+        trace_data: dict[str, Any],
     ):
         self.receipt = receipt
         self.all_accounts = all_accounts
@@ -35,7 +35,8 @@ class ReviewViewModel:
             (
                 a["id"]
                 for a in self.all_accounts
-                if str(a.get("account_no")) == str(self.settings.bexio_haben_account_bank)
+                if str(a.get("account_no"))
+                == str(self.settings.bexio_haben_account_bank)
             ),
             None,
         )
@@ -46,7 +47,8 @@ class ReviewViewModel:
             (
                 a["id"]
                 for a in self.all_accounts
-                if str(a.get("account_no")) == str(self.settings.bexio_haben_account_cash)
+                if str(a.get("account_no"))
+                == str(self.settings.bexio_haben_account_cash)
             ),
             None,
         )
@@ -62,16 +64,22 @@ class ReviewViewModel:
 
     @property
     def vat_account_map(self) -> dict[float, dict[str, Any]]:
-        vat_map = {}
+        vat_map: dict[float, dict[str, Any]] = {}
         assignments = self.trace_data.get("step3_assignments", [])
 
         if not self.receipt.vat_breakdown:
             return vat_map
 
+        merchant_vat_accounts = {}
+        if self.receipt.merchant_name:
+            merchant_vat_accounts = self.db.get_merchant_vat_accounts(
+                self.receipt.merchant_name
+            )
+
         for entry in self.receipt.vat_breakdown:
             acc_id = None
             if self.receipt.merchant_name:
-                acc_id = self.db.get_merchant_vat_account(self.receipt.merchant_name, entry.rate)
+                acc_id = merchant_vat_accounts.get(entry.rate)
 
             match = None
             if not acc_id:

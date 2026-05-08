@@ -128,8 +128,8 @@ def validate_receipt(r: Receipt, settings: Settings) -> tuple[list[str], list[st
     Validate receipt data against Swiss business rules.
     Returns (errors, warnings). Only errors block booking.
     """
-    errors = []
-    warnings = []
+    errors: list[str] = []
+    warnings: list[str] = []
 
     _check_totals_integrity(r, errors)
     _check_vat_rate(r, errors)
