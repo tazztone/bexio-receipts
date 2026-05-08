@@ -1,4 +1,5 @@
 from datetime import date
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -36,8 +37,6 @@ async def test_bexio_cache_lookups():
         assert client._account_cache["6000"] == 100
 
 
-from unittest.mock import patch
-
 @pytest.mark.asyncio
 @respx.mock
 async def test_bexio_cache_lookups_get_profile_error():
@@ -51,18 +50,21 @@ async def test_bexio_cache_lookups_get_profile_error():
         return_value=httpx.Response(200, json=[{"id": 100, "account_no": "6000"}])
     )
 
-    with patch(
-        "bexio_receipts.bexio_client.BexioClient.get_profile",
-        side_effect=Exception("Simulated API failure"),
-    ), patch("bexio_receipts.bexio_client.logger") as mock_logger:
-
+    with (
+        patch(
+            "bexio_receipts.bexio_client.BexioClient.get_profile",
+            side_effect=Exception("Simulated API failure"),
+        ),
+        patch("bexio_receipts.bexio_client.logger") as mock_logger,
+    ):
         async with BexioClient(token="test") as client:
             await client.cache_lookups()
 
             # Check that get_profile failure was logged and handled gracefully
             assert client._user_id is None
             mock_logger.warning.assert_any_call(
-                "Failed to fetch user profile in cache_lookups", error="Simulated API failure"
+                "Failed to fetch user profile in cache_lookups",
+                error="Simulated API failure",
             )
 
             # Verify that execution continued and other caches were populated
@@ -174,7 +176,12 @@ def test_is_retryable_exception_http_status_error(status_code, expected):
     "exception, expected",
     [
         (ValueError("Some error"), False),
-        (httpx.RequestError("Request error", request=httpx.Request("GET", "https://api.bexio.com")), False),
+        (
+            httpx.RequestError(
+                "Request error", request=httpx.Request("GET", "https://api.bexio.com")
+            ),
+            False,
+        ),
         (Exception("General error"), False),
     ],
 )

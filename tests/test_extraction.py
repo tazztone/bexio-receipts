@@ -4,7 +4,9 @@ import httpx
 import pytest
 
 from bexio_receipts.extraction import (
+    _build_model,
     _is_rate_limit,
+    assemble_receipt,
     extract_receipt,
     resolve_vat_rows,
     validate_vat_snippet,
@@ -126,13 +128,27 @@ def test_is_rate_limit():
     assert _is_rate_limit(Exception("HTTP 429 Too Many Requests")) is True
     assert _is_rate_limit(ValueError("Rate limit exceeded")) is True
     assert _is_rate_limit(RuntimeError("RATE LIMIT")) is True
-    assert _is_rate_limit(httpx.HTTPStatusError("429 Client Error", request=MagicMock(), response=MagicMock())) is True
+    assert (
+        _is_rate_limit(
+            httpx.HTTPStatusError(
+                "429 Client Error", request=MagicMock(), response=MagicMock()
+            )
+        )
+        is True
+    )
 
     # Negative cases
     assert _is_rate_limit(Exception("Connection Timeout")) is False
     assert _is_rate_limit(ValueError("Invalid response")) is False
     assert _is_rate_limit(RuntimeError("500 Internal Server Error")) is False
-    assert _is_rate_limit(httpx.HTTPStatusError("404 Not Found", request=MagicMock(), response=MagicMock())) is False
+    assert (
+        _is_rate_limit(
+            httpx.HTTPStatusError(
+                "404 Not Found", request=MagicMock(), response=MagicMock()
+            )
+        )
+        is False
+    )
 
 
 @pytest.mark.parametrize(
@@ -140,17 +156,20 @@ def test_is_rate_limit():
     [
         # HTML tables
         ("<table><tr><td>8.1%</td><td>10.00</td></tr></table>", None),
-        ("<table><tr><td>No numbers</td></tr></table>", "Table present but contains no numeric values"),
+        (
+            "<table><tr><td>No numbers</td></tr></table>",
+            "Table present but contains no numeric values",
+        ),
         ("<TABLE><tr><td>8.1</td></tr></TABLE>", None),
-
         # Markdown tables
         ("| Rate | Base | VAT |\n|---|---|---|\n| 8.1% | 10.00 | 0.81 |", None),
-        ("| Rate | Base | VAT |\n|---|---|---|\n| % | | |", "Table present but contains no numeric values"),
-
+        (
+            "| Rate | Base | VAT |\n|---|---|---|\n| % | | |",
+            "Table present but contains no numeric values",
+        ),
         # Plain text valid
         ("8.1% 10.00 0.81", None),
         ("Some text\n8.1% 10.00\nOther text", None),
-
         # Plain text invalid (vertical extraction / not enough numbers per line)
         ("8.1%\n10.00\n0.81", "No line has 2+ numeric tokens"),
         ("Just some text without numbers", "No line has 2+ numeric tokens"),
@@ -165,3 +184,37 @@ def test_validate_vat_snippet(snippet: str, expected_error: str | None):
     else:
         assert result is not None
         assert expected_error in result
+
+
+def test_resolve_vat_rows_strategies_extra():
+    # Strategy 2: Default additive check (VAT + Base = Total)
+    rows = [RawVatRow(rate=2.6, col_a=2.6, col_b=100.0, col_c=102.6)]
+    entries = resolve_vat_rows(rows)
+    assert len(entries) == 1
+    assert entries[0].vat_amount == 2.6
+
+    # Strategy 2: Two columns only
+    rows = [RawVatRow(rate=8.1, col_a=8.1, col_b=100.0)]
+    entries = resolve_vat_rows(rows)
+    assert len(entries) == 1
+    assert entries[0].base_amount == 100.0
+
+
+def test_assemble_receipt_computed_total():
+    from bexio_receipts.models import RawReceipt
+
+    raw = RawReceipt(
+        merchant_name="Test",
+        vat_rows=[RawVatRow(rate=8.1, col_a=8.1, col_b=100.0, col_c=108.1)],
+        total_incl_vat=None,  # Force computation
+    )
+    receipt = assemble_receipt(raw)
+    assert receipt.total_incl_vat == 108.1
+
+
+def test_build_model_unsupported():
+    from bexio_receipts.config import Settings
+
+    settings = Settings(llm_provider="invalid")
+    with pytest.raises(ValueError, match="Unsupported LLM provider"):
+        _build_model(settings)

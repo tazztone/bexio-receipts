@@ -123,3 +123,15 @@ def test_build_vllm_flags_gguf(test_settings):
     flags = build_vllm_flags(test_settings)
     assert "--quantization" in flags
     assert flags[flags.index("--quantization") + 1] == "gguf"
+
+
+@pytest.mark.asyncio
+async def test_terminate_managed_vllm_corrupt_pid():
+    mock_pid_file = MagicMock(spec=Path)
+    mock_pid_file.exists.return_value = True
+    mock_pid_file.read_text.return_value = "not-a-number"
+    with patch("bexio_receipts.vllm_server.VLLM_PID_FILE", mock_pid_file):
+        success, message = await terminate_managed_vllm()
+        assert success is False
+        assert "corrupt" in message
+        mock_pid_file.unlink.assert_called_once()

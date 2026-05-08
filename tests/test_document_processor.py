@@ -7,6 +7,7 @@ from bexio_receipts.document_processor import (
     OcrProcessor,
     VisionProcessor,
     extract_json_block,
+    get_processor,
 )
 from bexio_receipts.extraction import ExtractionTrace
 from bexio_receipts.models import Receipt, VatEntry
@@ -24,14 +25,17 @@ def test_extract_json_block_valid():
 
 
 def test_extract_json_block_error_path():
+    """Test that extract_json_block returns None on malformed JSON."""
     # Malformed json in markdown block
     assert extract_json_block('```json\n{"a": 1\n```') is None
     # Invalid json directly
     assert extract_json_block('{"b": 2') is None
     # valid JSON with array but we are mostly testing decode error
-    assert extract_json_block('```\n[1, 2\n```') is None
+    assert extract_json_block("```\n[1, 2\n```") is None
     # No json braces and no markdown
-    assert extract_json_block('just some random text') is None
+    assert extract_json_block("just some random text") is None
+    # Invalid JSON structure that can cause an exception
+    assert extract_json_block("{not even json at all}") is None
 
 
 @pytest.fixture
@@ -42,19 +46,6 @@ def vision_processor():
 @pytest.fixture
 def ocr_processor():
     return OcrProcessor()
-
-
-def test_extract_json_block_error_path():
-    """Test that extract_json_block returns None on malformed JSON."""
-    # Malformed JSON block
-    malformed_json = "```json\n{invalid json\n```"
-    result = extract_json_block(malformed_json)
-    assert result is None
-
-    # Invalid JSON structure that can cause an exception
-    invalid_structure = "{not even json at all}"
-    result = extract_json_block(invalid_structure)
-    assert result is None
 
 
 @pytest.mark.asyncio
@@ -177,25 +168,25 @@ def test_extract_json_block_valid_json():
 
 
 def test_extract_json_block_markdown_json():
-    text = '''Here is the extracted data:
+    text = """Here is the extracted data:
 ```json
 {"merchant_name": "Test", "total": 100.0}
 ```
-Some extra text.'''
+Some extra text."""
     result = extract_json_block(text)
     assert result == {"merchant_name": "Test", "total": 100.0}
 
 
 def test_extract_json_block_markdown_generic():
-    text = '''```
+    text = """```
 {"field": "test"}
-```'''
+```"""
     result = extract_json_block(text)
     assert result == {"field": "test"}
 
 
 def test_extract_json_block_fallback_braces():
-    text = '''Some garbage before {"found": true} and some garbage after.'''
+    text = """Some garbage before {"found": true} and some garbage after."""
     result = extract_json_block(text)
     assert result == {"found": True}
 
@@ -213,3 +204,53 @@ def test_extract_json_block_malformed_json():
 def test_extract_json_block_no_braces():
     text = "Just some plain text without any JSON."
     assert extract_json_block(text) is None
+
+
+def test_get_processor():
+    from bexio_receipts.config import Settings
+
+    settings = Settings(processor_mode="vision")
+    assert isinstance(get_processor(settings), VisionProcessor)
+
+    settings = Settings(processor_mode="ocr")
+    assert isinstance(get_processor(settings), OcrProcessor)
+
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Settings(processor_mode="invalid")
+
+
+def test_vision_processor_encode_image(tmp_path):
+    p = tmp_path / "test.txt"
+    p.write_bytes(b"hello")
+    proc = VisionProcessor()
+    encoded = proc._encode_image(str(p))
+    assert encoded == "aGVsbG8="  # base64 for "hello"
+
+
+@pytest.mark.asyncio
+async def test_vision_processor_confidence_logic(
+    vision_processor, test_settings, tmp_path
+):
+    img_file = tmp_path / "test.png"
+    img_file.touch()
+
+    # Missing merchant_name -> confidence should be 0.0
+    mock_response = MagicMock()
+    mock_response.choices = [
+        MagicMock(
+            message=MagicMock(
+                content='{"merchant_name": null, "transaction_date": "2026-01-01", "total_incl_vat": 10.0, "currency": "CHF", "vat_rows": [{"rate": 8.1, "vat_amount": 0.81, "base_amount": 10.0}], "account_assignments": []}'
+            )
+        )
+    ]
+
+    with patch("bexio_receipts.document_processor.AsyncOpenAI") as mock_openai:
+        mock_client = mock_openai.return_value
+        mock_client.close = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        with patch.object(VisionProcessor, "_encode_image", return_value="base64"):
+            result = await vision_processor.process(str(img_file), test_settings)
+            assert result.confidence == 0.0
