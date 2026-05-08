@@ -146,3 +146,32 @@ def test_is_retryable_exception_http_status_error(status_code, expected):
 )
 def test_is_retryable_exception_other_errors(exception, expected):
     assert is_retryable_exception(exception) is expected
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_bexio_cache_lookups_fetch_taxes_error():
+    # Setup mocks
+    respx.get("https://api.bexio.com/2.0/company_profile").mock(
+        return_value=httpx.Response(200, json={"owner_id": 2})
+    )
+    respx.get("https://api.bexio.com/3.0/users/me").mock(
+        return_value=httpx.Response(200, json={"id": 1, "name": "Test User"})
+    )
+    # Mock taxes to fail
+    respx.get("https://api.bexio.com/3.0/taxes").mock(
+        return_value=httpx.Response(400, json={"error": "Bad Request"})
+    )
+    respx.get("https://api.bexio.com/2.0/accounts").mock(
+        return_value=httpx.Response(200, json=[{"id": 100, "account_no": "6000"}])
+    )
+
+    async with BexioClient(token="test") as client:
+        await client.cache_lookups()
+
+        assert client._user_id == 1
+        assert client._owner_id == 2
+        # Tax cache should remain empty because fetch_taxes failed
+        assert not client._tax_cache
+        # But execution should continue and fetch accounts
+        assert client._account_cache["6000"] == 100
