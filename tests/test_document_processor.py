@@ -12,6 +12,28 @@ from bexio_receipts.extraction import ExtractionTrace
 from bexio_receipts.models import Receipt, VatEntry
 
 
+def test_extract_json_block_valid():
+    # Markdown json block
+    assert extract_json_block('```json\n{"a": 1}\n```') == {"a": 1}
+    # Markdown block without language
+    assert extract_json_block('```\n{"b": 2}\n```') == {"b": 2}
+    # Fallback to brace search
+    assert extract_json_block('some text\n{"c": 3}\nmore text') == {"c": 3}
+    # Empty block
+    assert extract_json_block("   ") is None
+
+
+def test_extract_json_block_error_path():
+    # Malformed json in markdown block
+    assert extract_json_block('```json\n{"a": 1\n```') is None
+    # Invalid json directly
+    assert extract_json_block('{"b": 2') is None
+    # valid JSON with array but we are mostly testing decode error
+    assert extract_json_block('```\n[1, 2\n```') is None
+    # No json braces and no markdown
+    assert extract_json_block('just some random text') is None
+
+
 @pytest.fixture
 def vision_processor():
     return VisionProcessor()
