@@ -5,7 +5,8 @@ Manages persistent storage for receipts and processing state.
 
 import hashlib
 import sqlite3
-from contextlib import closing
+import threading
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
 
@@ -22,24 +23,32 @@ sqlite3.register_adapter(datetime, adapt_datetime)
 sqlite3.register_converter("TIMESTAMP", convert_datetime)
 
 
+
+@contextmanager
+def dummy_closing(thing):
+    yield thing
+
 class DuplicateDetector:
     def __init__(self, db_path: str = "processed_receipts.db"):
         self.db_path = db_path
+        self._local = threading.local()
         self._init_db()
 
     def _get_conn(self):
-        """Get a fresh database connection for the current thread."""
-        conn = sqlite3.connect(
-            self.db_path,
-            timeout=10.0,
-            detect_types=sqlite3.PARSE_DECLTYPES,
-        )
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA synchronous=NORMAL;")
-        return conn
+        """Get a database connection for the current thread."""
+        if not hasattr(self._local, "conn"):
+            conn = sqlite3.connect(
+                self.db_path,
+                timeout=10.0,
+                detect_types=sqlite3.PARSE_DECLTYPES,
+            )
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
+            self._local.conn = conn
+        return self._local.conn
 
     def _init_db(self):
-        with closing(self._get_conn()) as conn, conn:
+        with dummy_closing(self._get_conn()) as conn, conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS processed_receipts (
                 file_hash TEXT PRIMARY KEY,
@@ -106,8 +115,10 @@ class DuplicateDetector:
         self.close()
 
     def close(self):
-        """No longer holds a persistent connection."""
-        pass
+        """Close the thread-local connection if it exists."""
+        if hasattr(self, "_local") and hasattr(self._local, "conn"):
+            self._local.conn.close()
+            delattr(self._local, "conn")
 
     def get_hash(self, file_path: str) -> str:
         """Calculate SHA-256 hash of a file."""
@@ -119,7 +130,7 @@ class DuplicateDetector:
 
     def is_duplicate(self, file_hash: str) -> str | None:
         """Check if hash exists in DB, returns bexio_id if found."""
-        with closing(self._get_conn()) as conn:
+        with dummy_closing(self._get_conn()) as conn:
             cursor = conn.execute(
                 "SELECT bexio_id FROM processed_receipts WHERE file_hash = ?",
                 (file_hash,),
@@ -138,7 +149,7 @@ class DuplicateDetector:
         ocr_confidence: float | None = None,
     ):
         """Record a processed receipt."""
-        with closing(self._get_conn()) as conn, conn:
+        with dummy_closing(self._get_conn()) as conn, conn:
             conn.execute(
                 """INSERT INTO processed_receipts
                    (file_hash, file_path, processed_at, bexio_id, total_incl_vat, merchant_name, vat_amount, ocr_confidence)
@@ -157,7 +168,7 @@ class DuplicateDetector:
 
     def get_merchant_account(self, merchant_name: str) -> int | None:
         """Get the last used booking account for a merchant (case-insensitive)."""
-        with closing(self._get_conn()) as conn:
+        with dummy_closing(self._get_conn()) as conn:
             cursor = conn.execute(
                 "SELECT booking_account_id FROM merchant_accounts WHERE merchant_name = ?",
                 (merchant_name.upper(),),
@@ -167,7 +178,7 @@ class DuplicateDetector:
 
     def set_merchant_account(self, merchant_name: str, account_id: int):
         """Save the booking account for a merchant (case-insensitive)."""
-        with closing(self._get_conn()) as conn, conn:
+        with dummy_closing(self._get_conn()) as conn, conn:
             conn.execute(
                 "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
                 (merchant_name.upper(), account_id),
@@ -177,7 +188,7 @@ class DuplicateDetector:
         self, merchant_name: str, vat_rate: float
     ) -> int | None:
         """Get the last used booking account for a merchant and rate (case-insensitive)."""
-        with closing(self._get_conn()) as conn:
+        with dummy_closing(self._get_conn()) as conn:
             cursor = conn.execute(
                 "SELECT booking_account_id FROM merchant_vat_accounts WHERE merchant_name = ? AND vat_rate = ?",
                 (merchant_name.upper(), vat_rate),
@@ -198,7 +209,7 @@ class DuplicateDetector:
         self, merchant_name: str, vat_rate: float, account_id: int
     ):
         """Save the booking account for a merchant and rate (case-insensitive)."""
-        with closing(self._get_conn()) as conn, conn:
+        with dummy_closing(self._get_conn()) as conn, conn:
             conn.execute(
                 "INSERT OR REPLACE INTO merchant_vat_accounts (merchant_name, vat_rate, booking_account_id) VALUES (?, ?, ?)",
                 (merchant_name.upper(), vat_rate, account_id),
@@ -206,7 +217,7 @@ class DuplicateDetector:
 
     def get_all_merchant_accounts(self) -> dict[str, int]:
         """Get all merchant to booking account mappings."""
-        with closing(self._get_conn()) as conn:
+        with dummy_closing(self._get_conn()) as conn:
             cursor = conn.execute(
                 "SELECT merchant_name, booking_account_id FROM merchant_accounts"
             )
@@ -215,7 +226,7 @@ class DuplicateDetector:
     def import_merchant_accounts(self, mappings: dict[str, int]):
         """Import merchant to booking account mappings (case-insensitive)."""
         normalized = {k.upper(): v for k, v in mappings.items()}
-        with closing(self._get_conn()) as conn, conn:
+        with dummy_closing(self._get_conn()) as conn, conn:
             conn.executemany(
                 "INSERT OR REPLACE INTO merchant_accounts (merchant_name, booking_account_id) VALUES (?, ?)",
                 normalized.items(),
@@ -223,7 +234,7 @@ class DuplicateDetector:
 
     def is_gdrive_seen(self, file_id: str) -> bool:
         """Check if a Google Drive file ID has been seen."""
-        with closing(self._get_conn()) as conn:
+        with dummy_closing(self._get_conn()) as conn:
             cursor = conn.execute(
                 "SELECT 1 FROM gdrive_seen_files WHERE file_id = ?", (file_id,)
             )
@@ -231,7 +242,7 @@ class DuplicateDetector:
 
     def mark_gdrive_seen(self, file_id: str):
         """Mark a Google Drive file ID as seen."""
-        with closing(self._get_conn()) as conn, conn:
+        with dummy_closing(self._get_conn()) as conn, conn:
             conn.execute(
                 "INSERT OR IGNORE INTO gdrive_seen_files (file_id, seen_at) VALUES (?, ?)",
                 (file_id, datetime.now()),
@@ -241,7 +252,7 @@ class DuplicateDetector:
         self, limit: int = 50, offset: int = 0, search: str | None = None
     ) -> list[dict]:
         """Fetch list of processed receipts for the browser."""
-        with closing(self._get_conn()) as conn:
+        with dummy_closing(self._get_conn()) as conn:
             query = """
                 SELECT file_hash, file_path, processed_at, bexio_id, total_incl_vat, merchant_name, vat_amount, ocr_confidence
                 FROM processed_receipts
@@ -272,7 +283,7 @@ class DuplicateDetector:
 
     def get_total_processed_count(self, search: str | None = None) -> int:
         """Get total count of processed receipts for pagination."""
-        with closing(self._get_conn()) as conn:
+        with dummy_closing(self._get_conn()) as conn:
             query = "SELECT COUNT(*) FROM processed_receipts"
             params: list[Any] = []
             if search:
@@ -283,7 +294,7 @@ class DuplicateDetector:
 
     def get_stats(self) -> dict:
         """Fetch processing statistics."""
-        with closing(self._get_conn()) as conn:
+        with dummy_closing(self._get_conn()) as conn:
             count = conn.execute("SELECT COUNT(*) FROM processed_receipts").fetchone()[
                 0
             ]
