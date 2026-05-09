@@ -3,6 +3,7 @@ Dashboard backend powered by FastAPI and HTMX.
 Provides the web interface for receipt review and management.
 """
 
+import asyncio
 import contextlib
 import functools
 import io
@@ -165,13 +166,14 @@ async def metrics(
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-def _load_review(review_id: str, review_dir: str) -> tuple[dict, Path]:
+async def _load_review(review_id: str, review_dir: str) -> tuple[dict, Path]:
     """Load and parse a review JSON file, raising appropriate HTTP exceptions."""
     path = Path(review_dir) / f"{review_id}.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="Review not found")
     try:
-        data = json.loads(path.read_text())
+        content = await asyncio.to_thread(path.read_text)
+        data = json.loads(content)
         return data, path
     except json.JSONDecodeError as exc:
         logger.error(
@@ -252,12 +254,21 @@ async def dashboard(
         review_dir.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True
     )
 
+    def _read_and_parse_files(paths: list[Path]) -> list[tuple[Path, dict | Exception]]:
+        results = []
+        for p in paths:
+            try:
+                results.append((p, json.loads(p.read_text())))
+            except Exception as e:
+                results.append((p, e))
+        return results
+
+    results = await asyncio.to_thread(_read_and_parse_files, all_files_list)
+
     reviews_data = []
-    for p in all_files_list:
-        try:
-            data = json.loads(p.read_text())
-        except Exception as e:
-            logger.error("Skipping corrupted review file", path=str(p), error=str(e))
+    for p, data in results:
+        if isinstance(data, Exception):
+            logger.error("Skipping corrupted review file", path=str(p), error=str(data))
             continue
 
         extracted = data.get("extracted", {}) or {}
@@ -318,7 +329,7 @@ async def get_receipt_thumbnail(
     if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
         raise HTTPException(status_code=400, detail="Invalid review ID")
 
-    data, _ = _load_review(review_id, settings.review_dir)
+    data, _ = await _load_review(review_id, settings.review_dir)
     img_path = data.get("original_file")
 
     if not img_path or not Path(img_path).exists():
@@ -445,7 +456,8 @@ async def _handle_bulk_process(
 
             try:
                 try:
-                    data = json.loads(p.read_text())
+                    content = await asyncio.to_thread(p.read_text)
+                    data = json.loads(content)
                 except Exception as e:
                     logger.error(
                         "Skipping corrupted review file in bulk action",
@@ -636,7 +648,7 @@ async def get_review_form(
     if not p.exists():
         raise HTTPException(status_code=404, detail="Review not found")
 
-    data, p = _load_review(review_id, settings.review_dir)
+    data, p = await _load_review(review_id, settings.review_dir)
 
     # Fetch accounts for the dropdown
     async with BexioClient(
@@ -705,7 +717,7 @@ async def get_receipt_image(
     if not re.match(r"^[a-zA-Z0-9_-]+$", review_id):
         raise HTTPException(status_code=400, detail="Invalid review ID")
 
-    data, _ = _load_review(review_id, settings.review_dir)
+    data, _ = await _load_review(review_id, settings.review_dir)
     img_path = data.get("original_file")
 
     if not img_path or not Path(img_path).exists():
@@ -758,7 +770,7 @@ async def push_to_bexio(
     if not p.exists():
         raise HTTPException(status_code=404, detail="Review not found")
 
-    data, p = _load_review(review_id, settings.review_dir)
+    data, p = await _load_review(review_id, settings.review_dir)
 
     # Update data from form
     receipt_data = data.get("extracted", {})
