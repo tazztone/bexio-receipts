@@ -173,7 +173,9 @@ def _gather_config_interactive():
             "[dim]Note: OpenRouter models must use provider/model format.[/dim]\n"
             "[dim]Examples: anthropic/claude-3.5-sonnet, meta-llama/llama-3-70b-instruct, google/gemini-1.5-pro[/dim]"
         )
-        openrouter_model = Prompt.ask("LLM Model", default="anthropic/claude-3.5-sonnet")
+        openrouter_model = Prompt.ask(
+            "LLM Model", default="anthropic/claude-3.5-sonnet"
+        )
     elif llm_provider == "openai":
         openai_key = Prompt.ask("OpenAI API Key")
 
@@ -268,7 +270,9 @@ def _run_quickstart_demo(token: str):
             from .pipeline import assemble_receipt, get_processor
 
             processor = get_processor(settings)
-            with console.status(f"[bold green]Running demo ({settings.processor_mode})..."):
+            with console.status(
+                f"[bold green]Running demo ({settings.processor_mode})..."
+            ):
                 result = await processor.process(str(target), settings)
 
             raw_receipt = RawReceipt(
@@ -283,7 +287,9 @@ def _run_quickstart_demo(token: str):
                 account_assignments=result.account_assignments,
             )
             receipt = assemble_receipt(raw_receipt)
-            console.print(f"  - Detected Merchant: [bold]{receipt.merchant_name}[/bold]")
+            console.print(
+                f"  - Detected Merchant: [bold]{receipt.merchant_name}[/bold]"
+            )
             console.print(
                 f"  - Detected Total: [bold]{receipt.total_incl_vat} {receipt.currency}[/bold]"
             )
@@ -405,86 +411,83 @@ def process(
     asyncio.run(_process_interactive(str(file), settings, push, dry_run))
 
 
-async def _process_interactive(
-    file_path: str, settings: Settings, push: bool, dry_run: bool
-):
-    """Internal helper for CLI processing."""
-    if dry_run:
-        from .models import RawReceipt, RawVatRow
-        from .pipeline import assemble_receipt, get_processor
-        from .validation import validate_receipt
+async def _run_dry_run(file_path: str, settings: Settings):
+    from .models import RawReceipt, RawVatRow
+    from .pipeline import assemble_receipt, get_processor
+    from .validation import validate_receipt
 
-        processor = get_processor(settings)
-        with console.status(f"[bold green]Processing via {settings.processor_mode}..."):
-            result = await processor.process(file_path, settings)
+    processor = get_processor(settings)
+    with console.status(f"[bold green]Processing via {settings.processor_mode}..."):
+        result = await processor.process(file_path, settings)
 
-        console.print(f"\n[bold]Raw Text:[/bold]\n{result.raw_text}\n")
+    console.print(f"\n[bold]Raw Text:[/bold]\n{result.raw_text}\n")
 
-        raw_receipt = RawReceipt(
-            merchant_name=result.merchant_name,
-            transaction_date=result.transaction_date,
-            total_incl_vat=result.total_incl_vat,
-            currency=result.currency,
-            vat_rows=[
-                RawVatRow(**v) if isinstance(v, dict) else v for v in result.vat_rows
-            ],
-            account_assignments=result.account_assignments,
-            payment_method=result.payment_method,
+    raw_receipt = RawReceipt(
+        merchant_name=result.merchant_name,
+        transaction_date=result.transaction_date,
+        total_incl_vat=result.total_incl_vat,
+        currency=result.currency,
+        vat_rows=[
+            RawVatRow(**v) if isinstance(v, dict) else v for v in result.vat_rows
+        ],
+        account_assignments=result.account_assignments,
+        payment_method=result.payment_method,
+    )
+    receipt = None
+    validation_errors = []
+    try:
+        receipt = assemble_receipt(raw_receipt)
+    except Exception as e:
+        validation_errors = [str(e)]
+
+    table = Table(title="Extracted Data (Dry Run)", show_header=True)
+    table.add_column("Field", style="cyan")
+    table.add_column("Value", style="magenta")
+
+    for field, value in raw_receipt.model_dump().items():
+        if field == "vat_breakdown" and value:
+            table.add_row(
+                field,
+                "\n".join([
+                    f"{v['rate']}%: {v['total_incl_vat']} (VAT: {v['vat_amount']})"
+                    for v in value
+                ]),
+            )
+        elif field == "account_assignments" and value:
+            table.add_row(
+                field,
+                "\n".join([
+                    f"{a['vat_rate']}% -> {a['account_id']} ({a['reasoning']})"
+                    for a in value
+                ]),
+            )
+        else:
+            table.add_row(field, str(value))
+    console.print(table)
+
+    with console.status("[bold yellow]Validating..."):
+        if receipt:
+            errors, warnings = validate_receipt(receipt, settings)
+            errors.extend(validation_errors)
+        else:
+            errors = validation_errors
+            warnings = []
+
+    if errors:
+        console.print(
+            "\n[bold red]Validation Errors:[/bold red]\n"
+            + "\n".join(f"- {e}" for e in errors)
         )
-        receipt = None
-        validation_errors = []
-        try:
-            receipt = assemble_receipt(raw_receipt)
-        except Exception as e:
-            validation_errors = [str(e)]
+    if warnings:
+        console.print(
+            "\n[bold yellow]Validation Warnings:[/bold yellow]\n"
+            + "\n".join(f"- {w}" for w in warnings)
+        )
+    if not errors and not warnings:
+        console.print("\n[bold green]Validation Passed[/bold green]")
 
-        table = Table(title="Extracted Data (Dry Run)", show_header=True)
-        table.add_column("Field", style="cyan")
-        table.add_column("Value", style="magenta")
 
-        for field, value in raw_receipt.model_dump().items():
-            if field == "vat_breakdown" and value:
-                table.add_row(
-                    field,
-                    "\n".join([
-                        f"{v['rate']}%: {v['total_incl_vat']} (VAT: {v['vat_amount']})"
-                        for v in value
-                    ]),
-                )
-            elif field == "account_assignments" and value:
-                table.add_row(
-                    field,
-                    "\n".join([
-                        f"{a['vat_rate']}% -> {a['account_id']} ({a['reasoning']})"
-                        for a in value
-                    ]),
-                )
-            else:
-                table.add_row(field, str(value))
-        console.print(table)
-
-        with console.status("[bold yellow]Validating..."):
-            if receipt:
-                errors, warnings = validate_receipt(receipt, settings)
-                errors.extend(validation_errors)
-            else:
-                errors = validation_errors
-                warnings = []
-
-        if errors:
-            console.print(
-                "\n[bold red]Validation Errors:[/bold red]\n"
-                + "\n".join(f"- {e}" for e in errors)
-            )
-        if warnings:
-            console.print(
-                "\n[bold yellow]Validation Warnings:[/bold yellow]\n"
-                + "\n".join(f"- {w}" for w in warnings)
-            )
-        if not errors and not warnings:
-            console.print("\n[bold green]Validation Passed[/bold green]")
-        return
-
+async def _run_live_process(file_path: str, settings: Settings, push: bool):
     if push and not settings.bexio_push_enabled:
         console.print(
             "[bold red]Error: BEXIO_PUSH_ENABLED=false in configuration.[/bold red]"
@@ -518,6 +521,16 @@ async def _process_interactive(
         console.print(
             f"\n[bold]Final Result:[/bold]\n{json.dumps(final_result, indent=2, default=str)}"
         )
+
+
+async def _process_interactive(
+    file_path: str, settings: Settings, push: bool, dry_run: bool
+):
+    """Internal helper for CLI processing."""
+    if dry_run:
+        await _run_dry_run(file_path, settings)
+    else:
+        await _run_live_process(file_path, settings, push)
 
 
 @app.command()
