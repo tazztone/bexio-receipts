@@ -185,6 +185,15 @@ class DuplicateDetector:
             row = cursor.fetchone()
             return row[0] if row else None
 
+    def get_merchant_vat_accounts(self, merchant_name: str) -> dict[float, int]:
+        """Get all VAT accounts for a merchant (case-insensitive)."""
+        with closing(self._get_conn()) as conn:
+            cursor = conn.execute(
+                "SELECT vat_rate, booking_account_id FROM merchant_vat_accounts WHERE merchant_name = ?",
+                (merchant_name.upper(),),
+            )
+            return {row[0]: row[1] for row in cursor.fetchall()}
+
     def set_merchant_vat_account(
         self, merchant_name: str, vat_rate: float, account_id: int
     ):

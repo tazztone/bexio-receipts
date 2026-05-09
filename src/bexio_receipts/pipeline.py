@@ -115,13 +115,16 @@ async def _push_to_bexio(
         # Build booking account list based on assignments or database priority
         booking_account_ids = []
         if receipt.vat_breakdown:
+            merchant_vat_accounts = {}
+            if receipt.merchant_name:
+                merchant_vat_accounts = db.get_merchant_vat_accounts(
+                    receipt.merchant_name
+                )
             for entry in receipt.vat_breakdown:
                 acc_id = None
                 # Priority 1: Database (Learned from human)
                 if receipt.merchant_name:
-                    acc_id = db.get_merchant_vat_account(
-                        receipt.merchant_name, entry.rate
-                    )
+                    acc_id = merchant_vat_accounts.get(entry.rate)
 
                 # Priority 2: LLM Assignment (Step 3)
                 if not acc_id:

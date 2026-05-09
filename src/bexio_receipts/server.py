@@ -476,11 +476,14 @@ async def _handle_bulk_process(
 
                 if bexio_action == "purchase_bill":
                     if receipt.vat_breakdown:
+                        merchant_vat_accounts = {}
+                        if receipt.merchant_name:
+                            merchant_vat_accounts = db.get_merchant_vat_accounts(
+                                receipt.merchant_name
+                            )
                         for entry in receipt.vat_breakdown:
                             acc_id = (
-                                db.get_merchant_vat_account(
-                                    receipt.merchant_name, entry.rate
-                                )
+                                merchant_vat_accounts.get(entry.rate)
                                 if receipt.merchant_name
                                 else None
                             )
