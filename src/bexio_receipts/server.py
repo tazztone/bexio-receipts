@@ -355,6 +355,60 @@ async def favicon():
     return Response(content=b"", media_type="image/x-icon")
 
 
+async def _execute_bexio_push(
+    bexio: BexioClient,
+    receipt: Receipt,
+    file_uuid: str,
+    bexio_action: str,
+    booking_account_ids: list[int],
+    bank_account_id: int | None,
+    settings: Settings,
+    db: DuplicateDetector | None = None,
+) -> None:
+    """Execute the push to Bexio, including routing and learning loop updates."""
+    # Logic #4: Server-side override (never trust client blindly)
+    if bexio_action == "expense" and decide_bexio_action(receipt) == "purchase_bill":
+        logger.info("Overriding 'expense' to 'purchase_bill' for safety")
+        bexio_action = "purchase_bill"
+
+    # Routing decision
+    if bexio_action == "purchase_bill":
+        # Always Purchase Bill for multi-rate or merchant
+        await bexio.create_purchase_bill(
+            receipt,
+            file_uuid,
+            booking_account_ids=[
+                acc_id for acc_id in booking_account_ids if acc_id is not None
+            ],
+        )
+        # Save account mapping for merchant (Learning Loop)
+        if db is not None and receipt.merchant_name:
+            if receipt.vat_breakdown:
+                for i, entry in enumerate(receipt.vat_breakdown):
+                    db.set_merchant_vat_account(
+                        receipt.merchant_name,
+                        entry.rate,
+                        booking_account_ids[i],
+                    )
+            else:
+                db.set_merchant_account(receipt.merchant_name, booking_account_ids[0])
+    else:
+        # Single-rate expense
+        effective_bank_account_id = bank_account_id or settings.default_bank_account_id
+        if effective_bank_account_id is None:
+            raise ValueError("Bank account ID is not configured")
+
+        await bexio.create_expense(
+            receipt,
+            file_uuid,
+            booking_account_id=booking_account_ids[0],
+            bank_account_id=effective_bank_account_id,
+        )
+        # Learning loop for single-rate
+        if db is not None and receipt.merchant_name:
+            db.set_merchant_account(receipt.merchant_name, booking_account_ids[0])
+
+
 def _handle_bulk_discard(review_dir: Path, ids: list[str]) -> tuple[int, int]:
     """Helper to handle the discard bulk action."""
     success_count = 0
@@ -417,9 +471,10 @@ async def _handle_bulk_process(
                 if not booking_account_id:
                     booking_account_id = settings.default_booking_account_id
 
-                if decide_bexio_action(receipt) == "purchase_bill":
-                    # Build account list matching VAT breakdown
-                    booking_account_ids = []
+                bexio_action = decide_bexio_action(receipt)
+                booking_account_ids = []
+
+                if bexio_action == "purchase_bill":
                     if receipt.vat_breakdown:
                         merchant_vat_accounts = {}
                         if receipt.merchant_name:
@@ -447,24 +502,22 @@ async def _handle_bulk_process(
                                 f"No booking account found for merchant {receipt.merchant_name}"
                             )
                         booking_account_ids = [booking_account_id]
-
-                    await bexio.create_purchase_bill(
-                        receipt, file_uuid, booking_account_ids=booking_account_ids
-                    )
                 else:
                     if booking_account_id is None:
                         raise ValueError(
                             f"No booking account found for merchant {receipt.merchant_name}"
                         )
-                    if settings.default_bank_account_id is None:
-                        raise ValueError("DEFAULT_BANK_ACCOUNT_ID is not configured")
+                    booking_account_ids = [booking_account_id]
 
-                    await bexio.create_expense(
-                        receipt,
-                        file_uuid,
-                        booking_account_id=booking_account_id,
-                        bank_account_id=settings.default_bank_account_id,
-                    )
+                await _execute_bexio_push(
+                    bexio=bexio,
+                    receipt=receipt,
+                    file_uuid=file_uuid,
+                    bexio_action=bexio_action,
+                    booking_account_ids=booking_account_ids,
+                    bank_account_id=settings.default_bank_account_id,
+                    settings=settings,
+                )
 
                 p.unlink()
 
@@ -755,56 +808,18 @@ async def push_to_bexio(
             await bexio.cache_lookups()
             file_uuid = await bexio.upload_file(img_path, filename, mime_type)
 
-            # Logic #4: Server-side override (never trust client blindly)
-            if (
-                bexio_action == "expense"
-                and decide_bexio_action(receipt) == "purchase_bill"
-            ):
-                logger.info("Overriding 'expense' to 'purchase_bill' for safety")
-                bexio_action = "purchase_bill"
-
-            # Routing decision
-            if bexio_action == "purchase_bill":
-                # Always Purchase Bill for multi-rate or merchant
-                await bexio.create_purchase_bill(
-                    receipt,
-                    file_uuid,
-                    booking_account_ids=[
-                        acc_id for acc_id in booking_account_ids if acc_id is not None
-                    ],
-                )
-                # Save account mapping for merchant (Learning Loop)
-                if receipt.merchant_name:
-                    if receipt.vat_breakdown:
-                        for i, entry in enumerate(receipt.vat_breakdown):
-                            db.set_merchant_vat_account(
-                                receipt.merchant_name,
-                                entry.rate,
-                                booking_account_ids[i],
-                            )
-                    else:
-                        db.set_merchant_account(
-                            receipt.merchant_name, booking_account_ids[0]
-                        )
-            else:
-                # Single-rate expense
-                effective_bank_account_id = (
-                    bank_account_id or settings.default_bank_account_id
-                )
-                if effective_bank_account_id is None:
-                    raise ValueError("Bank account ID is not configured")
-
-                await bexio.create_expense(
-                    receipt,
-                    file_uuid,
-                    booking_account_id=booking_account_ids[0],
-                    bank_account_id=effective_bank_account_id,
-                )
-                # Learning loop for single-rate
-                if receipt.merchant_name:
-                    db.set_merchant_account(
-                        receipt.merchant_name, booking_account_ids[0]
-                    )
+            await _execute_bexio_push(
+                bexio=bexio,
+                receipt=receipt,
+                file_uuid=file_uuid,
+                bexio_action=bexio_action,
+                booking_account_ids=[
+                    acc_id for acc_id in booking_account_ids if acc_id is not None
+                ],
+                bank_account_id=bank_account_id,
+                settings=settings,
+                db=db,
+            )
 
         # Success: delete review file
         p.unlink()

@@ -123,21 +123,7 @@ class VisionProcessor(DocumentProcessor):
                 images.append(base64.b64encode(img_data).decode("utf-8"))
         return images
 
-    async def process(
-        self,
-        file_path: str,
-        settings: Settings,
-        client: httpx.AsyncClient | None = None,
-    ) -> ProcessingResult:
-        if settings.vision_manage_server:
-            extra_flags = build_vllm_flags(settings)
-            await start_vllm_server(
-                settings.vision_model,
-                settings.vision_api_port,
-                settings,
-                extra_flags=extra_flags,
-            )
-
+    def _prepare_content(self, file_path: str, settings: Settings) -> list[Any]:
         file_ext = Path(file_path).suffix.lower()
         is_pdf = file_ext == ".pdf"
 
@@ -161,7 +147,74 @@ class VisionProcessor(DocumentProcessor):
             "type": "text",
             "text": "Extract all structured data from this receipt. If multiple pages, combine into one result.",
         })
+        return content
 
+    def _parse_vision_response(
+        self, raw_response_content: str
+    ) -> tuple[VisionExtraction, dict]:
+        try:
+            # Use robust extraction logic for markdown blocks
+            logger.debug("vlm_raw_response", content=raw_response_content)
+            data = extract_json_block(raw_response_content)
+            if not data:
+                # Fallback to direct parse if no block found
+                data = json.loads(raw_response_content)
+
+            ext = VisionExtraction(**data)
+            return ext, data
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(
+                "vision_parsing_failed", error=str(e), content=raw_response_content
+            )
+            raise ValueError(f"Failed to parse VLM output as JSON: {e}") from e
+
+    def _build_processing_result(
+        self, ext: VisionExtraction, raw_response_content: str, data: dict
+    ) -> ProcessingResult:
+        trace = ExtractionTrace(
+            ocr_text=raw_response_content,
+            step1_output=data,
+            step1_raw=raw_response_content,
+            step3_assignments=[a.model_dump() for a in ext.account_assignments],
+        )
+
+        return ProcessingResult(
+            raw_text=raw_response_content,
+            merchant_name=ext.merchant_name,
+            transaction_date=ext.transaction_date,
+            currency=ext.currency,
+            subtotal_excl_vat=ext.subtotal_excl_vat,
+            vat_rate_pct=ext.vat_rate_pct,
+            vat_amount=ext.vat_amount,
+            total_incl_vat=ext.total_incl_vat,
+            payment_method=ext.payment_method,
+            vat_rows=ext.vat_rows,
+            account_assignments=ext.account_assignments,
+            confidence=1.0
+            if ext.merchant_name
+            and ext.transaction_date
+            and ext.total_incl_vat
+            and ext.vat_rows
+            else 0.0,
+            trace=trace,
+        )
+
+    async def process(
+        self,
+        file_path: str,
+        settings: Settings,
+        client: httpx.AsyncClient | None = None,
+    ) -> ProcessingResult:
+        if settings.vision_manage_server:
+            extra_flags = build_vllm_flags(settings)
+            await start_vllm_server(
+                settings.vision_model,
+                settings.vision_api_port,
+                settings,
+                extra_flags=extra_flags,
+            )
+
+        content = self._prepare_content(file_path, settings)
         system_prompt = build_vision_system_prompt(settings)
 
         openai_client = AsyncOpenAI(
@@ -194,48 +247,8 @@ class VisionProcessor(DocumentProcessor):
             )
 
             raw_response_content = response.choices[0].message.content or ""
-            try:
-                # Use robust extraction logic for markdown blocks
-                logger.debug("vlm_raw_response", content=raw_response_content)
-                data = extract_json_block(raw_response_content)
-                if not data:
-                    # Fallback to direct parse if no block found
-                    data = json.loads(raw_response_content)
-
-                ext = VisionExtraction(**data)
-            except (json.JSONDecodeError, ValueError) as e:
-                logger.error(
-                    "vision_parsing_failed", error=str(e), content=raw_response_content
-                )
-                raise ValueError(f"Failed to parse VLM output as JSON: {e}") from e
-
-            trace = ExtractionTrace(
-                ocr_text=raw_response_content,
-                step1_output=data,
-                step1_raw=raw_response_content,
-                step3_assignments=[a.model_dump() for a in ext.account_assignments],
-            )
-
-            return ProcessingResult(
-                raw_text=raw_response_content,
-                merchant_name=ext.merchant_name,
-                transaction_date=ext.transaction_date,
-                currency=ext.currency,
-                subtotal_excl_vat=ext.subtotal_excl_vat,
-                vat_rate_pct=ext.vat_rate_pct,
-                vat_amount=ext.vat_amount,
-                total_incl_vat=ext.total_incl_vat,
-                payment_method=ext.payment_method,
-                vat_rows=ext.vat_rows,
-                account_assignments=ext.account_assignments,
-                confidence=1.0
-                if ext.merchant_name
-                and ext.transaction_date
-                and ext.total_incl_vat
-                and ext.vat_rows
-                else 0.0,
-                trace=trace,
-            )
+            ext, data = self._parse_vision_response(raw_response_content)
+            return self._build_processing_result(ext, raw_response_content, data)
         finally:
             await openai_client.close()
 
